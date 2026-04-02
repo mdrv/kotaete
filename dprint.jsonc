@@ -1,0 +1,40 @@
+{
+	"$schema": "https://dprint.dev/schemas/v0.json",
+	"useTabs": true,
+	"markdown": {},
+	"toml": {},
+	"typescript": {
+		"semiColons": "asi",
+		"quoteStyle": "preferSingle"
+	},
+	"markup": {
+		"quotes": "single",
+		"svelte.scriptIndent": true,
+		"svelte.styleIndent": true
+	},
+	"yaml": {},
+	"stylua": {
+		"indentWidth": 4,
+		"quoteStyle": "ForceSingle"
+	},
+	"json": {
+		"trailingCommas": "maintain"
+	},
+	"excludes": [
+		"**/*-lock.json",
+		"dist",
+		"_docs",
+		"*.min.js",
+		"coverage",
+		"**/node_modules"
+	],
+	"plugins": [
+		"https://plugins.dprint.dev/markdown-0.21.1.wasm",
+		"https://plugins.dprint.dev/toml-0.7.0.wasm",
+		"https://plugins.dprint.dev/typescript-0.95.15.wasm",
+		"https://plugins.dprint.dev/g-plane/markup_fmt-v0.26.0.wasm",
+		"https://plugins.dprint.dev/g-plane/pretty_yaml-v0.6.0.wasm",
+		"https://plugins.dprint.dev/RubixDev/stylua-v0.2.1.wasm",
+		"https://plugins.dprint.dev/json-0.21.1.wasm"
+	]
+}

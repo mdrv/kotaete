@@ -1,0 +1,36 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Extract frontmatter and body
+        id: meta
+        run: |
+          FILE="docs/releases/${{ github.ref_name }}.md"
+
+          # Extract title from frontmatter
+          TITLE=$(grep "^title:" "$FILE" | head -1 | sed 's/^title: *//')
+
+          # Body = everything after second --- (skip frontmatter)
+          BODY_FILE=$(mktemp)
+          awk '/^---$/{n++;next} n>=2' "$FILE" > "$BODY_FILE"
+
+          echo "title=$TITLE" >> $GITHUB_OUTPUT
+          echo "body_file=$BODY_FILE" >> $GITHUB_OUTPUT
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ${{ steps.meta.outputs.title }}
+          body_path: ${{ steps.meta.outputs.body_file }}
+          fail_on_unmatched_body_path: true
