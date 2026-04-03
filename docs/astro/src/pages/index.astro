@@ -1,0 +1,51 @@
+---
+import { getCollection } from 'astro:content'
+import Base from '../layouts/Base.astro'
+
+const docs = await getCollection('docs')
+
+const guides = docs
+	.filter((e) => !e.id.startsWith('releases/'))
+	.map((e) => ({
+		id: e.id,
+		title: e.data?.title || e.id.split('/').pop() || e.id,
+	}))
+	.sort((a, b) => a.id.localeCompare(b.id))
+
+const releases = docs
+	.filter((e) => e.id.startsWith('releases/'))
+	.map((e) => ({
+		id: e.id,
+		title: e.data?.title || e.id.split('/').pop() || e.id,
+	}))
+	.sort((a, b) => b.id.localeCompare(a.id))
+---
+
+<Base title='@mdrv/kotaete docs'>
+	<h1>@mdrv/kotaete documentation</h1>
+	<p>WhatsApp quiz bot — docs, guides, and release notes.</p>
+
+	<h2>Guides</h2>
+	<ul>
+		{guides.map((e) => (
+			<li>
+				<a href={`/docs/${e.id}`}>{e.title}</a>
+			</li>
+		))}
+	</ul>
+
+	<h2>Release notes</h2>
+	<ul>
+		{releases.map((e) => (
+			<li>
+				<a href={`/docs/${e.id}`}>{e.title}</a>
+			</li>
+		))}
+	</ul>
+
+	<h2>Raw markdown</h2>
+	<p>
+		Pure <code>.md</code> files are also available at
+		<a href='/markdown/'>/markdown/</a>.
+	</p>
+</Base>

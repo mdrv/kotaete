@@ -46,6 +46,18 @@ export class WhatsAppClient implements IWhatsAppClient {
 		await this.impl.stop()
 	}
 
+	async isConnected(): Promise<boolean> {
+		return await this.impl.isConnected()
+	}
+
+	async lookupPnByLid(lid: string): Promise<string | null> {
+		return await this.impl.lookupPnByLid(lid)
+	}
+
+	async lookupLidByPn(pn: string): Promise<string | null> {
+		return await this.impl.lookupLidByPn(pn)
+	}
+
 	async sendTyping(groupId: string): Promise<void> {
 		await this.impl.sendTyping(groupId)
 	}

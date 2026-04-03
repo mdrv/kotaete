@@ -12,6 +12,7 @@ async function sendRelayRequest(
 		quizDir: string
 		membersFile: string
 		disableCooldown?: boolean
+		noSchedule?: boolean
 	},
 ): Promise<RelayResponse> {
 	return await new Promise<RelayResponse>((resolve, reject) => {
@@ -50,6 +51,11 @@ export const runCmd = app.sub('run')
 			description: 'Enable answer cooldown (default)',
 			default: true,
 		},
+		schedule: {
+			type: 'boolean',
+			description: 'Use configured intro/start schedule from quiz config (default)',
+			default: true,
+		},
 	})
 	.args([
 		{ name: 'groupId', type: 'string', required: true },
@@ -66,6 +72,7 @@ export const runCmd = app.sub('run')
 			quizDir,
 			membersFile,
 			disableCooldown: flags.cooldown === false,
+			noSchedule: flags.schedule === false,
 		})
 
 		if (flags.json) {

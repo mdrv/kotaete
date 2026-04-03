@@ -1,5 +1,5 @@
 {
-	"name": "nipbang-kotaete",
+	"name": "@mdrv/kotaete",
 	"version": "0.0.1",
 	"type": "module",
 	"private": true,
@@ -19,7 +19,9 @@
 		"fmt": "dprint fmt",
 		"fmt:check": "dprint check",
 		"typecheck": "bun tsc --noEmit",
-		"check": "bun run fmt:check && bun run typecheck"
+		"check": "bun run fmt:check && bun run typecheck",
+		"docs:dev": "cd docs/astro && npm run dev",
+		"docs:build": "cd docs/astro && npm run build"
 	},
 	"dependencies": {
 		"@crustjs/core": "^0.0.15",

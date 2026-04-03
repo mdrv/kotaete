@@ -5,6 +5,7 @@ import packageJson from '../../package.json' with { type: 'json' }
 import { daemonCmd } from './commands/daemon.ts'
 import { quizCmd } from './commands/quiz.ts'
 import { runCmd } from './commands/run.ts'
+import { toolCmd } from './commands/tool.ts'
 import { app } from './shared.ts'
 
 await app
@@ -13,4 +14,5 @@ await app
 	.command(daemonCmd)
 	.command(quizCmd)
 	.command(runCmd)
+	.command(toolCmd)
 	.execute()

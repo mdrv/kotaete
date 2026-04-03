@@ -25,4 +25,4 @@ export const POINTS_KANJI_BONUS = 2
 export const SPECIAL_STAGE_NUMBER = 99
 export const POINTS_SPECIAL = 25
 
-export const CLI_SESSION_SCOPE = 'nipbang-kotaete'
+export const CLI_SESSION_SCOPE = '@mdrv/kotaete'

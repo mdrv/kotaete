@@ -74,11 +74,11 @@ const GOD_STAGE_ANNOUNCEMENT = [
 	'🙈 Satu kali kesempatan per anggota',
 	'⏰ Timeout soal 30 menit',
 	'',
-	'Soal akan muncul dalam 30 detik! 🐻',
+	'🐻 Soal akan muncul dalam 1 menit!',
 ].join('\n')
 
 const GOD_STAGE_TIMEOUT_MS = 30 * 60 * 1000
-const GOD_STAGE_ANNOUNCEMENT_DELAY_MS = 30 * 1000
+const GOD_STAGE_ANNOUNCEMENT_DELAY_MS = 60 * 1000
 
 const ANSWER_ENDING_RE = /[\p{Script=Latin}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Han}]$/u
 const WIB_TIME_FMT = new Intl.DateTimeFormat('id-ID', {

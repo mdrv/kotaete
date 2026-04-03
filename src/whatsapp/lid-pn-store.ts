@@ -1,5 +1,6 @@
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
-import { dirname } from 'node:path'
+import { randomUUID } from 'node:crypto'
+import { mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises'
+import { dirname, join } from 'node:path'
 import { DEFAULT_LID_PN_MAP_PATH } from '../constants.ts'
 import { getLogger } from '../logger.ts'
 import { normalizeJidNumber } from '../utils/normalize.ts'
@@ -28,6 +29,7 @@ export class LidPnStore {
 	private readonly map = new Map<string, string>()
 	private loaded = false
 	private readonly filePath: string
+	private saveChain = Promise.resolve()
 
 	constructor(pathLike: string = DEFAULT_LID_PN_MAP_PATH) {
 		this.filePath = expandHome(pathLike)
@@ -69,6 +71,17 @@ export class LidPnStore {
 		return this.map.get(lid) ?? null
 	}
 
+	getLidByPn(pnRaw: string): string | null {
+		const pn = normalizeJidNumber(pnRaw)
+		if (!pn) return null
+		const entries = Array.from(this.map.entries())
+		for (let i = entries.length - 1; i >= 0; i -= 1) {
+			const [lid, mappedPn] = entries[i]!
+			if (mappedPn === pn) return `${lid}@lid`
+		}
+		return null
+	}
+
 	entriesCount(): number {
 		return this.map.size
 	}
@@ -97,10 +110,23 @@ export class LidPnStore {
 			entries: Object.fromEntries(this.map),
 		}
 
-		await mkdir(dirname(this.filePath), { recursive: true })
-		const tmpPath = `${this.filePath}.tmp`
-		await writeFile(tmpPath, `${JSON.stringify(payload, null, 2)}\n`, 'utf-8')
-		await rename(tmpPath, this.filePath)
+		// Serialize concurrent saves via promise chain
+		const runSave = async () => {
+			await mkdir(dirname(this.filePath), { recursive: true })
+			const tmpPath = join(dirname(this.filePath), `lid-pn-map-${randomUUID()}.tmp`)
+			try {
+				await writeFile(tmpPath, `${JSON.stringify(payload, null, 2)}\n`, 'utf-8')
+				await rename(tmpPath, this.filePath)
+			} catch (error) {
+				try {
+					await unlink(tmpPath)
+				} catch { /* ignore cleanup failure */ }
+				log.warning(`failed saving lid->pn map: ${error instanceof Error ? error.message : String(error)}`)
+			}
+		}
+
+		this.saveChain = this.saveChain.then(runSave, runSave)
+		await this.saveChain
 	}
 }
 

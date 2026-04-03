@@ -1,7 +1,7 @@
 import { readdir, readFile, stat } from 'node:fs/promises'
 import { basename, resolve } from 'node:path'
 import { SPECIAL_STAGE_NUMBER } from '../constants.ts'
-import type { QuizBundle, QuizQuestion } from '../types.ts'
+import type { QuizBundle, QuizQuestion, QuizScheduleConfig } from '../types.ts'
 
 // ---------------------------------------------------------------------------
 // Parsing helpers
@@ -72,28 +72,70 @@ async function resolveImagePath(
 }
 
 // ---------------------------------------------------------------------------
-// Date helpers
+// Schedule config helpers
 // ---------------------------------------------------------------------------
 
-function parseIntroTime(dirBasename: string): Date {
-	const m = dirBasename.match(/^(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})$/)
-	if (!m) {
-		throw new Error(
-			`[quiz] directory name "${dirBasename}" does not match YYYYMMDD-HHMM format`,
-		)
+function isValidDate(value: unknown): value is Date {
+	return value instanceof Date && !Number.isNaN(value.getTime())
+}
+
+function normalizeDateValue(value: unknown, key: 'intro' | 'start'): Date {
+	if (isValidDate(value)) return value
+	if (typeof value === 'string' || typeof value === 'number') {
+		const parsed = new Date(value)
+		if (isValidDate(parsed)) return parsed
+	}
+	throw new Error(`[quiz] invalid ${key} in kotaete.ts: expected a valid Date value`)
+}
+
+export function defineConfig(
+	config: { intro: Date | string | number; start: Date | string | number },
+): QuizScheduleConfig {
+	return {
+		intro: normalizeDateValue(config.intro, 'intro'),
+		start: normalizeDateValue(config.start, 'start'),
+	}
+}
+
+async function readScheduleConfig(absDir: string): Promise<QuizScheduleConfig | null> {
+	const configPath = resolve(absDir, 'kotaete.ts')
+	try {
+		const cfgStat = await stat(configPath)
+		if (!cfgStat.isFile()) return null
+	} catch {
+		return null
 	}
 
-	// Asia/Jakarta = UTC+7
-	const year = Number(m[1])
-	const month = Number(m[2]) - 1
-	const day = Number(m[3])
-	const hour = Number(m[4])
-	const minute = Number(m[5])
+	const source = await readFile(configPath, 'utf-8')
+	const stripped = source.replace(
+		/^\s*import\s*\{\s*defineConfig\s*\}\s*from\s*['"]@mdrv\/kotaete['"]\s*;?\s*$/gm,
+		'',
+	)
+	if (stripped === source) {
+		throw new Error('[quiz] kotaete.ts must import defineConfig from "@mdrv/kotaete"')
+	}
+	const tsModule = `const defineConfig = (config) => config\n${stripped}`
+	let jsModule = tsModule
+	try {
+		jsModule = new Bun.Transpiler({ loader: 'ts' }).transformSync(tsModule)
+	} catch (error) {
+		throw new Error(`[quiz] failed to transpile kotaete.ts: ${error instanceof Error ? error.message : String(error)}`)
+	}
+	const specifier = `data:text/javascript;base64,${Buffer.from(jsModule, 'utf-8').toString('base64')}`
+	const mod = await import(specifier) as { default?: unknown }
+	if (!mod.default || typeof mod.default !== 'object') {
+		throw new Error('[quiz] kotaete.ts must default-export config via defineConfig({...})')
+	}
 
-	// Build a UTC date that represents Asia/Jakarta local time.
-	// To avoid DST issues we compute the timestamp manually.
-	const utcMs = Date.UTC(year, month, day, hour - 7, minute, 0, 0)
-	return new Date(utcMs)
+	const raw = mod.default as { intro?: unknown; start?: unknown }
+	if (raw.intro === undefined || raw.start === undefined) {
+		throw new Error('[quiz] kotaete.ts config must contain both "intro" and "start" fields')
+	}
+
+	return {
+		intro: normalizeDateValue(raw.intro, 'intro'),
+		start: normalizeDateValue(raw.start, 'start'),
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -159,13 +201,25 @@ async function detectOutroNote(dir: string): Promise<string | null> {
  */
 export async function loadQuizBundle(
 	quizDir: string,
+	opts?: { noSchedule?: boolean },
 ): Promise<QuizBundle> {
 	const absDir = resolve(quizDir)
 	const dirBasename = basename(absDir)
 
-	// Parse intro time from directory name
-	const introAt = parseIntroTime(dirBasename)
-	const startAt = new Date(introAt.getTime() + 10 * 60 * 1000)
+	let introAt: Date
+	let startAt: Date
+	if (opts?.noSchedule) {
+		const now = new Date()
+		introAt = now
+		startAt = now
+	} else {
+		const schedule = await readScheduleConfig(absDir)
+		if (!schedule) {
+			throw new Error(`[quiz] missing kotaete.ts schedule config in "${absDir}"`)
+		}
+		introAt = schedule.intro
+		startAt = schedule.start
+	}
 
 	// Intro note (optional)
 	const introNote = await detectIntroNote(absDir, dirBasename)

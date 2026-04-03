@@ -56,6 +56,7 @@ type FakeStore = {
 	load: () => Promise<void>
 	entriesCount: () => number
 	get: (lidRaw: string) => string | null
+	getLidByPn: (pnRaw: string) => string | null
 	set: (lidRaw: string, pnRaw: string) => Promise<boolean>
 	setCalls: Array<{ lid: string; pn: string }>
 	map: Map<string, string>
@@ -68,6 +69,16 @@ function makeStore(initial: Record<string, string> = {}): FakeStore {
 		load: async () => undefined,
 		entriesCount: () => map.size,
 		get: (lidRaw: string) => map.get(lidRaw) ?? null,
+		getLidByPn: (pnRaw: string) => {
+			const digits = pnRaw.replace(/\D/g, '')
+			if (!digits) return null
+			const entries = Array.from(map.entries())
+			for (let i = entries.length - 1; i >= 0; i -= 1) {
+				const [lid, pn] = entries[i]!
+				if (pn.replace(/\D/g, '') === digits) return lid
+			}
+			return null
+		},
 		set: async (lidRaw: string, pnRaw: string) => {
 			setCalls.push({ lid: lidRaw, pn: pnRaw })
 			map.set(lidRaw, pnRaw)
@@ -135,6 +146,57 @@ describe('wwebjs createClientOptions', () => {
 				process.env.KOTAETE_PUPPETEER_EXECUTABLE_PATH = previous
 			}
 		}
+	})
+})
+
+describe('wwebjs resolveBrowserExecutablePath', () => {
+	test('prefers puppeteer executable env over everything else', () => {
+		const resolved = __wwebjsTestInternals.resolveBrowserExecutablePath({
+			env: {
+				KOTAETE_PUPPETEER_EXECUTABLE_PATH: '/usr/bin/chromium-custom',
+				KOTAETE_PLAYWRIGHT_EXECUTABLE_PATH: '/pw/chrome',
+			},
+			homeDir: '/home/test',
+			existsPath: () => true,
+			listDirectoryNames: () => ['chromium-1208'],
+		})
+
+		expect(resolved).toBe('/usr/bin/chromium-custom')
+	})
+
+	test('uses playwright executable env when puppeteer env not set', () => {
+		const resolved = __wwebjsTestInternals.resolveBrowserExecutablePath({
+			env: {
+				KOTAETE_PLAYWRIGHT_EXECUTABLE_PATH: '/pw/chrome',
+			},
+			homeDir: '/home/test',
+			existsPath: () => false,
+			listDirectoryNames: () => [],
+		})
+
+		expect(resolved).toBe('/pw/chrome')
+	})
+
+	test('auto-detects newest playwright chromium in cache', () => {
+		const resolved = __wwebjsTestInternals.resolveBrowserExecutablePath({
+			env: {},
+			homeDir: '/home/test',
+			existsPath: (path) => path === '/home/test/.cache/ms-playwright/chromium-1208/chrome-linux/chrome',
+			listDirectoryNames: () => ['chromium-1194', 'chromium-1208', 'firefox-1200'],
+		})
+
+		expect(resolved).toBe('/home/test/.cache/ms-playwright/chromium-1208/chrome-linux/chrome')
+	})
+
+	test('returns null when no executable can be resolved', () => {
+		const resolved = __wwebjsTestInternals.resolveBrowserExecutablePath({
+			env: {},
+			homeDir: '/home/test',
+			existsPath: () => false,
+			listDirectoryNames: () => [],
+		})
+
+		expect(resolved).toBeNull()
 	})
 })
 
@@ -217,6 +279,38 @@ describe('WWebJsWhatsAppClient behavior', () => {
 		expect(onIncoming.mock.calls[0]?.[0]?.senderNumber).toBe('628888000222')
 		expect(fake.lidLookup).toHaveBeenCalledTimes(1)
 		expect(store.setCalls).toEqual([{ lid: '200729742577712@lid', pn: '628888000222' }])
+	})
+
+	test('lookupPnByLid falls back to WhatsApp lookup when cache miss', async () => {
+		const store = makeStore()
+		const { client, fake } = makeSut({ store })
+		fake.lidLookup.mockImplementationOnce(async () => [{ lid: '200729742577712@lid', pn: '628888000222@c.us' }])
+		await client.start()
+		fake.emit('ready')
+
+		expect(await client.lookupPnByLid('200729742577712@lid')).toBe('628888000222')
+		expect(fake.lidLookup).toHaveBeenCalledTimes(1)
+	})
+
+	test('lookupLidByPn falls back to WhatsApp lookup when cache miss', async () => {
+		const store = makeStore()
+		const { client, fake } = makeSut({ store })
+		fake.lidLookup.mockImplementationOnce(async () => [{ lid: '999888777@lid', pn: '628123456789@s.whatsapp.net' }])
+		await client.start()
+		fake.emit('ready')
+
+		expect(await client.lookupLidByPn('628123456789')).toBe('999888777@lid')
+		expect(fake.lidLookup).toHaveBeenCalledTimes(1)
+	})
+
+	test('lookupLidByPn uses cache when available', async () => {
+		const store = makeStore({ '999888777@lid': '628123456789' })
+		const { client, fake } = makeSut({ store })
+		await client.start()
+		fake.emit('ready')
+
+		expect(await client.lookupLidByPn('628123456789')).toBe('999888777@lid')
+		expect(fake.lidLookup).toHaveBeenCalledTimes(0)
 	})
 
 	test('drops duplicate messages by message id', async () => {
@@ -357,5 +451,36 @@ describe('WWebJsWhatsAppClient behavior', () => {
 		await client.start()
 		await client.stop()
 		expect(fake.destroyed).toBe(1)
+	})
+
+	test('isConnected returns false before ready event', async () => {
+		const { client } = makeSut()
+		await client.start()
+		expect(await client.isConnected()).toBe(false)
+	})
+
+	test('isConnected returns true after ready event', async () => {
+		const { client, fake } = makeSut()
+		await client.start()
+		fake.emit('ready')
+		expect(await client.isConnected()).toBe(true)
+	})
+
+	test('isConnected returns false after disconnected event', async () => {
+		const { client, fake } = makeSut()
+		await client.start()
+		fake.emit('ready')
+		expect(await client.isConnected()).toBe(true)
+		fake.emit('disconnected', 'test')
+		expect(await client.isConnected()).toBe(false)
+	})
+
+	test('isConnected returns false after stop', async () => {
+		const { client, fake } = makeSut()
+		await client.start()
+		fake.emit('ready')
+		expect(await client.isConnected()).toBe(true)
+		await client.stop()
+		expect(await client.isConnected()).toBe(false)
 	})
 })

@@ -49,7 +49,7 @@ export function formatQuestion(
 ): string {
 	const header = progress
 		? `🌟 *はやくこたえて！ (${progress.index}/${progress.total})*`
-		: '🌟 *はやくこたえて！ (GOD)*'
+		: '🌟 *はやくこたえて！ (神)*'
 	return `${header}\n\n${question.text}\n\n⏰ ${timeHint} WIB`
 }
 
@@ -75,7 +75,7 @@ export function formatExplanation(
 ): string | null {
 	if (!question.explanation.trim()) return null
 	if (!progress) {
-		return `🌻 *_Shitteimasu ka?_*\n${question.explanation.trim()}`
+		return `🌻 *_Shitteimasu ka?_* *(神)*\n${question.explanation.trim()}`
 	}
 	return `🌻 *_Shitteimasu ka?_* *(${progress.index}/${progress.total})*\n${question.explanation.trim()}`
 }

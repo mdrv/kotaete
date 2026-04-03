@@ -25,6 +25,34 @@ type DaemonRuntimeOptions = {
 
 const log = getLogger(['kotaete', 'daemon'])
 
+const WIB_DATE_TIME_FMT = new Intl.DateTimeFormat('id-ID', {
+	timeZone: 'Asia/Jakarta',
+	year: 'numeric',
+	month: '2-digit',
+	day: '2-digit',
+	hour: '2-digit',
+	minute: '2-digit',
+	second: '2-digit',
+	hour12: false,
+})
+
+function formatWibDateTime(date: Date): string {
+	return WIB_DATE_TIME_FMT.format(date)
+}
+
+function formatDelay(ms: number): string {
+	if (ms <= 0) return 'now'
+	const totalSeconds = Math.ceil(ms / 1000)
+	const hours = Math.floor(totalSeconds / 3600)
+	const minutes = Math.floor((totalSeconds % 3600) / 60)
+	const seconds = totalSeconds % 60
+	const parts: string[] = []
+	if (hours > 0) parts.push(`${hours}h`)
+	if (minutes > 0) parts.push(`${minutes}m`)
+	if (seconds > 0 || parts.length === 0) parts.push(`${seconds}s`)
+	return parts.join(' ')
+}
+
 function writeResponse(socket: Socket, payload: RelayResponse): void {
 	socket.write(`${JSON.stringify(payload)}\n`)
 	socket.end()
@@ -166,16 +194,57 @@ export class DaemonRuntime {
 							return
 						}
 
+						if (parsed.data.type === 'lookup-mapping') {
+							if (!(await this.wa.isConnected())) {
+								writeResponse(socket, {
+									ok: false,
+									message: 'WhatsApp provider is not connected yet. Start daemon and wait until it is ready.',
+								})
+								return
+							}
+
+							const mapped = parsed.data.direction === 'to-pn'
+								? await this.wa.lookupPnByLid(parsed.data.value)
+								: await this.wa.lookupLidByPn(parsed.data.value)
+
+							if (!mapped) {
+								writeResponse(socket, {
+									ok: false,
+									message: 'mapping not found (local cache + direct WhatsApp lookup)',
+								})
+								return
+							}
+
+							writeResponse(socket, {
+								ok: true,
+								message: mapped,
+							})
+							return
+						}
+
 						if (this.quiz.isRunning()) {
 							writeResponse(socket, { ok: false, message: 'quiz is already running' })
 							return
 						}
 
+						if (!(await this.wa.isConnected())) {
+							writeResponse(socket, {
+								ok: false,
+								message: 'WhatsApp provider is not connected yet. Wait for the connection to be established.',
+							})
+							return
+						}
+
 						const members = await loadMembers(parsed.data.membersFile)
-						const quizBundle = await loadQuizBundle(parsed.data.quizDir)
+						const quizBundle = await loadQuizBundle(parsed.data.quizDir, {
+							...(parsed.data.noSchedule === undefined ? {} : { noSchedule: parsed.data.noSchedule }),
+						})
 						const runOptions = parsed.data.disableCooldown === undefined
 							? undefined
 							: { disableCooldown: parsed.data.disableCooldown }
+						const now = Date.now()
+						const introDelayMs = Math.max(0, quizBundle.introAt.getTime() - now)
+						const startDelayMs = Math.max(0, quizBundle.startAt.getTime() - now)
 						this.runningQuizMeta = {
 							groupId: parsed.data.groupId,
 							quizDir: parsed.data.quizDir,
@@ -187,7 +256,16 @@ export class DaemonRuntime {
 						}).finally(() => {
 							this.runningQuizMeta = null
 						})
-						writeResponse(socket, { ok: true, message: 'quiz scheduled' })
+						if (parsed.data.noSchedule) {
+							writeResponse(socket, { ok: true, message: 'quiz running immediately (--no-schedule)' })
+						} else {
+							writeResponse(socket, {
+								ok: true,
+								message: `quiz scheduled (intro ${formatWibDateTime(quizBundle.introAt)} WIB; in ${
+									formatDelay(introDelayMs)
+								} | start ${formatWibDateTime(quizBundle.startAt)} WIB; in ${formatDelay(startDelayMs)})`,
+							})
+						}
 					} catch (error) {
 						writeResponse(socket, { ok: false, message: error instanceof Error ? error.message : String(error) })
 					}

@@ -24,6 +24,11 @@ export type QuizBundle = {
 	questions: ReadonlyArray<QuizQuestion>
 }
 
+export type QuizScheduleConfig = {
+	intro: Date
+	start: Date
+}
+
 export type MessageKeyLike = {
 	remoteJid?: string | null
 	participant?: string | null

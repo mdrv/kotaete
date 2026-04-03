@@ -19,7 +19,7 @@ describe('formatIntro date header', () => {
 			isSpecialStage: true,
 		}
 		const text = formatQuestion(question, null, '23.59.59')
-		expect(text).toContain('🌟 *はやくこたえて！ (GOD)*')
+		expect(text).toContain('🌟 *はやくこたえて！ (神)*')
 		expect(text).not.toContain('(1/4)')
 		expect(text).not.toContain('SPECIAL')
 		expect(text).toContain('⏰ 23.59.59 WIB')

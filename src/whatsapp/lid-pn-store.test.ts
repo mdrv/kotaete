@@ -51,4 +51,38 @@ describe('LidPnStore', () => {
 		expect(await store.set('200729742577712@lid', '628123456789')).toBe(true)
 		expect(await store.set('200729742577712@lid', '628123456789')).toBe(false)
 	})
+
+	test('concurrent set calls do not cause temp-file race', async () => {
+		const filePath = await makeFilePath()
+		const store = new LidPnStore(filePath)
+		await store.load()
+
+		// Fire off 20 concurrent writes; each writes a different key
+		const writes = Array.from({ length: 20 }, (_, i) => store.set(`lid-${i}@lid`, `6281234567${i}@c.us`))
+		const results = await Promise.all(writes)
+		expect(results.every(Boolean)).toBe(true)
+
+		// All 20 entries should be persisted
+		const storeB = new LidPnStore(filePath)
+		await storeB.load()
+		expect(storeB.entriesCount()).toBe(20)
+		for (let i = 0; i < 20; i++) {
+			expect(storeB.get(`lid-${i}@lid`)).toBe(`6281234567${i}`)
+		}
+	})
+
+	test('save uses unique temp files (no shared .tmp path)', async () => {
+		const filePath = await makeFilePath()
+		const store = new LidPnStore(filePath)
+		await store.load()
+
+		await store.set('a@lid', '1@c.us')
+		await store.set('b@lid', '2@c.us')
+		await store.set('c@lid', '3@c.us')
+
+		// Verify the final file has all 3 entries
+		const raw = await readFile(filePath, 'utf-8')
+		const parsed = JSON.parse(raw)
+		expect(Object.keys(parsed.entries)).toHaveLength(3)
+	})
 })

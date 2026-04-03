@@ -23,6 +23,9 @@ type BaileysSocketLike = {
 	signalRepository?: {
 		lidMapping?: {
 			getPNForLID?: (lid: string) => Promise<string | null | undefined>
+			getLIDForPN?: (pn: string) => Promise<string | null | undefined>
+			getPNsForLIDs?: (lids: string[]) => Promise<Array<{ lid?: string; pn?: string }> | null | undefined>
+			getLIDsForPNs?: (pns: string[]) => Promise<Array<{ lid?: string; pn?: string }> | null | undefined>
 		}
 	}
 }
@@ -35,11 +38,24 @@ type SenderResolution = {
 const INBOUND_DEDUPE_LIMIT = 5_000
 const REPLAY_SKEW_SECONDS = 5
 
+const CONNECTION_WAIT_TIMEOUT_MS = 30_000
+const CONNECTION_WAIT_POLL_INTERVAL_MS = 200
+
+function normalizeLidJid(raw: string): string | null {
+	const value = raw.trim().replace(/^whatsapp:/, '')
+	if (!value) return null
+	const [userPart] = value.split('@')
+	const user = (userPart ?? '').split(':')[0]?.trim() ?? ''
+	if (!user) return null
+	return `${user}@lid`
+}
+
 export class BaileysWhatsAppClient implements IWhatsAppClient {
 	private sock: BaileysSocketLike | null = null
 	private stopping = false
 	private reconnectAttempts = 0
 	private acceptMessagesFromTsSec = 0
+	private connectionOpen = false
 	private readonly seenMessageIds = new Set<string>()
 	private readonly seenMessageOrder: string[] = []
 	private baileysRuntime: {
@@ -106,6 +122,11 @@ export class BaileysWhatsAppClient implements IWhatsAppClient {
 
 	async start(): Promise<void> {
 		this.stopping = false
+		this.connectionOpen = false
+		if (this.sock) {
+			this.sock.end(undefined)
+			this.sock = null
+		}
 		await this.lidPnStore.load()
 		log.warning('Starting Baileys provider (experimental)')
 		const runtime = await this.getRuntime()
@@ -113,7 +134,7 @@ export class BaileysWhatsAppClient implements IWhatsAppClient {
 		const versionInfo = await runtime.fetchLatestBaileysVersion()
 		const logger = pino({ level: 'silent' })
 
-		this.sock = runtime.makeWASocket({
+		const socket = runtime.makeWASocket({
 			auth: {
 				creds: state.creds,
 				keys: runtime.makeCacheableSignalKeyStore(state.keys, logger),
@@ -124,15 +145,21 @@ export class BaileysWhatsAppClient implements IWhatsAppClient {
 			markOnlineOnConnect: false,
 			syncFullHistory: true,
 		})
+		this.sock = socket
 
-		this.sock.ev.on('creds.update', saveCreds)
-		this.sock.ev.on('lid-mapping.update', (...args) => {
+		socket.ev.on('creds.update', saveCreds)
+		socket.ev.on('lid-mapping.update', async (...args) => {
+			if (this.sock !== socket) return
 			const payload = args[0] as { lid?: string; pn?: string } | undefined
 			if (!payload?.lid || !payload.pn) return
-			void this.lidPnStore.set(payload.lid, payload.pn)
+			const changed = await this.lidPnStore.set(payload.lid, payload.pn)
+			if (changed) {
+				log.debug(`baileys lid->pn updated via event lid=${payload.lid} pn=${normalizeJidNumber(payload.pn) ?? 'null'}`)
+			}
 		})
 
-		this.sock.ev.on('messages.upsert', async (...args) => {
+		socket.ev.on('messages.upsert', async (...args) => {
+			if (this.sock !== socket) return
 			const evt = args[0] as
 				| {
 					type?: string
@@ -175,6 +202,7 @@ export class BaileysWhatsAppClient implements IWhatsAppClient {
 				const senderRawJid = message.key.participant ?? ''
 				if (!text.trim() || !senderRawJid) continue
 				const senderAltJid = message.key.participantAlt ?? message.key.remoteJidAlt ?? null
+				await this.maybePersistLidPnMapping(runtime, senderRawJid, senderAltJid)
 				const resolution = await this.resolveSenderNumber(senderRawJid, senderAltJid)
 				log.debug(
 					`baileys inbound message group=${groupId} sender=${senderRawJid} senderNumber=${
@@ -197,7 +225,8 @@ export class BaileysWhatsAppClient implements IWhatsAppClient {
 			}
 		})
 
-		this.sock.ev.on('connection.update', async (...args) => {
+		socket.ev.on('connection.update', async (...args) => {
+			if (this.sock !== socket) return
 			const update = args[0] as { connection?: string; lastDisconnect?: { error?: Boom }; qr?: string } | undefined
 			if (!update) return
 			const { connection, lastDisconnect, qr } = update
@@ -206,35 +235,121 @@ export class BaileysWhatsAppClient implements IWhatsAppClient {
 				log.info('Scan QR from WhatsApp linked devices screen to authenticate daemon')
 			}
 			if (connection === 'open') {
+				this.connectionOpen = true
 				this.reconnectAttempts = 0
 				this.acceptMessagesFromTsSec = Math.floor(Date.now() / 1000) - REPLAY_SKEW_SECONDS
 				log.info('Baileys connected')
 				log.debug(`baileys inbound cutoff set ts=${this.acceptMessagesFromTsSec}`)
 				return
 			}
-			if (connection !== 'close' || this.stopping) return
-			const code = (lastDisconnect?.error as Boom | undefined)?.output?.statusCode
-			const loggedOut = code === runtime.DisconnectReason.loggedOut
-			if (loggedOut) {
-				log.error('Baileys session logged out. Re-authentication required.')
-				return
-			}
+			if (connection === 'close') {
+				this.connectionOpen = false
+				if (this.stopping) return
+				const code = (lastDisconnect?.error as Boom | undefined)?.output?.statusCode
+				const loggedOut = code === runtime.DisconnectReason.loggedOut
+				if (loggedOut) {
+					log.error('Baileys session logged out. Re-authentication required.')
+					return
+				}
 
-			this.reconnectAttempts += 1
-			const delay = Math.min(1000 * 2 ** Math.min(this.reconnectAttempts, 5), 30_000)
-			log.warning(`Baileys disconnected (code=${code ?? 'unknown'}). Reconnecting in ${delay}ms`)
-			await Bun.sleep(delay)
-			if (!this.stopping) await this.start()
+				this.reconnectAttempts += 1
+				const delay = Math.min(1000 * 2 ** Math.min(this.reconnectAttempts, 5), 30_000)
+				log.warning(`Baileys disconnected (code=${code ?? 'unknown'}). Reconnecting in ${delay}ms`)
+				await Bun.sleep(delay)
+				if (!this.stopping) await this.start()
+			}
 		})
 	}
 
 	async stop(): Promise<void> {
 		this.stopping = true
+		this.connectionOpen = false
 		this.sock?.end(undefined)
 		this.sock = null
 	}
 
+	async isConnected(): Promise<boolean> {
+		return this.connectionOpen && this.sock !== null
+	}
+
+	async lookupPnByLid(lid: string): Promise<string | null> {
+		const normalizedLid = normalizeLidJid(lid)
+		if (!normalizedLid) return null
+
+		const cachedPn = this.lidPnStore.get(normalizedLid)
+		if (cachedPn) return cachedPn
+
+		await this.waitForConnection('lookupPnByLid')
+		log.info(`baileys direct lookup lid->pn for ${normalizedLid}`)
+		const lidMapping = this.sock?.signalRepository?.lidMapping
+		let resolvedPn = await lidMapping?.getPNForLID?.(normalizedLid)
+		if (!resolvedPn) {
+			const mappings = await lidMapping?.getPNsForLIDs?.([normalizedLid])
+			resolvedPn = mappings?.[0]?.pn ?? null
+		}
+		if (!resolvedPn) return null
+		await this.lidPnStore.set(normalizedLid, resolvedPn)
+		return normalizeJidNumber(resolvedPn)
+	}
+
+	async lookupLidByPn(pn: string): Promise<string | null> {
+		const cachedLid = this.lidPnStore.getLidByPn(pn)
+		if (cachedLid) return cachedLid
+
+		const runtime = await this.getRuntime()
+		const normalizedPn = normalizeJidNumber(pn)
+		if (!normalizedPn) return null
+
+		await this.waitForConnection('lookupLidByPn')
+		log.info(`baileys direct lookup pn->lid for ${normalizedPn}`)
+		const lidMapping = this.sock?.signalRepository?.lidMapping
+		let resolvedLid = await lidMapping?.getLIDForPN?.(`${normalizedPn}@s.whatsapp.net`)
+		if (!resolvedLid) {
+			const mappings = await lidMapping?.getLIDsForPNs?.([`${normalizedPn}@s.whatsapp.net`])
+			resolvedLid = mappings?.[0]?.lid ?? null
+		}
+		const normalizedLid = resolvedLid ? runtime.jidNormalizedUser(resolvedLid) : null
+		if (!normalizedLid || !runtime.isLidUser(normalizedLid)) return null
+
+		await this.lidPnStore.set(normalizedLid, `${normalizedPn}@s.whatsapp.net`)
+		return normalizeLidJid(normalizedLid)
+	}
+
+	private async waitForConnection(label: string): Promise<void> {
+		if (this.connectionOpen && this.sock) return
+		const deadline = Date.now() + CONNECTION_WAIT_TIMEOUT_MS
+		while (Date.now() < deadline) {
+			await Bun.sleep(CONNECTION_WAIT_POLL_INTERVAL_MS)
+			if (this.connectionOpen && this.sock) return
+		}
+		throw new Error(`[wa:baileys] ${label}: not connected after ${CONNECTION_WAIT_TIMEOUT_MS}ms`)
+	}
+
+	private async maybePersistLidPnMapping(
+		runtime: Awaited<ReturnType<BaileysWhatsAppClient['getRuntime']>>,
+		primaryJid: string,
+		altJid: string | null,
+	): Promise<void> {
+		if (!altJid) return
+		const primary = runtime.jidNormalizedUser(primaryJid)
+		const alt = runtime.jidNormalizedUser(altJid)
+		const primaryIsLid = runtime.isLidUser(primary)
+		const altIsLid = runtime.isLidUser(alt)
+		if (primaryIsLid === altIsLid) return
+
+		const lid = primaryIsLid ? primary : alt
+		const pnJid = primaryIsLid ? alt : primary
+		const pn = normalizeJidNumber(pnJid)
+		if (!pn) return
+
+		const changed = await this.lidPnStore.set(lid, pnJid)
+		if (changed) {
+			log.debug(`baileys lid->pn updated via message lid=${lid} pn=${pn}`)
+		}
+	}
+
 	async sendTyping(groupId: string): Promise<void> {
+		await this.waitForConnection('sendTyping')
 		if (!this.sock?.sendPresenceUpdate) return
 		await this.sock.sendPresenceUpdate('composing', groupId)
 	}
@@ -293,6 +408,7 @@ export class BaileysWhatsAppClient implements IWhatsAppClient {
 	}
 
 	async sendText(groupId: string, text: string, opts?: SendTextOptions): Promise<MessageKeyLike | null> {
+		await this.waitForConnection('sendText')
 		if (!this.sock) throw new Error('[wa:baileys] socket is not initialized')
 		const quoted = opts?.quotedKey?.id && opts?.quotedKey?.remoteJid
 			? {
@@ -309,6 +425,7 @@ export class BaileysWhatsAppClient implements IWhatsAppClient {
 	}
 
 	async sendImageWithCaption(groupId: string, imagePath: string, caption: string): Promise<MessageKeyLike | null> {
+		await this.waitForConnection('sendImageWithCaption')
 		if (!this.sock) throw new Error('[wa:baileys] socket is not initialized')
 		const sent = await this.sock.sendMessage(groupId, {
 			image: { url: imagePath },
@@ -334,6 +451,7 @@ export class BaileysWhatsAppClient implements IWhatsAppClient {
 		key: { remoteJid?: string | null; participant?: string | null; id?: string | null },
 		emoji: string,
 	): Promise<void> {
+		await this.waitForConnection('react')
 		if (!this.sock) throw new Error('[wa:baileys] socket is not initialized')
 		if (!key.id || !key.remoteJid) return
 		await this.sock.sendMessage(groupId, {

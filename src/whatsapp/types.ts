@@ -18,6 +18,9 @@ export type OutgoingMessageKey = IncomingGroupMessage['key']
 export interface IWhatsAppClient {
 	start(): Promise<void>
 	stop(): Promise<void>
+	isConnected(): Promise<boolean>
+	lookupPnByLid(lid: string): Promise<string | null>
+	lookupLidByPn(pn: string): Promise<string | null>
 	sendTyping(groupId: string): Promise<void>
 	sendText(groupId: string, text: string, opts?: SendTextOptions): Promise<OutgoingMessageKey | null>
 	sendImageWithCaption(groupId: string, imagePath: string, caption: string): Promise<OutgoingMessageKey | null>

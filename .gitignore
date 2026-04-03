@@ -1,9 +1,13 @@
 # dependencies (bun install)
 node_modules
 
+# docs astro dependencies (npm)
+docs/astro/node_modules
+
 # output
 out
 dist
+_docs-dist
 *.tgz
 
 # code coverage
