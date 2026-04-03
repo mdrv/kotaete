@@ -45,15 +45,26 @@ export function formatIntro(introAt: Date, note: string | null): string {
 export function formatQuestion(
 	question: QuizQuestion,
 	progress: QuestionProgress | null,
+	timeHint: string,
 ): string {
 	const header = progress
 		? `🌟 *はやくこたえて！ (${progress.index}/${progress.total})*`
-		: '🌟 *はやくこたえて！*'
-	return `${header}\n\n${question.text}`
+		: '🌟 *はやくこたえて！ (GOD)*'
+	return `${header}\n\n${question.text}\n\n⏰ ${timeHint} WIB`
+}
+
+export function formatOutroHeader(outroAt: Date): string {
+	return `🗓️ *${formatDayId(outroAt)}*`
 }
 
 export function formatWinner(member: NMember, answers: ReadonlyArray<string>): string {
 	return `🤗 *せいかいだった！*\n🌸 *${member.kananame}(${member.classgroup})*\n✅ ${
+		answers.map((a) => `_${a}_`).join(' / ')
+	}`
+}
+
+export function formatWinnerKanjiPerfect(member: NMember, answers: ReadonlyArray<string>): string {
+	return `🤩 *かんぺきだった！*\n🌸 *${member.kananame}(${member.classgroup})*\n✅ ${
 		answers.map((a) => `_${a}_`).join(' / ')
 	}`
 }
@@ -72,13 +83,15 @@ export function formatExplanation(
 export function formatFinalScoreboard(
 	sorted: Array<{ member: NMember; points: number }>,
 	outroNote: string | null,
+	outroAt: Date,
 ): string {
 	const body = sorted.length
 		? sorted.map((entry) => `- *${entry.member.kananame}(${entry.member.classgroup})* 🌸 *+${entry.points} pts*`).join(
 			'\n',
 		)
 		: '(_tidak ada yang meraih poin_)'
+	const header = formatOutroHeader(outroAt)
 	const footer = outroNote?.trim()
 		|| '🐻 * _gao gao, gao!_ *\nHasil perolehan poin akan diumumkan besok pagi. Sampai jumpa besok!'
-	return `🏁 *はやくこたえて！ END*\n\n${body}\n\n${footer}`
+	return `🏁 *はやくこたえて！ END*\n${header}\n\n${body}\n\n${footer}`
 }

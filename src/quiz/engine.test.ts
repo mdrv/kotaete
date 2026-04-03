@@ -82,6 +82,27 @@ function makeSingleQuestionBundle(): QuizBundle {
 	}
 }
 
+function makeSingleQuestionKanjiBundle(): QuizBundle {
+	const now = Date.now()
+	return {
+		directory: '/tmp/quiz',
+		introAt: new Date(now),
+		startAt: new Date(now),
+		introNote: null,
+		outroNote: null,
+		questions: [
+			{
+				number: 1,
+				text: 'Q1',
+				answers: ['漢字'],
+				explanation: '',
+				imagePath: null,
+				isSpecialStage: false,
+			},
+		],
+	}
+}
+
 function makeMember(): NMember {
 	return {
 		mid: '1',
@@ -110,8 +131,18 @@ function makeIncoming(overrides?: Partial<IncomingGroupMessage>): IncomingGroupM
 
 function createEngine() {
 	const sleep = mock(async (_ms: number) => undefined)
-	const sendText = mock(async (_groupId: string, _text: string, _opts?: SendTextOptions) => undefined)
-	const sendImageWithCaption = mock(async (_groupId: string, _imagePath: string, _caption: string) => undefined)
+	const sendText = mock(
+		async (_groupId: string, _text: string, _opts?: SendTextOptions) => ({
+			id: `OUT-${Math.random().toString(36).slice(2, 8)}`,
+			remoteJid: _groupId,
+			fromMe: true,
+		}),
+	)
+	const sendImageWithCaption = mock(async (_groupId: string, _imagePath: string, _caption: string) => ({
+		id: `OUT-IMG-${Math.random().toString(36).slice(2, 8)}`,
+		remoteJid: _groupId,
+		fromMe: true,
+	}))
 	const react = mock(async (_groupId: string, _key: IncomingGroupMessage['key'], _emoji: string) => undefined)
 	const engine = new QuizEngine({ sendText, sendImageWithCaption, react }, { sleep })
 	return { engine, sendText, sendImageWithCaption, react, sleep }
@@ -207,5 +238,87 @@ describe('QuizEngine behavior', () => {
 
 		expect(announcementIndex).toBeGreaterThan(-1)
 		expect(specialQuestionIndex).toBeGreaterThan(announcementIndex)
+	})
+
+	test('kanji correct answer uses 🌸 reaction, perfect header, and +2 bonus points', async () => {
+		const { engine, sendText, react } = createEngine()
+		await engine.run(makeSingleQuestionKanjiBundle(), [makeMember()], '120@g.us', { disableCooldown: true })
+
+		await engine.onIncomingMessage(makeIncoming({ text: '漢字', key: { id: 'MSG-KANJI', remoteJid: '120@g.us' } }))
+
+		const reactionCall = react.mock.calls.find((call) => Array.isArray(call) && call[2] === '🌸')
+		expect(reactionCall).toBeTruthy()
+
+		const perfectWinnerCall = sendText.mock.calls.find((call) =>
+			Array.isArray(call) && call.length > 1 && String(call[1]).includes('🤩 *かんぺきだった！*')
+		)
+		expect(perfectWinnerCall).toBeTruthy()
+
+		const finalCall = sendText.mock.calls.find((call) =>
+			Array.isArray(call) && call.length > 1 && String(call[1]).includes('🏁 *はやくこたえて！ END*')
+		)
+		expect(finalCall).toBeTruthy()
+		if (!finalCall) throw new Error('final scoreboard not found')
+		expect(String(finalCall[1])).toContain('+12 pts')
+	})
+
+	test('sends 10-minute warning as reply to question before timeout', async () => {
+		const now = Date.now()
+		const bundle: QuizBundle = {
+			directory: '/tmp/quiz',
+			introAt: new Date(now),
+			startAt: new Date(now),
+			introNote: null,
+			outroNote: null,
+			questions: [
+				{
+					number: 1,
+					text: 'Q1',
+					answers: ['abc'],
+					explanation: '',
+					imagePath: null,
+					isSpecialStage: false,
+				},
+			],
+		}
+
+		const timers: Array<{ ms: number; fn: () => void | Promise<void> }> = []
+		const originalSetTimeout = globalThis.setTimeout
+		const originalClearTimeout = globalThis.clearTimeout
+		globalThis.setTimeout = ((fn: (...args: unknown[]) => void, ms?: number) => {
+			const runner = () => fn()
+			timers.push({ ms: Number(ms ?? 0), fn: runner })
+			return {
+				ref() {
+					return this
+				},
+				unref() {
+					return this
+				},
+			} as unknown as ReturnType<typeof setTimeout>
+		}) as typeof setTimeout
+		globalThis.clearTimeout = ((_timer: ReturnType<typeof setTimeout>) => undefined) as typeof clearTimeout
+
+		try {
+			const { engine, sendText } = createEngine()
+			await engine.run(bundle, [makeMember()], '120@g.us', { disableCooldown: true })
+
+			const warningTimer = timers.find((entry) => entry.ms === 80 * 60 * 1000)
+			expect(warningTimer).toBeTruthy()
+			if (!warningTimer) throw new Error('warning timer not found')
+			await warningTimer.fn()
+
+			const warningCall = sendText.mock.calls.find((call) =>
+				Array.isArray(call) && call.length > 1 && String(call[1]) === '⏰ Tinggal 10 menit lagi!'
+			)
+			expect(warningCall).toBeTruthy()
+			if (!warningCall) throw new Error('warning message call not found')
+			expect(warningCall[2]).toMatchObject({
+				quotedKey: expect.objectContaining({ remoteJid: '120@g.us', fromMe: true }),
+			})
+		} finally {
+			globalThis.setTimeout = originalSetTimeout
+			globalThis.clearTimeout = originalClearTimeout
+		}
 	})
 })

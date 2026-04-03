@@ -18,14 +18,16 @@ describe('formatIntro date header', () => {
 			imagePath: null,
 			isSpecialStage: true,
 		}
-		const text = formatQuestion(question, null)
-		expect(text).toContain('🌟 *はやくこたえて！*')
+		const text = formatQuestion(question, null, '23.59.59')
+		expect(text).toContain('🌟 *はやくこたえて！ (GOD)*')
 		expect(text).not.toContain('(1/4)')
 		expect(text).not.toContain('SPECIAL')
+		expect(text).toContain('⏰ 23.59.59 WIB')
 	})
 
 	test('uses outro note when provided', () => {
-		const text = formatFinalScoreboard([], 'Custom outro footer')
+		const text = formatFinalScoreboard([], 'Custom outro footer', new Date(Date.UTC(2025, 8, 26, 17, 0, 0, 0)))
+		expect(text).toContain('🗓️ *土︱27 September 2025*')
 		expect(text).toContain('Custom outro footer')
 		expect(text).not.toContain('gao gao, gao')
 	})

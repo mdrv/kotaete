@@ -13,6 +13,7 @@ import { QuizEngine } from '../quiz/engine.ts'
 import { loadQuizBundle } from '../quiz/loader.ts'
 import { expandHome } from '../utils/path.ts'
 import { WhatsAppClient } from '../whatsapp/client.ts'
+import type { OutgoingMessageKey } from '../whatsapp/types.ts'
 import { parseWhatsAppProvider } from '../whatsapp/types.ts'
 import { relayRequestSchema, type RelayResponse } from './protocol.ts'
 
@@ -36,7 +37,7 @@ export class DaemonRuntime {
 	private readonly wa: WhatsAppClient
 	private runningQuizMeta: { groupId: string; quizDir: string; membersFile: string; disableCooldown: boolean } | null =
 		null
-	private outboundQueue: Promise<void> = Promise.resolve()
+	private outboundQueue: Promise<OutgoingMessageKey | null> = Promise.resolve(null)
 	private lastOutboundAt = 0
 	private server: ReturnType<typeof createServer> | null = null
 
@@ -55,10 +56,10 @@ export class DaemonRuntime {
 		})
 		this.quiz = new QuizEngine({
 			sendText: async (groupId, text, opts) => {
-				await this.enqueueOutbound(groupId, () => this.wa.sendText(groupId, text, opts), { typing: true })
+				return await this.enqueueOutbound(groupId, () => this.wa.sendText(groupId, text, opts), { typing: true })
 			},
 			sendImageWithCaption: async (groupId, imagePath, caption) => {
-				await this.enqueueOutbound(groupId, () => this.wa.sendImageWithCaption(groupId, imagePath, caption), {
+				return await this.enqueueOutbound(groupId, () => this.wa.sendImageWithCaption(groupId, imagePath, caption), {
 					typing: true,
 				})
 			},
@@ -70,10 +71,10 @@ export class DaemonRuntime {
 
 	private async enqueueOutbound(
 		groupId: string,
-		action: () => Promise<void>,
+		action: () => Promise<OutgoingMessageKey | null>,
 		opts: { typing: boolean },
-	): Promise<void> {
-		const run = async () => {
+	): Promise<OutgoingMessageKey | null> {
+		const run = async (): Promise<OutgoingMessageKey | null> => {
 			if (opts.typing) {
 				const earliestTypingAt = this.lastOutboundAt + 2000
 				const typingDelayMs = Math.max(0, earliestTypingAt - Date.now())
@@ -96,13 +97,14 @@ export class DaemonRuntime {
 					await Bun.sleep(waitMs)
 				}
 			}
-			await action()
+			const result = await action()
 			this.lastOutboundAt = Date.now()
+			return result
 		}
 
 		const next = this.outboundQueue.then(run, run)
-		this.outboundQueue = next.catch(() => undefined)
-		await next
+		this.outboundQueue = next.catch(() => null)
+		return await next
 	}
 
 	async start(): Promise<void> {

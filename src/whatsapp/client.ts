@@ -4,6 +4,7 @@ import { BaileysWhatsAppClient } from './baileys-client.ts'
 import {
 	type BaseWhatsAppClientOptions,
 	type IWhatsAppClient,
+	type OutgoingMessageKey,
 	parseWhatsAppProvider,
 	type SendTextOptions,
 	type WhatsAppProvider,
@@ -49,12 +50,16 @@ export class WhatsAppClient implements IWhatsAppClient {
 		await this.impl.sendTyping(groupId)
 	}
 
-	async sendText(groupId: string, text: string, opts?: SendTextOptions): Promise<void> {
-		await this.impl.sendText(groupId, text, opts)
+	async sendText(groupId: string, text: string, opts?: SendTextOptions): Promise<OutgoingMessageKey | null> {
+		return await this.impl.sendText(groupId, text, opts)
 	}
 
-	async sendImageWithCaption(groupId: string, imagePath: string, caption: string): Promise<void> {
-		await this.impl.sendImageWithCaption(groupId, imagePath, caption)
+	async sendImageWithCaption(
+		groupId: string,
+		imagePath: string,
+		caption: string,
+	): Promise<OutgoingMessageKey | null> {
+		return await this.impl.sendImageWithCaption(groupId, imagePath, caption)
 	}
 
 	async react(groupId: string, key: IncomingGroupMessage['key'], emoji: string): Promise<void> {

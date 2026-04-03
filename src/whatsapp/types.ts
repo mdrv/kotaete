@@ -13,12 +13,14 @@ export type SendTextOptions = {
 	quotedKey?: IncomingGroupMessage['key']
 }
 
+export type OutgoingMessageKey = IncomingGroupMessage['key']
+
 export interface IWhatsAppClient {
 	start(): Promise<void>
 	stop(): Promise<void>
 	sendTyping(groupId: string): Promise<void>
-	sendText(groupId: string, text: string, opts?: SendTextOptions): Promise<void>
-	sendImageWithCaption(groupId: string, imagePath: string, caption: string): Promise<void>
+	sendText(groupId: string, text: string, opts?: SendTextOptions): Promise<OutgoingMessageKey | null>
+	sendImageWithCaption(groupId: string, imagePath: string, caption: string): Promise<OutgoingMessageKey | null>
 	react(groupId: string, key: IncomingGroupMessage['key'], emoji: string): Promise<void>
 }
 

@@ -4,7 +4,7 @@ import { Client, type ClientOptions, LocalAuth, type Message, MessageMedia, type
 import { getLogger } from '../logger.ts'
 import { normalizeJidNumber } from '../utils/normalize.ts'
 import { LidPnStore } from './lid-pn-store.ts'
-import type { BaseWhatsAppClientOptions, IWhatsAppClient, SendTextOptions } from './types.ts'
+import type { BaseWhatsAppClientOptions, IWhatsAppClient, OutgoingMessageKey, SendTextOptions } from './types.ts'
 
 const log = getLogger(['kotaete', 'wa', 'wwebjs'])
 
@@ -13,7 +13,7 @@ type WWebJsClientLike = EventEmitter & {
 	destroy(): Promise<void>
 	getState(): Promise<WAState | string>
 	getChatById(chatId: string): Promise<{ sendStateTyping: () => Promise<void> }>
-	sendMessage(chatId: string, content: unknown, options?: unknown): Promise<unknown>
+	sendMessage(chatId: string, content: unknown, options?: unknown): Promise<{ id?: { _serialized?: string } } | unknown>
 	getMessageById(messageId: string): Promise<{ react: (emoji: string) => Promise<void> }>
 	getContactLidAndPhone?: (userIds: string[]) => Promise<Array<{ lid?: string; pn?: string }>>
 }
@@ -113,13 +113,21 @@ export class WWebJsWhatsAppClient implements IWhatsAppClient {
 		})
 	}
 
-	async sendText(groupId: string, text: string, opts?: SendTextOptions): Promise<void> {
+	async sendText(groupId: string, text: string, opts?: SendTextOptions): Promise<OutgoingMessageKey | null> {
 		const client = this.requireClient()
 		const quotedMessageId = opts?.quotedKey?.id ?? undefined
-		await client.sendMessage(groupId, text, {
+		const sent = await client.sendMessage(groupId, text, {
 			linkPreview: opts?.linkPreview ?? false,
 			...(quotedMessageId ? { quotedMessageId } : {}),
 		})
+		const id = this.extractSentMessageId(sent)
+		return id
+			? {
+				remoteJid: groupId,
+				id,
+				fromMe: true,
+			}
+			: null
 	}
 
 	async sendTyping(groupId: string): Promise<void> {
@@ -128,12 +136,20 @@ export class WWebJsWhatsAppClient implements IWhatsAppClient {
 		await chat.sendStateTyping()
 	}
 
-	async sendImageWithCaption(groupId: string, imagePath: string, caption: string): Promise<void> {
+	async sendImageWithCaption(groupId: string, imagePath: string, caption: string): Promise<OutgoingMessageKey | null> {
 		const client = this.requireClient()
 		const media = this.deps.messageMediaFromFilePath(imagePath)
-		await client.sendMessage(groupId, media, {
+		const sent = await client.sendMessage(groupId, media, {
 			caption,
 		})
+		const id = this.extractSentMessageId(sent)
+		return id
+			? {
+				remoteJid: groupId,
+				id,
+				fromMe: true,
+			}
+			: null
 	}
 
 	async react(_: string, key: { id?: string | null }, emoji: string): Promise<void> {
@@ -281,6 +297,14 @@ export class WWebJsWhatsAppClient implements IWhatsAppClient {
 			if (oldest) this.seenMessageIds.delete(oldest)
 		}
 		return false
+	}
+
+	private extractSentMessageId(value: unknown): string | null {
+		if (!value || typeof value !== 'object') return null
+		const idValue = (value as { id?: unknown }).id
+		if (!idValue || typeof idValue !== 'object') return null
+		const serialized = (idValue as { _serialized?: unknown })._serialized
+		return typeof serialized === 'string' && serialized.length > 0 ? serialized : null
 	}
 
 	private async resolveSenderNumber(senderRawJid: string): Promise<SenderResolution> {

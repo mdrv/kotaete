@@ -1,8 +1,11 @@
 import {
 	COOLDOWN_MS,
+	POINTS_KANJI_BONUS,
 	QUESTION_TIMEOUT_MS,
+	QUESTION_WARNING_LEAD_MS,
 	REACTION_COOLDOWN,
 	REACTION_CORRECT,
+	REACTION_CORRECT_KANJI,
 	REACTION_NO_MORE_CHANCE,
 	REACTION_WRONG_STREAK,
 } from '../constants.ts'
@@ -10,14 +13,29 @@ import { getLogger } from '../logger.ts'
 import type { IncomingGroupMessage, NMember, QuizBundle, QuizQuestion } from '../types.ts'
 import type { SendTextOptions } from '../whatsapp/types.ts'
 import { isCorrectAnswer } from './answer-checker.ts'
-import { formatExplanation, formatFinalScoreboard, formatIntro, formatQuestion, formatWinner } from './messages.ts'
+import {
+	formatExplanation,
+	formatFinalScoreboard,
+	formatIntro,
+	formatQuestion,
+	formatWinner,
+	formatWinnerKanjiPerfect,
+} from './messages.ts'
 import { awardCorrectPoints, awardWrongPoints } from './scoring.ts'
 
 const log = getLogger(['kotaete', 'quiz'])
 
 type SenderPort = {
-	sendText: (groupId: string, text: string, opts?: SendTextOptions) => Promise<void>
-	sendImageWithCaption: (groupId: string, imagePath: string, caption: string) => Promise<void>
+	sendText: (
+		groupId: string,
+		text: string,
+		opts?: SendTextOptions,
+	) => Promise<IncomingGroupMessage['key'] | null>
+	sendImageWithCaption: (
+		groupId: string,
+		imagePath: string,
+		caption: string,
+	) => Promise<IncomingGroupMessage['key'] | null>
 	react: (groupId: string, key: IncomingGroupMessage['key'], emoji: string) => Promise<void>
 }
 
@@ -38,6 +56,8 @@ type RunnerState = {
 	questionToken: number
 	deadlineAtMs: number
 	timeoutToken: Timer | null
+	warningToken: Timer | null
+	questionMessageKey: IncomingGroupMessage['key'] | null
 }
 
 type Timer = ReturnType<typeof setTimeout>
@@ -45,15 +65,16 @@ type QuestionProgress = { index: number; total: number } | null
 type SleepFn = (ms: number) => Promise<void>
 
 const GOD_STAGE_ANNOUNCEMENT = [
-	'🚨 *INCOMING*',
-	'🪽 *神のステージ! (Kami no Stage!)*',
+	'🚨 *INCOMING!* 🚨',
+	'🪽 *神のステージ (Kami no Stage)*',
 	'',
-	'Khusus stage ini, siapa pun bisa menjawab soal. Ketentuannya:',
-	'🌸 Jawaban benar = 25 poin',
-	'🙊 Satu kali jawab per anggota',
-	'⏰ Masa aktif soal 30 menit',
+	'Khusus stage ini, ketentuannya:',
+	'🥳 Siapa pun bisa jawab (cooldown diabaikan)!',
+	'🌸 Jawaban benar = 25 poin!',
+	'🙈 Satu kali kesempatan per anggota',
+	'⏰ Timeout soal 30 menit',
 	'',
-	'Soal akan muncul dalam 30 detik! 🐻‍❄️',
+	'Soal akan muncul dalam 30 detik! 🐻',
 ].join('\n')
 
 const GOD_STAGE_TIMEOUT_MS = 30 * 60 * 1000
@@ -74,6 +95,14 @@ function isValidAnswerEnding(text: string): boolean {
 
 function formatWibTime(timestampMs: number): string {
 	return WIB_TIME_FMT.format(new Date(timestampMs))
+}
+
+function formatWibTimeHint(timestampMs: number): string {
+	return formatWibTime(timestampMs).replaceAll(':', '.')
+}
+
+function hasKanji(input: string): boolean {
+	return /\p{Script=Han}/u.test(input)
 }
 
 export class QuizEngine {
@@ -136,6 +165,8 @@ export class QuizEngine {
 			questionToken: 0,
 			deadlineAtMs: 0,
 			timeoutToken: null,
+			warningToken: null,
+			questionMessageKey: null,
 		}
 
 		const introDelay = Math.max(0, bundle.introAt.getTime() - Date.now())
@@ -265,18 +296,28 @@ export class QuizEngine {
 		}
 
 		const progress = this.getQuestionProgress(question)
-		const caption = formatQuestion(question, progress)
+		const timeoutMs = question.isSpecialStage ? GOD_STAGE_TIMEOUT_MS : QUESTION_TIMEOUT_MS
+		state.deadlineAtMs = Date.now() + timeoutMs
+		const caption = formatQuestion(question, progress, formatWibTimeHint(state.deadlineAtMs))
 		if (question.imagePath) {
-			await this.sender.sendImageWithCaption(state.groupId, question.imagePath, caption)
+			state.questionMessageKey = await this.sender.sendImageWithCaption(state.groupId, question.imagePath, caption)
 		} else {
-			await this.sender.sendText(state.groupId, caption, { linkPreview: false })
+			state.questionMessageKey = await this.sender.sendText(state.groupId, caption, { linkPreview: false })
 		}
 
 		state.questionToken += 1
 		const currentToken = state.questionToken
 		state.acceptingAnswers = true
-		const timeoutMs = question.isSpecialStage ? GOD_STAGE_TIMEOUT_MS : QUESTION_TIMEOUT_MS
-		state.deadlineAtMs = Date.now() + timeoutMs
+		if (state.warningToken) {
+			clearTimeout(state.warningToken)
+			state.warningToken = null
+		}
+		const warningDelayMs = timeoutMs - QUESTION_WARNING_LEAD_MS
+		if (warningDelayMs > 0) {
+			state.warningToken = setTimeout(() => {
+				void this.handleQuestionWarning(currentToken)
+			}, warningDelayMs)
+		}
 		if (state.timeoutToken) clearTimeout(state.timeoutToken)
 		state.timeoutToken = setTimeout(async () => {
 			await this.handleTimeout(currentToken)
@@ -286,11 +327,29 @@ export class QuizEngine {
 	private claimCurrentQuestion(state: RunnerState): boolean {
 		if (!state.acceptingAnswers) return false
 		state.acceptingAnswers = false
+		if (state.warningToken) {
+			clearTimeout(state.warningToken)
+			state.warningToken = null
+		}
 		if (state.timeoutToken) {
 			clearTimeout(state.timeoutToken)
 			state.timeoutToken = null
 		}
 		return true
+	}
+
+	private async handleQuestionWarning(token: number): Promise<void> {
+		const state = this.state
+		if (!state?.active) return
+		if (token !== state.questionToken) return
+		if (!state.acceptingAnswers) return
+
+		const quotedKey = state.questionMessageKey ?? undefined
+		await this.sender.sendText(state.groupId, '⏰ Tinggal 10 menit lagi!', {
+			linkPreview: false,
+			...(quotedKey ? { quotedKey } : {}),
+		})
+		state.warningToken = null
 	}
 
 	private async handleCorrect(
@@ -301,18 +360,24 @@ export class QuizEngine {
 		const state = this.state
 		if (!state?.active) return
 
-		await this.sender.react(state.groupId, incoming.key, REACTION_CORRECT)
+		const isKanjiPerfect = hasKanji(incoming.text)
+		await this.sender.react(state.groupId, incoming.key, isKanjiPerfect ? REACTION_CORRECT_KANJI : REACTION_CORRECT)
 
 		const currentQuestionPoints = state.questionPointsByNumber.get(member.number) ?? 0
-		const gained = awardCorrectPoints(currentQuestionPoints, question.isSpecialStage)
+		let gained = awardCorrectPoints(currentQuestionPoints, question.isSpecialStage)
+		if (isKanjiPerfect) gained += POINTS_KANJI_BONUS
 		state.pointsByNumber.set(member.number, (state.pointsByNumber.get(member.number) ?? 0) + gained)
 		state.questionPointsByNumber.set(member.number, currentQuestionPoints + gained)
 		if (!question.isSpecialStage) state.cooldowns.set(member.number, Date.now() + COOLDOWN_MS)
 
-		await this.sender.sendText(state.groupId, formatWinner(member, question.answers), {
-			linkPreview: false,
-			quotedKey: incoming.key,
-		})
+		await this.sender.sendText(
+			state.groupId,
+			isKanjiPerfect ? formatWinnerKanjiPerfect(member, question.answers) : formatWinner(member, question.answers),
+			{
+				linkPreview: false,
+				quotedKey: incoming.key,
+			},
+		)
 		const explanation = formatExplanation(question, this.getQuestionProgress(question))
 		if (explanation) await this.sender.sendText(state.groupId, explanation, { linkPreview: false })
 
@@ -359,6 +424,10 @@ export class QuizEngine {
 		if (token !== state.questionToken) return
 		if (!state.acceptingAnswers) return
 		state.acceptingAnswers = false
+		if (state.warningToken) {
+			clearTimeout(state.warningToken)
+			state.warningToken = null
+		}
 		state.timeoutToken = null
 
 		await this.sender.sendText(
@@ -382,6 +451,10 @@ export class QuizEngine {
 			clearTimeout(state.timeoutToken)
 			state.timeoutToken = null
 		}
+		if (state.warningToken) {
+			clearTimeout(state.warningToken)
+			state.warningToken = null
+		}
 
 		const rows = [...state.pointsByNumber.entries()]
 			.map(([number, points]) => ({ number, points, member: state.byNumber.get(number) }))
@@ -393,7 +466,11 @@ export class QuizEngine {
 
 		await this.sender.sendText(
 			state.groupId,
-			formatFinalScoreboard(rows.map((row) => ({ member: row.member, points: row.points })), state.bundle.outroNote),
+			formatFinalScoreboard(
+				rows.map((row) => ({ member: row.member, points: row.points })),
+				state.bundle.outroNote,
+				new Date(),
+			),
 			{ linkPreview: false },
 		)
 	}

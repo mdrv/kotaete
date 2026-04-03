@@ -2,6 +2,7 @@ import { Boom } from '@hapi/boom'
 import pino from 'pino'
 import qrcode from 'qrcode-terminal'
 import { getLogger } from '../logger.ts'
+import type { MessageKeyLike } from '../types.ts'
 import { normalizeJidNumber } from '../utils/normalize.ts'
 import { LidPnStore } from './lid-pn-store.ts'
 import type { BaseWhatsAppClientOptions, IWhatsAppClient, SendTextOptions } from './types.ts'
@@ -9,7 +10,11 @@ import type { BaseWhatsAppClientOptions, IWhatsAppClient, SendTextOptions } from
 const log = getLogger(['kotaete', 'wa', 'baileys'])
 
 type BaileysSocketLike = {
-	sendMessage: (groupId: string, content: unknown, options?: unknown) => Promise<unknown>
+	sendMessage: (
+		groupId: string,
+		content: unknown,
+		options?: unknown,
+	) => Promise<{ key?: MessageKeyLike } | unknown>
 	sendPresenceUpdate?: (state: 'composing' | 'paused', jid: string) => Promise<unknown>
 	end: (error?: unknown) => void
 	ev: {
@@ -287,7 +292,7 @@ export class BaileysWhatsAppClient implements IWhatsAppClient {
 		return false
 	}
 
-	async sendText(groupId: string, text: string, opts?: SendTextOptions): Promise<void> {
+	async sendText(groupId: string, text: string, opts?: SendTextOptions): Promise<MessageKeyLike | null> {
 		if (!this.sock) throw new Error('[wa:baileys] socket is not initialized')
 		const quoted = opts?.quotedKey?.id && opts?.quotedKey?.remoteJid
 			? {
@@ -299,15 +304,29 @@ export class BaileysWhatsAppClient implements IWhatsAppClient {
 				},
 			}
 			: undefined
-		await this.sock.sendMessage(groupId, { text }, quoted)
+		const sent = await this.sock.sendMessage(groupId, { text }, quoted)
+		return this.extractSentMessageKey(sent, groupId)
 	}
 
-	async sendImageWithCaption(groupId: string, imagePath: string, caption: string): Promise<void> {
+	async sendImageWithCaption(groupId: string, imagePath: string, caption: string): Promise<MessageKeyLike | null> {
 		if (!this.sock) throw new Error('[wa:baileys] socket is not initialized')
-		await this.sock.sendMessage(groupId, {
+		const sent = await this.sock.sendMessage(groupId, {
 			image: { url: imagePath },
 			caption,
 		})
+		return this.extractSentMessageKey(sent, groupId)
+	}
+
+	private extractSentMessageKey(payload: unknown, groupId: string): MessageKeyLike | null {
+		if (!payload || typeof payload !== 'object') return null
+		const key = (payload as { key?: MessageKeyLike }).key
+		if (!key || !key.id) return null
+		return {
+			remoteJid: key.remoteJid ?? groupId,
+			participant: key.participant ?? null,
+			id: key.id,
+			fromMe: key.fromMe ?? true,
+		}
 	}
 
 	async react(
