@@ -227,6 +227,7 @@ describe('WWebJsWhatsAppClient behavior', () => {
 			groupId: '120363195640146772@g.us',
 			senderRawJid: '628123456789@s.whatsapp.net',
 			senderNumber: '628123456789',
+			senderLid: null,
 			text: 'jawaban benar',
 			key: {
 				remoteJid: '120363195640146772@g.us',
@@ -301,6 +302,30 @@ describe('WWebJsWhatsAppClient behavior', () => {
 
 		expect(await client.lookupLidByPn('628123456789')).toBe('999888777@lid')
 		expect(fake.lidLookup).toHaveBeenCalledTimes(1)
+	})
+
+	test('lookupLidByPn skips mismatched PN results and keeps probing candidates', async () => {
+		const store = makeStore()
+		const { client, fake } = makeSut({ store })
+		fake.lidLookup.mockImplementationOnce(async () => [{ lid: '111@lid', pn: '628000000000@s.whatsapp.net' }])
+		fake.lidLookup.mockImplementationOnce(async () => [{ lid: '222@lid', pn: '628123456789@c.us' }])
+		await client.start()
+		fake.emit('ready')
+
+		expect(await client.lookupLidByPn('628123456789')).toBe('222@lid')
+		expect(fake.lidLookup).toHaveBeenCalledTimes(2)
+		expect(store.setCalls).toEqual([{ lid: '222@lid', pn: '628123456789' }])
+	})
+
+	test('lookupLidByPn returns null when provider returns no usable mapping', async () => {
+		const store = makeStore()
+		const { client, fake } = makeSut({ store })
+		fake.lidLookup.mockImplementation(async () => [{ lid: '111@lid', pn: '628000000000@s.whatsapp.net' }])
+		await client.start()
+		fake.emit('ready')
+
+		expect(await client.lookupLidByPn('628123456789')).toBeNull()
+		expect(fake.lidLookup).toHaveBeenCalledTimes(3)
 	})
 
 	test('lookupLidByPn uses cache when available', async () => {

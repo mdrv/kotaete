@@ -288,13 +288,21 @@ export class WWebJsWhatsAppClient implements IWhatsAppClient {
 
 		try {
 			log.info(`wwebjs direct lookup pn->lid for ${normalizedPn}`)
-			const mappings = await fetch.call(client, [`${normalizedPn}@s.whatsapp.net`])
-			const first = mappings[0]
-			const lid = normalizeLidJid(first?.lid ?? '')
-			const resolvedPn = normalizeJidNumber(first?.pn ?? `${normalizedPn}@s.whatsapp.net`) ?? normalizedPn
-			if (!lid) return null
-			await this.lidPnStore.set(lid, resolvedPn)
-			return lid
+			const candidates = [`${normalizedPn}@s.whatsapp.net`, `${normalizedPn}@c.us`, normalizedPn]
+			for (const candidate of candidates) {
+				const mappings = await fetch.call(client, [candidate])
+				for (const mapping of mappings) {
+					const lid = normalizeLidJid(mapping?.lid ?? '')
+					const mappedPn = normalizeJidNumber(mapping?.pn ?? '')
+					if (!lid || mappedPn !== normalizedPn) continue
+					await this.lidPnStore.set(lid, mappedPn)
+					return lid
+				}
+			}
+			log.warning(
+				'wwebjs pn->lid direct lookup returned no usable mapping; try provider=baileys for guaranteed support',
+			)
+			return null
 		} catch (error) {
 			log.warning(`wwebjs direct pn->lid lookup failed: ${error instanceof Error ? error.message : String(error)}`)
 			return null
@@ -416,6 +424,7 @@ export class WWebJsWhatsAppClient implements IWhatsAppClient {
 			groupId: message.from,
 			senderRawJid,
 			senderNumber: resolution.number,
+			senderLid: null,
 			text,
 			key: {
 				remoteJid: message.from,

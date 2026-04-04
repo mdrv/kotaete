@@ -3,16 +3,25 @@ import { extname, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { z } from 'zod'
 import type { NMember } from '../types.ts'
-import { normalizePhoneNumber } from '../utils/normalize.ts'
+import { normalizeLid, normalizePhoneNumber } from '../utils/normalize.ts'
 
 const memberSchema = z.object({
 	mid: z.string().min(1),
 	kananame: z.string().min(1),
 	nickname: z.string().min(1),
 	classgroup: z.string().min(1),
-	number: z.string().transform((v) => normalizePhoneNumber(v)).pipe(
+	pn: z.string().transform((v) => normalizePhoneNumber(v)).pipe(
 		z.string().min(1, 'phone number must contain at least one digit'),
-	),
+	).optional(),
+	lid: z.string().min(1).transform((v) => {
+		const normalized = normalizeLid(v)
+		if (!normalized) {
+			throw new z.ZodError([
+				{ code: 'custom', path: ['lid'], message: 'lid must be a non-empty identifier' },
+			])
+		}
+		return normalized
+	}),
 })
 
 type MemberInput = z.input<typeof memberSchema>
@@ -58,6 +67,7 @@ export async function loadMembers(
 	}
 
 	const members: NMember[] = []
+	const seenLids = new Set<string>()
 
 	for (let i = 0; i < raw.length; i++) {
 		const result = memberSchema.safeParse(raw[i] as MemberInput)
@@ -70,7 +80,24 @@ export async function loadMembers(
 				`[members] validation failed for member at index ${i}: ${msg}`,
 			)
 		}
-		members.push(result.data)
+		const parsed = result.data
+
+		if (seenLids.has(parsed.lid)) {
+			throw new Error(
+				`[members] duplicate lid "${parsed.lid}" at index ${i}`,
+			)
+		}
+		seenLids.add(parsed.lid)
+
+		const member: NMember = {
+			mid: parsed.mid,
+			kananame: parsed.kananame,
+			nickname: parsed.nickname,
+			classgroup: parsed.classgroup,
+			lid: parsed.lid,
+			...(parsed.pn ? { pn: parsed.pn } : {}),
+		}
+		members.push(member)
 	}
 
 	return members

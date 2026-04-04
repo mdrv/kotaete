@@ -1,6 +1,6 @@
 {
 	"name": "@mdrv/kotaete",
-	"version": "0.0.1",
+	"version": "0.0.4-alpha.1",
 	"type": "module",
 	"private": true,
 	"engines": {
@@ -20,12 +20,13 @@
 		"fmt:check": "dprint check",
 		"typecheck": "bun tsc --noEmit",
 		"check": "bun run fmt:check && bun run typecheck",
-		"docs:dev": "cd docs/astro && npm run dev",
-		"docs:build": "cd docs/astro && npm run build"
+		"docs:dev": "cd docs/astro && bun run dev",
+		"docs:build": "cd docs/astro && bun run build"
 	},
 	"dependencies": {
 		"@crustjs/core": "^0.0.15",
 		"@crustjs/plugins": "^0.0.20",
+		"@logtape/file": "^2.0.5",
 		"@logtape/logtape": "^2.0.5",
 		"@logtape/pretty": "^2.0.5",
 		"@whiskeysockets/baileys": "github:WhiskeySockets/Baileys#d077902",

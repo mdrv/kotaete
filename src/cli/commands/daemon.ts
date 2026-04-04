@@ -3,13 +3,23 @@ import { initLogger } from '../../logger.ts'
 import { app } from '../shared.ts'
 
 export const daemonCmd = app.sub('daemon')
+	.flags({
+		fresh: { type: 'boolean', description: 'Start fresh — ignore/clear persisted runtime state' },
+		socket: { type: 'string', description: 'Daemon unix socket path' },
+		auth: { type: 'string', description: 'WhatsApp auth directory path' },
+		provider: {
+			type: 'string',
+			description: 'WhatsApp provider: wwebjs (default) or baileys (experimental)',
+		},
+	})
 	.meta({ description: 'Start WhatsApp daemon and listen for relay requests' })
 	.run(async ({ flags }) => {
-		await initLogger(flags.debug ? 'debug' : 'info')
-		const opts: { socketPath?: string; authDir?: string; provider?: string } = {}
+		await initLogger(flags.debug ? 'debug' : 'info', { fileSink: true, instanceLabel: 'daemon' })
+		const opts: { socketPath?: string; authDir?: string; provider?: string; fresh?: boolean } = {}
 		if (flags.socket !== undefined) opts.socketPath = flags.socket
 		if (flags.auth !== undefined) opts.authDir = flags.auth
 		if (flags.provider !== undefined) opts.provider = flags.provider
+		if (flags.fresh) opts.fresh = true
 		const runtime = new DaemonRuntime(opts)
 		await runtime.start()
 	})
