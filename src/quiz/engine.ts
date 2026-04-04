@@ -571,7 +571,7 @@ export class QuizEngine {
 
 		const currentQuestionPoints = state.questionPointsByLid.get(member.lid) ?? 0
 		let gained = awardCorrectPoints(currentQuestionPoints, question.isSpecialStage)
-		if (isKanjiPerfect) gained += POINTS_KANJI_BONUS
+		if (isKanjiPerfect) gained += question.kanjiExtraPts ?? POINTS_KANJI_BONUS
 
 		if (gained !== 0) {
 			state.pointsByLid.set(member.lid, (state.pointsByLid.get(member.lid) ?? 0) + gained)

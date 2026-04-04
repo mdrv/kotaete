@@ -652,6 +652,7 @@ function convertConfigQuestion(entry: ConfigQuestion): QuizQuestion {
 		number: entry.no,
 		text: `${entry.hint}\n\n${formatAnswerOptionsBlock(entry.answers)}`,
 		answers,
+		kanjiExtraPts: entry.answers.kanji?.extraPts,
 		explanation: entry.explanation ?? '',
 		imagePath: null,
 		isSpecialStage: entry.no === SPECIAL_STAGE_NUMBER,

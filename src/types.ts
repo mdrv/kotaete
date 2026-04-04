@@ -11,6 +11,7 @@ export type QuizQuestion = {
 	number: number
 	text: string
 	answers: ReadonlyArray<string>
+	kanjiExtraPts?: number
 	explanation: string
 	imagePath: string | null
 	isSpecialStage: boolean
