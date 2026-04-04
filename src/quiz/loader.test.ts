@@ -203,22 +203,29 @@ describe('loadQuizBundle schedule behavior', () => {
 		expect(q.text).not.toContain('🌸')
 	})
 
-	test('omits extraPts marker when extraPts is zero or missing', async () => {
-		const quizDir = await writeQuizDir('w20260404-noextra', {
-			'kotaete.ts': makeConfigKotaeteTs({
-				questions: [
-					'  questions: [',
-					'    { no: 1, hint: "No extra", answers: { kana: "あ", kanji: { text: "亜" } } },',
-					'  ],',
-				].join('\n'),
-			}),
+	test('shows default +2pts marker when extraPts is missing, but omits when zero', async () => {
+		const quizDir = await writeQuizDir('w20260404-kanji-missing', {
+			'kotaete.ts': [
+				"import { defineConfig } from '@mdrv/kotaete'",
+				'',
+				'export default defineConfig({',
+				"  intro: new Date('2026-04-04T07:50:00+07:00'),",
+				'  rounds: [{ emoji: "🌅", start: new Date("2026-04-04T08:00:00+07:00"), questionRange: [1, 2] }],',
+				'  questions: [',
+				'    { no: 1, hint: "Missing", answers: { kana: "a", kanji: { text: "A" } } },',
+				'    { no: 2, hint: "Zero", answers: { kana: "b", kanji: { text: "B", extraPts: 0 } } },',
+				'  ],',
+				'})',
+			].join('\n'),
 		})
 
 		const bundle = await loadQuizBundle(quizDir)
-		const q = bundle.questions[0]!
-		expect(q.text).toContain('🌸 漢字 (kanji)')
-		expect(q.text).not.toContain('*+')
-		expect(q.text).not.toContain('pts*')
+		const q1 = bundle.questions[0]!
+		expect(q1.text).toContain('🌸 漢字 (kanji) *+2pts*')
+
+		const q2 = bundle.questions[1]!
+		expect(q2.text).toContain('🌸 漢字 (kanji)')
+		expect(q2.text).not.toContain('*+')
 	})
 
 	test('throws when kotaete.ts is absent', async () => {

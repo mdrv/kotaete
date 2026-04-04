@@ -425,7 +425,7 @@ describe('QuizEngine behavior', () => {
 		expect(reactionCall).toBeTruthy()
 
 		const perfectWinnerCall = sendText.mock.calls.find((call) =>
-			Array.isArray(call) && call.length > 1 && String(call[1]).includes('🤩 *かんぺきだった！*')
+			Array.isArray(call) && call.length > 1 && String(call[1]).includes('🤩 *かんぺきだった！ (+12pts)*')
 		)
 		expect(perfectWinnerCall).toBeTruthy()
 

@@ -33,8 +33,8 @@ const DEFAULT_TEMPLATES: QuizMessageTemplates = {
 	cooldownWarning: 'Baru bisa jawab lagi mulai {time} WIB!',
 	questionWarning: '⏰ Tinggal 10 menit lagi!',
 	timeout: '⏱️ Waktu habis untuk soal ini.\n✅ {answers}',
-	winner: '🤗 *せいかいだった！*\n🌸 *{name}({classgroup})*\n✅ {answers}',
-	winnerKanji: '🤩 *かんぺきだった！*\n🌸 *{name}({classgroup})*\n✅ {answers}',
+	winner: '🤗 *せいかいだった！*\n🌸 *{name}({classgroup})* _+{points}pts_\n✅ {answers}',
+	winnerKanji: '🤩 *かんぺきだった！*\n🌸 *{name}({classgroup})* _+{points}pts_\n✅ {answers}',
 	explanation: '🌻 *_Shitteimasu ka?_* *({progress})*\n{text}',
 	explanationSpecial: '🌻 *_Shitteimasu ka?_* *(神)*\n{text}',
 	breakHeader: '☕ *はやくこたえて！ BREAK*',
@@ -122,12 +122,14 @@ export function formatOutroHeader(outroAt: Date): string {
 export function formatWinner(
 	member: NMember,
 	answers: ReadonlyArray<string>,
+	points: number,
 	templates?: Partial<QuizMessageTemplates>,
 ): string {
 	const t = resolveTemplates(templates)
 	return applyTemplate(t.winner, {
 		name: member.kananame,
 		classgroup: member.classgroup,
+		points,
 		answers: answers.map((a) => `_${a}_`).join(' / '),
 	})
 }
@@ -135,12 +137,14 @@ export function formatWinner(
 export function formatWinnerKanjiPerfect(
 	member: NMember,
 	answers: ReadonlyArray<string>,
+	points: number,
 	templates?: Partial<QuizMessageTemplates>,
 ): string {
 	const t = resolveTemplates(templates)
 	return applyTemplate(t.winnerKanji, {
 		name: member.kananame,
 		classgroup: member.classgroup,
+		points,
 		answers: answers.map((a) => `_${a}_`).join(' / '),
 	})
 }

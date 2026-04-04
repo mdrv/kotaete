@@ -351,8 +351,16 @@ export class QuizEngine {
 
 		if (question.isSpecialStage && state.attemptedSpecial.has(memberKey)) {
 			log.debug(`special-stage duplicate attempt key=${memberKey} q=${question.number}`)
-			await this.sender.react(state.groupId, incoming.key, REACTION_NO_MORE_CHANCE)
 			return
+		}
+
+		if (!question.isSpecialStage) {
+			const maxWrong = QUIZ_TUNABLES.wrongAttempts.maxCount
+			const remain = state.wrongStreak.get(memberKey) ?? maxWrong
+			if (remain < 0) {
+				log.debug(`no more chance key=${memberKey} q=${question.number}`)
+				return
+			}
 		}
 
 		if (!question.isSpecialStage && !state.noCooldown) {
@@ -586,8 +594,8 @@ export class QuizEngine {
 		await this.sender.sendText(
 			state.groupId,
 			isKanjiPerfect
-				? formatWinnerKanjiPerfect(member, question.answers, state.bundle.messageTemplates)
-				: formatWinner(member, question.answers, state.bundle.messageTemplates),
+				? formatWinnerKanjiPerfect(member, question.answers, gained, state.bundle.messageTemplates)
+				: formatWinner(member, question.answers, gained, state.bundle.messageTemplates),
 			{
 				linkPreview: false,
 				quotedKey: incoming.key,
