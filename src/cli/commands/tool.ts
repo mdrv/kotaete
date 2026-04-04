@@ -129,6 +129,13 @@ export const toolCmd = app.sub('tool')
 		app
 			.sub('to-pn')
 			.meta({ description: 'Convert WhatsApp LID (or LID-like input) to phone number' })
+			.flags({
+				json: { type: 'boolean', description: 'Output as JSON' },
+				socket: { type: 'string', description: 'Path to daemon socket' },
+				provider: { type: 'string', description: 'WhatsApp provider for lookup (baileys, wwebjs)' },
+				auth: { type: 'string', description: 'Path to auth directory' },
+				debug: { type: 'boolean', description: 'Enable debug logging' },
+			})
 			.args([{ name: 'lid', type: 'string', required: true }])
 			.run(async ({ args, flags }) => {
 				const store = await createStore()
@@ -152,6 +159,13 @@ export const toolCmd = app.sub('tool')
 		app
 			.sub('to-lid')
 			.meta({ description: 'Convert phone number / PN JID to WhatsApp LID using local map' })
+			.flags({
+				json: { type: 'boolean', description: 'Output as JSON' },
+				socket: { type: 'string', description: 'Path to daemon socket' },
+				provider: { type: 'string', description: 'WhatsApp provider for lookup (baileys, wwebjs)' },
+				auth: { type: 'string', description: 'Path to auth directory' },
+				debug: { type: 'boolean', description: 'Enable debug logging' },
+			})
 			.args([{ name: 'pn', type: 'string', required: true }])
 			.run(async ({ args, flags }) => {
 				const store = await createStore()

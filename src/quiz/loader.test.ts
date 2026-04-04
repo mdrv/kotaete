@@ -317,7 +317,7 @@ describe('loadQuizBundle schedule behavior', () => {
 		expect(bundle.questions[0]?.text).toContain('*Opsi jawab:*')
 	})
 
-	test('noSchedule strips Hint: prefix from markdown question text', async () => {
+	test('noSchedule strips *Hint:* and *Opsi jawab:* block from markdown question text', async () => {
 		const quizDir = await writeQuizDir('w20260404-hint-prefix', {
 			'kotaete.ts': [
 				"import { defineConfig } from '@mdrv/kotaete'",
@@ -327,13 +327,13 @@ describe('loadQuizBundle schedule behavior', () => {
 				"  rounds: [{ emoji: '🌟', start: new Date('2030-01-01T00:10:00+07:00'), questionRange: [1, 1] }],",
 				'})',
 			].join('\n'),
-			'01.md': 'Hint: What is あ?\n---\nあ\n',
+			'01.md': '*Hint:*\nWhat is あ?\n\n*Opsi jawab:*\n✅ かな (kana)\n---\nあ\n',
 		})
 
 		const bundle = await loadQuizBundle(quizDir, { noSchedule: true })
 		expect(bundle.questions[0]?.text).toContain('What is あ?')
 		expect(bundle.questions[0]?.text).not.toContain('Hint:')
-		expect(bundle.questions[0]?.text).toContain('*Opsi jawab:*')
+		expect(bundle.questions[0]?.text.match(/Opsi jawab/g)?.length).toBe(1) // exactly once, since we stripped the hardcoded one
 	})
 
 	test('noSchedule infers kanji option from CJK answers and parses +N extra points', async () => {
