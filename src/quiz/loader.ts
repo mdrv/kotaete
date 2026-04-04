@@ -345,8 +345,10 @@ function parseQuestionMarkdown(markdown: string): {
 		throw new Error('question text (first section before ---) is empty')
 	}
 
-	// Remove leading "Hint:" / "hint:" prefix for formatting parity with scheduled path
-	text = text.replace(/^[Hh]int:\s*/, '').trimStart()
+	// Remove leading "Hint:" / "hint:" / "*Hint:*" prefix and old "*Opsi jawab:*" block for formatting parity with scheduled path
+	text = text.replace(/^[\*_]*[Hh]int:?[\*_]*\s*/i, '').trimStart()
+	text = text.replace(/[\s\r\n]*[\*_]*Opsi jawab:?[\*_]*[\s\S]*$/i, '').trimEnd()
+
 	if (text.length === 0) {
 		throw new Error('question text is empty after removing Hint: prefix')
 	}
@@ -652,7 +654,7 @@ function convertConfigQuestion(entry: ConfigQuestion): QuizQuestion {
 		number: entry.no,
 		text: `${entry.hint}\n\n${formatAnswerOptionsBlock(entry.answers)}`,
 		answers,
-		kanjiExtraPts: entry.answers.kanji?.extraPts,
+		...(entry.answers.kanji?.extraPts !== undefined ? { kanjiExtraPts: entry.answers.kanji.extraPts } : {}),
 		explanation: entry.explanation ?? '',
 		imagePath: null,
 		isSpecialStage: entry.no === SPECIAL_STAGE_NUMBER,
