@@ -2,7 +2,7 @@ import { readdir, readFile, stat, unlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { basename, dirname, extname, join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { SPECIAL_STAGE_NUMBER } from '../constants.ts'
+import { POINTS_KANJI_BONUS, SPECIAL_STAGE_NUMBER } from '../constants.ts'
 import type {
 	ConfigQuestion,
 	ConfigQuestionAnswers,
@@ -314,7 +314,7 @@ export function defineConfig(config: QuizScheduleConfigInput = {}): QuizSchedule
 
 const CJK_IDEOGRAPH_RE = /[\u4e00-\u9fff]/
 
-function inferAnswerOptions(answers: string[]): string {
+function inferAnswerOptions(answers: string[]): { text: string; kanjiExtraPts: number | undefined } {
 	const hasKana = answers.length > 0
 	const hasRomaji = answers.some((a) => /^[a-zA-Z]/.test(a))
 	const hasKanji = answers.some((a) => CJK_IDEOGRAPH_RE.test(a))
@@ -322,21 +322,25 @@ function inferAnswerOptions(answers: string[]): string {
 	const extraPtsMatch = kanjiExtra
 		? answers.find((a) => /\+(\d+)/.test(a))?.match(/\+(\d+)/)
 		: null
+	const extraPts = extraPtsMatch ? Number(extraPtsMatch[1]) : (hasKanji ? POINTS_KANJI_BONUS : undefined)
 
-	return [
+	const text = [
 		'*Opsi jawab:*',
 		`${hasKana ? '✅' : '❌'} かな (kana)`,
 		`${hasRomaji ? '✅' : '❌'} romaji + jenis kana`,
 		hasKanji
-			? `🌸 漢字 (kanji)${extraPtsMatch ? ` *+${extraPtsMatch[1]}pts*` : ''}`
+			? `🌸 漢字 (kanji)${extraPts ? ` *+${extraPts}pts*` : ''}`
 			: '❌ 漢字 (kanji)',
 	].join('\n')
+
+	return { text, kanjiExtraPts: extraPts }
 }
 
 function parseQuestionMarkdown(markdown: string): {
 	text: string
 	answers: string[]
 	explanation: string
+	kanjiExtraPts: number | undefined
 } {
 	const sections = markdown.split(SECTION_SEP)
 
@@ -377,9 +381,9 @@ function parseQuestionMarkdown(markdown: string): {
 	const explanation = sections[2]?.trim() ?? ''
 
 	const optionsBlock = inferAnswerOptions(rawAnswerLines)
-	const formattedText = `${text}\n\n${optionsBlock}`
+	const formattedText = `${text}\n\n${optionsBlock.text}`
 
-	return { text: formattedText, answers: answerLines, explanation }
+	return { text: formattedText, answers: answerLines, explanation, kanjiExtraPts: optionsBlock.kanjiExtraPts }
 }
 
 function extractQuestionNumber(filename: string): number | null {
@@ -631,14 +635,15 @@ function formatAnswerOptionsBlock(answers: ConfigQuestionAnswers): string {
 	const hasKana = typeof answers.kana === 'string' && answers.kana.trim().length > 0
 	const hasRomaji = typeof answers.romaji === 'string' && answers.romaji.trim().length > 0
 	const hasKanji = typeof answers.kanji?.text === 'string' && answers.kanji.text.trim().length > 0
-	const kanjiExtra = typeof answers.kanji?.extraPts === 'number' && answers.kanji.extraPts > 0
+	const hasKanjiExtraPts = typeof answers.kanji?.extraPts === 'number'
+	const extraPts = hasKanji ? (hasKanjiExtraPts ? answers.kanji!.extraPts : POINTS_KANJI_BONUS) : undefined
 
 	return [
 		'*Opsi jawab:*',
 		`${hasKana ? '✅' : '❌'} かな (kana)`,
 		`${hasRomaji ? '✅' : '❌'} romaji + jenis kana`,
 		hasKanji
-			? `🌸 漢字 (kanji)${kanjiExtra ? ` *+${answers.kanji!.extraPts}pts*` : ''}`
+			? `🌸 漢字 (kanji)${extraPts ? ` *+${extraPts}pts*` : ''}`
 			: '❌ 漢字 (kanji)',
 	].join('\n')
 }
@@ -869,6 +874,7 @@ function buildRoundsFromSchedule(
 	schedule: QuizScheduleConfig,
 	questions: ReadonlyArray<QuizQuestion>,
 	startFallback: Date,
+	noSchedule: boolean,
 ): ReadonlyArray<QuizRound> {
 	if (schedule.rounds.length === 0) {
 		return [{ emoji: '🌟', startAt: startFallback, questions }]
@@ -907,7 +913,7 @@ function buildRoundsFromSchedule(
 
 		return {
 			emoji: round.emoji,
-			startAt: round.start,
+			startAt: noSchedule ? startFallback : round.start,
 			questions: picked,
 		}
 	})
@@ -965,13 +971,14 @@ async function loadMarkdownQuestions(absDir: string, dirBasename: string): Promi
 		if (number === null) continue
 
 		const raw = await readFile(resolve(absDir, mdFile), 'utf-8')
-		const { text, answers, explanation } = parseQuestionMarkdown(raw)
+		const { text, answers, explanation, kanjiExtraPts } = parseQuestionMarkdown(raw)
 		const imagePath = await resolveImagePathForMarkdownFile(absDir, mdFile)
 
 		questions.push({
 			number,
 			text,
 			answers,
+			...(kanjiExtraPts !== undefined ? { kanjiExtraPts } : {}),
 			explanation,
 			imagePath,
 			isSpecialStage: number === SPECIAL_STAGE_NUMBER,
@@ -1081,7 +1088,7 @@ export async function loadQuizBundle(
 	let questions: QuizQuestion[]
 	let rounds: ReadonlyArray<QuizRound>
 
-	if (!noSchedule && schedule.questions.length > 0) {
+	if (schedule.questions.length > 0) {
 		const imageExportOpts: ImageExportOptions = {
 			...(opts?.saveSvg ? { saveSvg: true } : {}),
 		}
@@ -1099,7 +1106,7 @@ export async function loadQuizBundle(
 			}),
 		)
 		questions.sort((a, b) => a.number - b.number)
-		rounds = buildRoundsFromSchedule(schedule, questions, startAt)
+		rounds = buildRoundsFromSchedule(schedule, questions, startAt, noSchedule)
 	} else {
 		questions = await loadMarkdownQuestions(absDir, dirBasename)
 		rounds = [{ emoji: '🌟', startAt, questions }]

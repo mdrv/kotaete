@@ -29,6 +29,12 @@ export const relayStopRequestSchema = z.object({
 	id: z.string().optional(),
 })
 
+export const relayStopSeasonRequestSchema = z.object({
+	type: z.literal('season-stop'),
+	groupId: z.string().min(1),
+	noScoreboard: z.boolean().optional(),
+})
+
 export const relayLookupRequestSchema = z.object({
 	type: z.literal('lookup-mapping'),
 	direction: z.enum(['to-pn', 'to-lid']),
@@ -39,12 +45,14 @@ export const relayRequestSchema = z.discriminatedUnion('type', [
 	relayRunRequestSchema,
 	relayStatusRequestSchema,
 	relayStopRequestSchema,
+	relayStopSeasonRequestSchema,
 	relayLookupRequestSchema,
 ])
 
 export type RelayRunRequest = z.infer<typeof relayRunRequestSchema>
 export type RelayStatusRequest = z.infer<typeof relayStatusRequestSchema>
 export type RelayStopRequest = z.infer<typeof relayStopRequestSchema>
+export type RelayStopSeasonRequest = z.infer<typeof relayStopSeasonRequestSchema>
 export type RelayLookupRequest = z.infer<typeof relayLookupRequestSchema>
 export type RelayRequest = z.infer<typeof relayRequestSchema>
 

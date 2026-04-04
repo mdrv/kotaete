@@ -6,6 +6,43 @@ export const seasonCmd = app
 	.meta({ description: 'View and manipulate season scores' })
 	.command(
 		app
+			.sub('stop')
+			.meta({ description: 'Stop a season for a group, optionally showing scoreboard' })
+			.args([{ name: 'groupId', type: 'string', required: true }])
+			.flags({
+				scoreboard: {
+					type: 'boolean',
+					default: true,
+					description: 'Generate and send the final scoreboard to the group (use --no-scoreboard to disable)',
+				},
+			})
+			.run(async ({ args, flags }) => {
+				const { sendRelayRequest } = await import('../shared.ts')
+				const { DEFAULT_SOCKET_PATH } = await import('../../constants.ts')
+				const { expandHome } = await import('../../utils/path.ts')
+
+				const socketPath = expandHome(DEFAULT_SOCKET_PATH)
+				const response = await sendRelayRequest(socketPath, {
+					type: 'season-stop',
+					groupId: args.groupId,
+					noScoreboard: flags.scoreboard === false,
+				})
+
+				if (flags.json) {
+					console.log(JSON.stringify(response, null, 2))
+					return
+				}
+
+				if (!response.ok) {
+					console.error(`❌ ${response.message}`)
+					process.exit(1)
+				}
+
+				console.log(`✅ ${response.message}`)
+			}),
+	)
+	.command(
+		app
 			.sub('show')
 			.meta({ description: 'Show saved season scores (all groups or one group)' })
 			.args([{ name: 'groupId', type: 'string' }])
