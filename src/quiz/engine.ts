@@ -254,6 +254,13 @@ export class QuizEngine {
 			count: round.questions.filter((item) => !item.isSpecialStage).length,
 		}))
 
+		if (this.seasonStore && bundle.season) {
+			if (bundle.season.start) {
+				await this.seasonStore.resetGroup(groupId)
+			}
+			await this.seasonStore.setGroupMembers(groupId, members)
+		}
+
 		const introDelay = Math.max(0, bundle.introAt.getTime() - Date.now())
 		if (introDelay > 0) await this.sleep(introDelay)
 		if (!this.state?.active) return
@@ -565,8 +572,15 @@ export class QuizEngine {
 		const currentQuestionPoints = state.questionPointsByLid.get(member.lid) ?? 0
 		let gained = awardCorrectPoints(currentQuestionPoints, question.isSpecialStage)
 		if (isKanjiPerfect) gained += POINTS_KANJI_BONUS
-		state.pointsByLid.set(member.lid, (state.pointsByLid.get(member.lid) ?? 0) + gained)
-		state.questionPointsByLid.set(member.lid, currentQuestionPoints + gained)
+
+		if (gained !== 0) {
+			state.pointsByLid.set(member.lid, (state.pointsByLid.get(member.lid) ?? 0) + gained)
+			state.questionPointsByLid.set(member.lid, currentQuestionPoints + gained)
+			if (this.seasonStore && state.bundle.season) {
+				await this.seasonStore.addPoints(state.groupId, [...state.byLid.values()], new Map([[member.lid, gained]]))
+			}
+		}
+
 		if (!question.isSpecialStage) state.cooldowns.set(member.lid, Date.now() + COOLDOWN_MS)
 
 		await this.sender.sendText(
@@ -606,12 +620,15 @@ export class QuizEngine {
 		if (remain < 0) return
 
 		const gained = awardWrongPoints(question.isSpecialStage)
-		if (gained > 0) {
+		if (gained !== 0) {
 			state.pointsByLid.set(member.lid, (state.pointsByLid.get(member.lid) ?? 0) + gained)
 			state.questionPointsByLid.set(
 				member.lid,
 				(state.questionPointsByLid.get(member.lid) ?? 0) + gained,
 			)
+			if (this.seasonStore && state.bundle.season) {
+				await this.seasonStore.addPoints(state.groupId, [...state.byLid.values()], new Map([[member.lid, gained]]))
+			}
 		}
 
 		const emojiStreak = QUIZ_TUNABLES.wrongAttempts.emojiStreak
@@ -673,20 +690,6 @@ export class QuizEngine {
 		if (!this.seasonStore || !state.bundle.season) return
 
 		const season = state.bundle.season
-
-		// Season start: reset accumulated points before applying this quiz's points
-		if (season.start) {
-			await this.seasonStore.resetGroup(state.groupId)
-		}
-
-		// Accumulate this quiz's points into season store
-		const quizPointsByLid = new Map<string, number>()
-		for (const [lid, points] of state.pointsByLid.entries()) {
-			quizPointsByLid.set(lid, points)
-		}
-		const membersList = [...state.byLid.values()]
-		await this.seasonStore.setGroupMembers(state.groupId, membersList)
-		await this.seasonStore.addPoints(state.groupId, membersList, quizPointsByLid)
 
 		// Season end: send special congratulation messages
 		if (season.end) {
