@@ -33,3 +33,23 @@ export function normalizeJidNumber(jidOrPhone: string): string | null {
 	const digits = raw.replace(DIGITS_RE, '')
 	return digits.length > 0 ? digits : null
 }
+
+/**
+ * Normalize a LID-like identifier to canonical user part.
+ *
+ * Handles:
+ * - `12345@lid`
+ * - `12345:7@lid`
+ * - `whatsapp:12345@lid`
+ * - `12345`
+ *
+ * Returns `null` when user part is empty.
+ */
+export function normalizeLid(raw: string): string | null {
+	const trimmed = raw.trim().replace(/^whatsapp:/, '')
+	if (!trimmed) return null
+	const [userPart] = trimmed.split('@')
+	const user = (userPart ?? '').split(':')[0]?.trim() ?? ''
+	if (!user) return null
+	return user
+}

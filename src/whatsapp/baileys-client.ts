@@ -41,6 +41,84 @@ const REPLAY_SKEW_SECONDS = 5
 const CONNECTION_WAIT_TIMEOUT_MS = 30_000
 const CONNECTION_WAIT_POLL_INTERVAL_MS = 200
 
+const WRAPPED_MESSAGE_KEYS = [
+	'ephemeralMessage',
+	'viewOnceMessage',
+	'viewOnceMessageV2',
+	'editedMessage',
+] as const
+
+/** Extract text content from a message, unwrapping known container types. */
+export function extractInboundText(message: unknown): string {
+	if (!message || typeof message !== 'object') return ''
+	const msg = message as Record<string, unknown>
+
+	// Direct conversation text
+	if (typeof msg.conversation === 'string' && msg.conversation.trim()) return msg.conversation
+
+	// Direct extendedTextMessage
+	if (msg.extendedTextMessage && typeof msg.extendedTextMessage === 'object') {
+		const ext = msg.extendedTextMessage as Record<string, unknown>
+		if (typeof ext.text === 'string' && ext.text.trim()) return ext.text
+	}
+
+	// Unwrap known container message types
+	for (const wrapperKey of WRAPPED_MESSAGE_KEYS) {
+		const wrapped = msg[wrapperKey]
+		if (wrapped && typeof wrapped === 'object') {
+			const inner = (wrapped as Record<string, unknown>).message
+			if (inner && typeof inner === 'object') {
+				const innerText = extractInboundText(inner)
+				if (innerText.trim()) return innerText
+			}
+		}
+	}
+
+	return ''
+}
+
+/**
+ * Extract sender JID from a message key, with fallbacks.
+ * Prefers `participant`, falls back to `participantAlt` or `remoteJidAlt` (stripped to bare user part).
+ */
+export function extractSenderJid(key: {
+	participant?: string | null
+	participantAlt?: string | null
+	remoteJidAlt?: string | null
+}): string {
+	if (key.participant) return key.participant
+	if (key.participantAlt) return key.participantAlt
+	if (key.remoteJidAlt) {
+		// remoteJidAlt is often a full JID (e.g. "628xxx@s.whatsapp.net"); use as-is for sender resolution
+		return key.remoteJidAlt
+	}
+	return ''
+}
+
+function normalizeOptionalJid(value: string | null | undefined): string | null {
+	if (typeof value !== 'string') return null
+	const normalized = value.trim()
+	return normalized.length > 0 ? normalized : null
+}
+
+export function buildBaileysMessageKey(key: {
+	id?: string | null
+	remoteJid?: string | null
+	participant?: string | null
+	fromMe?: boolean | null
+}): { id: string; remoteJid: string; participant?: string; fromMe: boolean } | null {
+	const id = key.id ?? null
+	const remoteJid = normalizeOptionalJid(key.remoteJid)
+	if (!id || !remoteJid) return null
+	const participant = normalizeOptionalJid(key.participant)
+	return {
+		id,
+		remoteJid,
+		...(participant ? { participant } : {}),
+		fromMe: key.fromMe ?? false,
+	}
+}
+
 function normalizeLidJid(raw: string): string | null {
 	const value = raw.trim().replace(/^whatsapp:/, '')
 	if (!value) return null
@@ -58,6 +136,8 @@ export class BaileysWhatsAppClient implements IWhatsAppClient {
 	private connectionOpen = false
 	private readonly seenMessageIds = new Set<string>()
 	private readonly seenMessageOrder: string[] = []
+	private lastReconnectAt = 0
+	private reconnectConflictCount = 0
 	private baileysRuntime: {
 		makeWASocket: (options: Record<string, unknown>) => BaileysSocketLike
 		Browsers: {
@@ -73,6 +153,7 @@ export class BaileysWhatsAppClient implements IWhatsAppClient {
 		) => Promise<{ state: { creds: unknown; keys: unknown }; saveCreds: () => Promise<void> | void }>
 		DisconnectReason: {
 			loggedOut: number
+			connectionReplaced?: number
 		}
 	} | null = null
 
@@ -102,6 +183,7 @@ export class BaileysWhatsAppClient implements IWhatsAppClient {
 			) => Promise<{ state: { creds: unknown; keys: unknown }; saveCreds: () => Promise<void> | void }>
 			DisconnectReason: {
 				loggedOut: number
+				connectionReplaced?: number
 			}
 		}
 
@@ -177,10 +259,23 @@ export class BaileysWhatsAppClient implements IWhatsAppClient {
 					}>
 				}
 				| undefined
-			if (!evt) return
-			if (evt.type !== 'notify') return
+			if (!evt) {
+				log.debug('baileys messages.upsert: dropped — no event payload')
+				return
+			}
+			if (evt.type !== 'notify') {
+				log.debug(`baileys messages.upsert: dropped — type is not "notify" (got: ${evt.type ?? 'undefined'})`)
+				return
+			}
 			for (const message of evt.messages ?? []) {
-				if (!message.message || message.key.fromMe) continue
+				if (!message.message) {
+					log.debug(`baileys drop missing message key.id=${message.key?.id ?? 'null'}`)
+					continue
+				}
+				if (message.key.fromMe) {
+					log.debug(`baileys drop fromMe id=${message.key.id ?? 'null'}`)
+					continue
+				}
 				if (this.isDuplicateMessage(message.key.id ?? null)) {
 					log.debug(`baileys drop duplicate id=${message.key.id ?? 'null'}`)
 					continue
@@ -197,27 +292,43 @@ export class BaileysWhatsAppClient implements IWhatsAppClient {
 					}
 				}
 				const groupId = message.key.remoteJid
-				if (!groupId || !runtime.isJidGroup(groupId)) continue
-				const text = message.message.conversation ?? message.message.extendedTextMessage?.text ?? ''
-				const senderRawJid = message.key.participant ?? ''
-				if (!text.trim() || !senderRawJid) continue
+				if (!groupId || !runtime.isJidGroup(groupId)) {
+					log.debug(`baileys drop non-group id=${message.key.id ?? 'null'} remoteJid=${groupId ?? 'null'}`)
+					continue
+				}
+				const text = extractInboundText(message.message)
+				const senderRawJid = extractSenderJid(message.key)
+				if (!text.trim() || !senderRawJid) {
+					log.debug(
+						`baileys drop empty text/sender id=${message.key.id ?? 'null'} textLen=${text.length} sender=${
+							senderRawJid || 'null'
+						}`,
+					)
+					continue
+				}
 				const senderAltJid = message.key.participantAlt ?? message.key.remoteJidAlt ?? null
 				await this.maybePersistLidPnMapping(runtime, senderRawJid, senderAltJid)
 				const resolution = await this.resolveSenderNumber(senderRawJid, senderAltJid)
+				const keyParticipant = normalizeOptionalJid(message.key.participant)
+				// Extract LID from senderRawJid if it's a LID user
+				const runtime2 = await this.getRuntime()
+				const normalizedSenderJid = runtime2.jidNormalizedUser(senderRawJid)
+				const senderLid = runtime2.isLidUser(normalizedSenderJid) ? normalizeLidJid(normalizedSenderJid) : null
 				log.debug(
 					`baileys inbound message group=${groupId} sender=${senderRawJid} senderNumber=${
 						resolution.number ?? 'null'
-					} source=${resolution.source} len=${text.length}`,
+					} senderLid=${senderLid ?? 'null'} source=${resolution.source} len=${text.length}`,
 				)
 
 				await this.options.onIncoming({
 					groupId,
 					senderRawJid,
 					senderNumber: resolution.number,
+					senderLid,
 					text,
 					key: {
 						remoteJid: message.key.remoteJid ?? null,
-						participant: message.key.participant ?? null,
+						participant: senderRawJid || keyParticipant || null,
 						id: message.key.id ?? null,
 						fromMe: message.key.fromMe ?? null,
 					},
@@ -237,6 +348,7 @@ export class BaileysWhatsAppClient implements IWhatsAppClient {
 			if (connection === 'open') {
 				this.connectionOpen = true
 				this.reconnectAttempts = 0
+				this.reconnectConflictCount = 0
 				this.acceptMessagesFromTsSec = Math.floor(Date.now() / 1000) - REPLAY_SKEW_SECONDS
 				log.info('Baileys connected')
 				log.debug(`baileys inbound cutoff set ts=${this.acceptMessagesFromTsSec}`)
@@ -252,8 +364,29 @@ export class BaileysWhatsAppClient implements IWhatsAppClient {
 					return
 				}
 
+				const disconnectMessage = String((lastDisconnect?.error as Error | undefined)?.message ?? '')
+				const connectionReplacedCode = runtime.DisconnectReason.connectionReplaced
+				const conflictDisconnect = code === connectionReplacedCode || disconnectMessage.includes('conflict')
+				if (conflictDisconnect) {
+					this.reconnectConflictCount += 1
+					if (this.reconnectConflictCount >= 3) {
+						log.error(
+							'Baileys disconnected with repeated conflict/440 (connection replaced). Stop reconnecting; re-authenticate session before retrying.',
+						)
+						this.stopping = true
+						return
+					}
+				}
+
 				this.reconnectAttempts += 1
-				const delay = Math.min(1000 * 2 ** Math.min(this.reconnectAttempts, 5), 30_000)
+				const now = Date.now()
+				const jitteredBase = 2_000 * 2 ** Math.min(this.reconnectAttempts, 5)
+				const backoffDelay = Math.min(jitteredBase, 60_000)
+				const minimumInterval = 5_000
+				const sinceLast = now - this.lastReconnectAt
+				const throttleDelay = sinceLast >= minimumInterval ? 0 : (minimumInterval - sinceLast)
+				const delay = Math.max(backoffDelay, throttleDelay)
+				this.lastReconnectAt = now + delay
 				log.warning(`Baileys disconnected (code=${code ?? 'unknown'}). Reconnecting in ${delay}ms`)
 				await Bun.sleep(delay)
 				if (!this.stopping) await this.start()
@@ -410,17 +543,33 @@ export class BaileysWhatsAppClient implements IWhatsAppClient {
 	async sendText(groupId: string, text: string, opts?: SendTextOptions): Promise<MessageKeyLike | null> {
 		await this.waitForConnection('sendText')
 		if (!this.sock) throw new Error('[wa:baileys] socket is not initialized')
-		const quoted = opts?.quotedKey?.id && opts?.quotedKey?.remoteJid
-			? {
-				key: {
-					id: opts.quotedKey.id,
-					remoteJid: opts.quotedKey.remoteJid,
-					participant: opts.quotedKey.participant ?? null,
-					fromMe: opts.quotedKey.fromMe ?? false,
-				},
+		const quotedKey = opts?.quotedKey ? buildBaileysMessageKey(opts.quotedKey) : null
+		const options = quotedKey ? { quoted: { key: quotedKey, message: { conversation: ' ' } } } : undefined
+		let sent: unknown
+		try {
+			sent = await this.sock.sendMessage(groupId, { text }, options)
+		} catch (error) {
+			if (quotedKey?.participant) {
+				log.warning(
+					`sendText quoted send failed with participant (${quotedKey.participant}); retrying without participant: ${
+						error instanceof Error ? error.message : String(error)
+					}`,
+				)
+				const fallbackOptions = {
+					quoted: {
+						key: {
+							id: quotedKey.id,
+							remoteJid: quotedKey.remoteJid,
+							fromMe: quotedKey.fromMe,
+						},
+						message: { conversation: ' ' },
+					},
+				}
+				sent = await this.sock.sendMessage(groupId, { text }, fallbackOptions)
+			} else {
+				throw error
 			}
-			: undefined
-		const sent = await this.sock.sendMessage(groupId, { text }, quoted)
+		}
 		return this.extractSentMessageKey(sent, groupId)
 	}
 
@@ -453,17 +602,43 @@ export class BaileysWhatsAppClient implements IWhatsAppClient {
 	): Promise<void> {
 		await this.waitForConnection('react')
 		if (!this.sock) throw new Error('[wa:baileys] socket is not initialized')
-		if (!key.id || !key.remoteJid) return
-		await this.sock.sendMessage(groupId, {
+		if (!key.id || !key.remoteJid) {
+			log.warning(`react skipped: incomplete key id=${key.id ?? 'null'} remoteJid=${key.remoteJid ?? 'null'}`)
+			return
+		}
+		const reactKey = buildBaileysMessageKey({ ...key, fromMe: false })
+		if (!reactKey) {
+			log.warning(`react skipped: malformed key id=${key.id ?? 'null'} remoteJid=${key.remoteJid ?? 'null'}`)
+			return
+		}
+		const reactPayload = {
 			react: {
 				text: emoji,
-				key: {
-					id: key.id,
-					remoteJid: key.remoteJid,
-					participant: key.participant ?? null,
-					fromMe: false,
-				},
+				key: reactKey,
 			},
-		})
+		}
+		try {
+			await this.sock.sendMessage(groupId, reactPayload)
+		} catch (error) {
+			if (reactKey.participant) {
+				log.warning(
+					`react failed with participant (${reactKey.participant}); retrying without participant: ${
+						error instanceof Error ? error.message : String(error)
+					}`,
+				)
+				await this.sock.sendMessage(groupId, {
+					react: {
+						text: emoji,
+						key: {
+							id: reactKey.id,
+							remoteJid: reactKey.remoteJid,
+							fromMe: false,
+						},
+					},
+				})
+			} else {
+				log.warning(`react failed: ${error instanceof Error ? error.message : String(error)}`)
+			}
+		}
 	}
 }

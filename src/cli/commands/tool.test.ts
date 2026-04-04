@@ -1,8 +1,12 @@
 import { afterEach, describe, expect, test } from 'bun:test'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
+import { dirname } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { LidPnStore } from '../../whatsapp/lid-pn-store.ts'
+
+const __dirname = dirname(fileURLToPath(import.meta.url))
 
 const dirs: string[] = []
 
@@ -45,5 +49,24 @@ describe('LidPnStore reverse lookup for tool commands', () => {
 
 		expect(store.getLidByPn('')).toBeNull()
 		expect(store.getLidByPn('628000000000')).toBeNull()
+	})
+})
+
+describe('CLI registration paths', () => {
+	test('quiz run subcommand exists in quiz.ts imports', async () => {
+		// Verify quiz.ts imports and uses createRunHandler from run.ts
+		const quizModulePath = resolve(__dirname, 'quiz.ts')
+		const quizSource = Bun.file(quizModulePath)
+		const text = await quizSource.text()
+		expect(text).toContain('createRunHandler')
+		expect(text).toContain(".sub('run')")
+	})
+
+	test('top-level run command removed from CLI index', async () => {
+		const indexPath = resolve(__dirname, '..', 'index.ts')
+		const indexSource = Bun.file(indexPath)
+		const text = await indexSource.text()
+		expect(text).not.toContain('runCmd')
+		expect(text).not.toContain("from './commands/run.ts'")
 	})
 })

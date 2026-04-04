@@ -3,7 +3,8 @@ export type NMember = {
 	kananame: string
 	nickname: string
 	classgroup: string
-	number: string
+	lid: string
+	pn?: string
 }
 
 export type QuizQuestion = {
@@ -15,18 +16,109 @@ export type QuizQuestion = {
 	isSpecialStage: boolean
 }
 
-export type QuizBundle = {
-	directory: string
-	introAt: Date
+export type QuizRound = {
+	emoji: string
 	startAt: Date
-	introNote: string | null
-	outroNote: string | null
 	questions: ReadonlyArray<QuizQuestion>
 }
 
+export type QuizMessageTemplates = {
+	introHeader: string
+	introRoundLine: string
+	godStageAnnouncement: string
+	nextRoundNotice: string
+	questionFooter: string
+	cooldownWarning: string
+	questionWarning: string
+	timeout: string
+	winner: string
+	winnerKanji: string
+	explanation: string
+	explanationSpecial: string
+	breakHeader: string
+	finalHeader: string
+	finalRow: string
+	finalEmpty: string
+	finalFooterDefault: string
+}
+
+export type QuizBundle = {
+	directory: string
+	sources?: ReadonlyArray<string>
+	introAt: Date
+	startAt: Date
+	rounds: ReadonlyArray<QuizRound>
+	introNote: string | null
+	outroNote: string | null
+	messageTemplates: Partial<QuizMessageTemplates>
+	questions: ReadonlyArray<QuizQuestion>
+	groupId?: string | null
+	members?: ReadonlyArray<NMember> | null
+	membersFile?: string | null
+	season?: SeasonConfig | null
+}
+
+export type ConfigQuestionImage = {
+	credit: string
+	jp: string
+	romaji: string
+	god?: boolean
+}
+
+export type ConfigQuestionAnswers = {
+	kana?: string
+	romaji?: string
+	kanji?: { text: string; extraPts?: number }
+}
+
+export type ConfigQuestion = {
+	no: number
+	hint: string
+	answers: ConfigQuestionAnswers
+	explanation?: string
+	image?: ConfigQuestionImage
+}
+
+export type QuizImageTemplateConfig = {
+	default?: string
+	god?: string
+}
+
 export type QuizScheduleConfig = {
-	intro: Date
-	start: Date
+	intro: Date | null
+	start: Date | null
+	rounds: ReadonlyArray<{
+		emoji: string
+		start: Date
+		questionRange: readonly [number, number]
+		godStage: number | null
+	}>
+	messages: Partial<QuizMessageTemplates>
+	questions: ReadonlyArray<ConfigQuestion>
+	groupId: string | null
+	members: ReadonlyArray<NMember> | string | null
+	imageTemplates: QuizImageTemplateConfig
+	season?: SeasonConfig | null
+}
+
+export type QuizScheduleConfigInput = {
+	intro?: Date | string | number
+	start?: Date | string | number
+	rounds?: ReadonlyArray<{
+		emoji?: string
+		start: Date | string | number
+		questionRange: readonly [number, number]
+		godStage?: number | null
+	}>
+	messages?: Partial<QuizMessageTemplates>
+	questions?: ReadonlyArray<ConfigQuestion>
+	groupId?: string
+	members?: ReadonlyArray<NMember> | string
+	imageTemplates?: QuizImageTemplateConfig
+	templates?: QuizImageTemplateConfig
+	template?: string
+	templateGod?: string
+	season?: SeasonConfig
 }
 
 export type MessageKeyLike = {
@@ -40,13 +132,26 @@ export type IncomingGroupMessage = {
 	groupId: string
 	senderRawJid: string
 	senderNumber: string | null
+	senderLid: string | null
 	text: string
 	key: MessageKeyLike
 }
 
+export type SeasonConfig = {
+	start?: boolean
+	end?: boolean
+	caption?: string
+	scoreboardTemplate?: string
+}
+
 export type QuizRunPayload = {
-	groupId: string
-	quizDir: string
-	membersFile: string
-	disableCooldown?: boolean
+	sources: ReadonlyArray<string>
+	quizDir?: string
+	groupId?: string
+	membersFile?: string
+	noCooldown?: boolean
+	noSchedule?: boolean
+	noGeneration?: boolean
+	saveSvg?: boolean
+	season?: SeasonConfig
 }

@@ -1,12 +1,23 @@
 import { z } from 'zod'
 
+const seasonConfigSchema = z.object({
+	start: z.boolean().optional(),
+	end: z.boolean().optional(),
+	caption: z.string().optional(),
+	scoreboardTemplate: z.string().optional(),
+}).optional()
+
 export const relayRunRequestSchema = z.object({
 	type: z.literal('run-quiz'),
-	groupId: z.string().min(1),
-	quizDir: z.string().min(1),
-	membersFile: z.string().min(1),
-	disableCooldown: z.boolean().optional(),
+	sources: z.array(z.string().min(1)).min(1),
+	quizDir: z.string().min(1).optional(),
+	groupId: z.string().min(1).optional(),
+	membersFile: z.string().min(1).optional(),
+	noCooldown: z.boolean().optional(),
 	noSchedule: z.boolean().optional(),
+	noGeneration: z.boolean().optional(),
+	saveSvg: z.boolean().optional(),
+	season: seasonConfigSchema,
 })
 
 export const relayStatusRequestSchema = z.object({
@@ -15,6 +26,7 @@ export const relayStatusRequestSchema = z.object({
 
 export const relayStopRequestSchema = z.object({
 	type: z.literal('quiz-stop'),
+	id: z.string().optional(),
 })
 
 export const relayLookupRequestSchema = z.object({
@@ -36,9 +48,26 @@ export type RelayStopRequest = z.infer<typeof relayStopRequestSchema>
 export type RelayLookupRequest = z.infer<typeof relayLookupRequestSchema>
 export type RelayRequest = z.infer<typeof relayRequestSchema>
 
+export const jobStatusSchema = z.object({
+	id: z.string(),
+	groupId: z.string(),
+	quizDir: z.string(),
+	membersFile: z.string().optional().nullable(),
+	noCooldown: z.boolean(),
+	noGeneration: z.boolean().optional(),
+	status: z.enum(['scheduled', 'running']),
+	introAt: z.string().optional(),
+	firstRoundAt: z.string().optional(),
+	createdAt: z.string(),
+})
+
+export type JobStatus = z.infer<typeof jobStatusSchema>
+
 export const relayResponseSchema = z.object({
 	ok: z.boolean(),
 	message: z.string(),
+	jobs: z.array(jobStatusSchema).optional(),
+	jobId: z.string().optional(),
 })
 
 export type RelayResponse = z.infer<typeof relayResponseSchema>

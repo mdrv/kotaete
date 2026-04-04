@@ -3,7 +3,7 @@ import { defineCollection, z } from 'astro:content'
 
 const docs = defineCollection({
 	loader: glob({
-		pattern: ['**/*.md', '!astro/**'],
+		pattern: ['*.md', 'releases/*.md'],
 		base: '../../docs',
 		generateId: ({ entry }) => entry.replace(/\.md$/, ''),
 	}),

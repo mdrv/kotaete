@@ -4,7 +4,7 @@ import { helpPlugin, versionPlugin } from '@crustjs/plugins'
 import packageJson from '../../package.json' with { type: 'json' }
 import { daemonCmd } from './commands/daemon.ts'
 import { quizCmd } from './commands/quiz.ts'
-import { runCmd } from './commands/run.ts'
+import { seasonCmd } from './commands/season.ts'
 import { toolCmd } from './commands/tool.ts'
 import { app } from './shared.ts'
 
@@ -13,6 +13,6 @@ await app
 	.use(helpPlugin())
 	.command(daemonCmd)
 	.command(quizCmd)
-	.command(runCmd)
+	.command(seasonCmd)
 	.command(toolCmd)
 	.execute()
