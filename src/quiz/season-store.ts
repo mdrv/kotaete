@@ -17,6 +17,7 @@ export type SeasonPointsState = {
 	groupId: string
 	members: ReadonlyArray<NMember>
 	pointsByLid: Map<string, number>
+	reachedAtByLid: Map<string, number>
 }
 
 type SeasonPointsSnapshot = {
@@ -27,6 +28,7 @@ type SeasonPointsSnapshot = {
 		{
 			pointsByLid?: ReadonlyArray<{ lid: string; points: number }>
 			pointsByPn?: ReadonlyArray<{ pn: string; points: number }>
+			reachedAtByLid?: ReadonlyArray<{ lid: string; reachedAt: number }>
 			members: ReadonlyArray<NMember>
 		}
 	>
@@ -77,6 +79,7 @@ export class SeasonStore {
 
 			for (const [groupId, data] of Object.entries(parsed.groups)) {
 				const pointsByLid = new Map<string, number>()
+				const reachedAtByLid = new Map<string, number>()
 				for (const entry of data.pointsByLid ?? []) {
 					pointsByLid.set(entry.lid, entry.points)
 				}
@@ -89,10 +92,14 @@ export class SeasonStore {
 						pointsByLid.set(entry.pn, entry.points)
 					}
 				}
+				for (const entry of data.reachedAtByLid ?? []) {
+					reachedAtByLid.set(entry.lid, entry.reachedAt)
+				}
 				this.groups.set(groupId, {
 					groupId,
 					members: data.members ?? [],
 					pointsByLid,
+					reachedAtByLid,
 				})
 			}
 		} catch {
@@ -109,6 +116,7 @@ export class SeasonStore {
 		for (const [groupId, state] of this.groups.entries()) {
 			snapshot.groups[groupId] = {
 				pointsByLid: [...state.pointsByLid.entries()].map(([lid, points]) => ({ lid, points })),
+				reachedAtByLid: [...state.reachedAtByLid.entries()].map(([lid, reachedAt]) => ({ lid, reachedAt })),
 				members: state.members,
 			}
 		}
@@ -140,6 +148,10 @@ export class SeasonStore {
 		return this.groups.get(groupId)?.members ?? []
 	}
 
+	getReachedAt(groupId: string): Map<string, number> {
+		return this.groups.get(groupId)?.reachedAtByLid ?? new Map()
+	}
+
 	async addPoints(
 		groupId: string,
 		members: ReadonlyArray<NMember>,
@@ -147,12 +159,16 @@ export class SeasonStore {
 	): Promise<void> {
 		let state = this.groups.get(groupId)
 		if (!state) {
-			state = { groupId, members, pointsByLid: new Map() }
+			state = { groupId, members, pointsByLid: new Map(), reachedAtByLid: new Map() }
 			this.groups.set(groupId, state)
 		}
+		const now = Date.now()
 		for (const [lid, points] of pointsByLid.entries()) {
 			const current = state.pointsByLid.get(lid) ?? 0
 			state.pointsByLid.set(lid, current + points)
+			if (points > 0) {
+				state.reachedAtByLid.set(lid, now)
+			}
 		}
 		await this.persist()
 	}
@@ -161,6 +177,7 @@ export class SeasonStore {
 		const state = this.groups.get(groupId)
 		if (state) {
 			state.pointsByLid.clear()
+			state.reachedAtByLid.clear()
 		}
 		await this.persist()
 	}
@@ -171,7 +188,7 @@ export class SeasonStore {
 	): Promise<void> {
 		let state = this.groups.get(groupId)
 		if (!state) {
-			state = { groupId, members, pointsByLid: new Map() }
+			state = { groupId, members, pointsByLid: new Map(), reachedAtByLid: new Map() }
 			this.groups.set(groupId, state)
 		} else {
 			state.members = members
@@ -186,23 +203,28 @@ export class SeasonStore {
 	async adjustPoints(groupId: string, memberLid: string, delta: number): Promise<void> {
 		let state = this.groups.get(groupId)
 		if (!state) {
-			state = { groupId, members: [], pointsByLid: new Map() }
+			state = { groupId, members: [], pointsByLid: new Map(), reachedAtByLid: new Map() }
 			this.groups.set(groupId, state)
 		}
 		const current = state.pointsByLid.get(memberLid) ?? 0
 		state.pointsByLid.set(memberLid, current + delta)
+		if (delta > 0) {
+			state.reachedAtByLid.set(memberLid, Date.now())
+		}
 	}
 
 	async setPoints(groupId: string, memberLid: string, points: number): Promise<void> {
 		let state = this.groups.get(groupId)
 		if (!state) {
-			state = { groupId, members: [], pointsByLid: new Map() }
+			state = { groupId, members: [], pointsByLid: new Map(), reachedAtByLid: new Map() }
 			this.groups.set(groupId, state)
 		}
 		if (points <= 0) {
 			state.pointsByLid.delete(memberLid)
+			state.reachedAtByLid.delete(memberLid)
 		} else {
 			state.pointsByLid.set(memberLid, points)
+			state.reachedAtByLid.set(memberLid, Date.now())
 		}
 	}
 

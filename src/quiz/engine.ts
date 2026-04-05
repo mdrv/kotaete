@@ -3,7 +3,6 @@ import {
 	COOLDOWN_MS,
 	GOD_STAGE_ANNOUNCE_DELAY_MS,
 	GOD_STAGE_TIMEOUT_MS,
-	POINTS_KANJI_BONUS,
 	QUESTION_TIMEOUT_MS,
 	QUESTION_WARNING_LEAD_MS,
 	QUIZ_TUNABLES,
@@ -57,6 +56,7 @@ type RunnerState = {
 	byLid: Map<string, NMember>
 	byCanonicalLid: Map<string, NMember>
 	pointsByLid: Map<string, number>
+	scoreReachedAtByLid: Map<string, number>
 	questionPointsByLid: Map<string, number>
 	cooldowns: Map<string, number>
 	noCooldown: boolean
@@ -225,6 +225,7 @@ export class QuizEngine {
 			byLid,
 			byCanonicalLid,
 			pointsByLid: new Map(),
+			scoreReachedAtByLid: new Map(),
 			questionPointsByLid: new Map(),
 			cooldowns: new Map(),
 			noCooldown: opts?.noCooldown ?? false,
@@ -421,11 +422,16 @@ export class QuizEngine {
 
 	private currentScoreRows(state: RunnerState): Array<{ member: NMember; points: number }> {
 		return [...state.pointsByLid.entries()]
-			.map(([lid, points]) => ({ lid, points, member: state.byLid.get(lid) }))
-			.filter((row): row is { lid: string; points: number; member: NMember } => Boolean(row.member))
+			.map(([lid, points]) => ({
+				lid,
+				points,
+				member: state.byLid.get(lid),
+				reachedAt: state.scoreReachedAtByLid.get(lid) ?? Infinity,
+			}))
+			.filter((row): row is { lid: string; points: number; member: NMember; reachedAt: number } => Boolean(row.member))
 			.toSorted((a, b) => {
 				if (b.points !== a.points) return b.points - a.points
-				return a.lid.localeCompare(b.lid)
+				return a.reachedAt - b.reachedAt
 			})
 			.map((row) => ({ member: row.member, points: row.points }))
 	}
@@ -579,10 +585,11 @@ export class QuizEngine {
 
 		const currentQuestionPoints = state.questionPointsByLid.get(member.lid) ?? 0
 		let gained = awardCorrectPoints(currentQuestionPoints, question.isSpecialStage)
-		if (isKanjiPerfect) gained += question.kanjiExtraPts ?? POINTS_KANJI_BONUS
+		gained += question.extraPts ?? 0
 
 		if (gained !== 0) {
 			state.pointsByLid.set(member.lid, (state.pointsByLid.get(member.lid) ?? 0) + gained)
+			state.scoreReachedAtByLid.set(member.lid, Date.now())
 			state.questionPointsByLid.set(member.lid, currentQuestionPoints + gained)
 			if (this.seasonStore && state.bundle.season) {
 				await this.seasonStore.addPoints(state.groupId, [...state.byLid.values()], new Map([[member.lid, gained]]))
@@ -630,6 +637,7 @@ export class QuizEngine {
 		const gained = awardWrongPoints(question.isSpecialStage)
 		if (gained !== 0) {
 			state.pointsByLid.set(member.lid, (state.pointsByLid.get(member.lid) ?? 0) + gained)
+			state.scoreReachedAtByLid.set(member.lid, Date.now())
 			state.questionPointsByLid.set(
 				member.lid,
 				(state.questionPointsByLid.get(member.lid) ?? 0) + gained,
@@ -703,17 +711,21 @@ export class QuizEngine {
 		if (season.end) {
 			const seasonPoints = this.seasonStore.getPoints(state.groupId)
 			const seasonMembers = this.seasonStore.getMembers(state.groupId)
+			const seasonReachedAt = this.seasonStore.getReachedAt(state.groupId)
 
 			const seasonRows = [...seasonPoints.entries()]
 				.map(([lid, points]) => ({
 					lid,
 					points,
+					reachedAt: seasonReachedAt.get(lid) ?? Infinity,
 					member: state.byLid.get(lid) ?? seasonMembers.find((m) => m.lid === lid) ?? null,
 				}))
-				.filter((row): row is { lid: string; points: number; member: NMember } => Boolean(row.member))
+				.filter((row): row is { lid: string; points: number; reachedAt: number; member: NMember } =>
+					Boolean(row.member)
+				)
 				.toSorted((a, b) => {
 					if (b.points !== a.points) return b.points - a.points
-					return a.lid.localeCompare(b.lid)
+					return a.reachedAt - b.reachedAt
 				})
 				.map((row) => ({ member: row.member, points: row.points }))
 

@@ -120,6 +120,8 @@ function makeSingleQuestionKanjiBundle(): QuizBundle {
 			number: 1,
 			text: 'Q1',
 			answers: ['漢字'],
+			kanjiAnswers: ['漢字'],
+			extraPts: 2,
 			explanation: '',
 			imagePath: null,
 			isSpecialStage: false,
@@ -425,7 +427,8 @@ describe('QuizEngine behavior', () => {
 		expect(reactionCall).toBeTruthy()
 
 		const perfectWinnerCall = sendText.mock.calls.find((call) =>
-			Array.isArray(call) && call.length > 1 && String(call[1]).includes('🤩 *かんぺきだった！ (+12pts)*')
+			Array.isArray(call) && call.length > 1 && String(call[1]).includes('🤩 *かんぺきだった！*')
+			&& String(call[1]).includes('_+12pts_')
 		)
 		expect(perfectWinnerCall).toBeTruthy()
 

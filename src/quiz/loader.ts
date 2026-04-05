@@ -47,6 +47,31 @@ function normalizeOptionalDateValue(
 	return normalizeDateValue(value, key, ctx)
 }
 
+type NormalizedAnswer = { text: string; extraPts: number }
+
+function normalizeAnswerEntry(input: unknown, label: string, ctx: string): NormalizedAnswer | undefined {
+	if (typeof input === 'string') {
+		const trimmed = input.trim()
+		if (trimmed.length === 0) return undefined
+		return { text: trimmed, extraPts: 0 }
+	}
+	if (input && typeof input === 'object') {
+		const raw = input as { text?: unknown; extraPts?: unknown }
+		if (typeof raw.text !== 'string' || raw.text.trim().length === 0) {
+			throw new Error(`[quiz] invalid answers.${label}.text in ${ctx}: expected non-empty string`)
+		}
+		let extraPts = 0
+		if (raw.extraPts !== undefined && raw.extraPts !== null) {
+			if (typeof raw.extraPts !== 'number' || !Number.isInteger(raw.extraPts) || raw.extraPts < 0) {
+				throw new Error(`[quiz] invalid answers.${label}.extraPts in ${ctx}: expected non-negative integer`)
+			}
+			extraPts = raw.extraPts
+		}
+		return { text: raw.text.trim(), extraPts }
+	}
+	return undefined
+}
+
 function normalizeQuestionAnswers(
 	input: unknown,
 	ctx: string,
@@ -54,42 +79,11 @@ function normalizeQuestionAnswers(
 	if (!input || typeof input !== 'object') {
 		throw new Error(`[quiz] invalid answers in ${ctx}: expected object`)
 	}
-	const raw = input as {
-		kana?: unknown
-		romaji?: unknown
-		kanji?: { text?: unknown; extraPts?: unknown } | unknown
-	}
+	const raw = input as { kana?: unknown; romaji?: unknown; kanji?: unknown }
 
-	const kana = typeof raw.kana === 'string' && raw.kana.trim().length > 0
-		? raw.kana.trim()
-		: undefined
-	const romaji = typeof raw.romaji === 'string' && raw.romaji.trim().length > 0
-		? raw.romaji.trim()
-		: undefined
-
-	let kanji: { text: string; extraPts?: number } | undefined
-	if (raw.kanji && typeof raw.kanji === 'object') {
-		const rawKanji = raw.kanji as { text?: unknown; extraPts?: unknown }
-		if (typeof rawKanji.text !== 'string' || rawKanji.text.trim().length === 0) {
-			throw new Error(`[quiz] invalid answers.kanji.text in ${ctx}: expected non-empty string`)
-		}
-		const parsedExtra = rawKanji.extraPts
-		if (parsedExtra !== undefined && parsedExtra !== null) {
-			if (
-				typeof parsedExtra !== 'number'
-				|| !Number.isInteger(parsedExtra)
-				|| parsedExtra < 0
-			) {
-				throw new Error(`[quiz] invalid answers.kanji.extraPts in ${ctx}: expected non-negative integer`)
-			}
-		}
-		kanji = {
-			text: rawKanji.text.trim(),
-			...(typeof parsedExtra === 'number' && Number.isInteger(parsedExtra)
-				? { extraPts: parsedExtra }
-				: {}),
-		}
-	}
+	const kana = normalizeAnswerEntry(raw.kana, 'kana', ctx)
+	const romaji = normalizeAnswerEntry(raw.romaji, 'romaji', ctx)
+	const kanji = normalizeAnswerEntry(raw.kanji, 'kanji', ctx)
 
 	if (!kana && !romaji && !kanji) {
 		throw new Error(`[quiz] invalid answers in ${ctx}: at least one of kana/romaji/kanji is required`)
@@ -632,34 +626,61 @@ function uniqueAnswers(input: ReadonlyArray<string>): string[] {
 }
 
 function formatAnswerOptionsBlock(answers: ConfigQuestionAnswers): string {
-	const hasKana = typeof answers.kana === 'string' && answers.kana.trim().length > 0
-	const hasRomaji = typeof answers.romaji === 'string' && answers.romaji.trim().length > 0
-	const hasKanji = typeof answers.kanji?.text === 'string' && answers.kanji.text.trim().length > 0
-	const hasKanjiExtraPts = typeof answers.kanji?.extraPts === 'number'
-	const extraPts = hasKanji ? (hasKanjiExtraPts ? answers.kanji!.extraPts : POINTS_KANJI_BONUS) : undefined
+	const kanaEntry = typeof answers.kana === 'object' ? answers.kana : null
+	const romajiEntry = typeof answers.romaji === 'object' ? answers.romaji : null
+	const kanjiEntry = typeof answers.kanji === 'object' ? answers.kanji : null
+
+	const hasKana = kanaEntry !== null
+	const hasRomaji = romajiEntry !== null
+	const hasKanji = kanjiEntry !== null
+
+	const kanaExtraPts = kanaEntry?.extraPts ?? 0
+	const romajiExtraPts = romajiEntry?.extraPts ?? 0
+	const kanjiExtraPts = kanjiEntry?.extraPts ?? 0
 
 	return [
 		'*Opsi jawab:*',
-		`${hasKana ? '✅' : '❌'} かな (kana)`,
-		`${hasRomaji ? '✅' : '❌'} romaji + jenis kana`,
+		`${hasKana ? '✅' : '❌'} かな (kana)${kanaExtraPts > 0 ? ` *+${kanaExtraPts}pts*` : ''}`,
+		`${hasRomaji ? '✅' : '❌'} romaji + jenis kana${romajiExtraPts > 0 ? ` *+${romajiExtraPts}pts*` : ''}`,
 		hasKanji
-			? `🌸 漢字 (kanji)${extraPts ? ` *+${extraPts}pts*` : ''}`
+			? `🌸 漢字 (kanji)${kanjiExtraPts > 0 ? ` *+${kanjiExtraPts}pts*` : ''}`
 			: '❌ 漢字 (kanji)',
 	].join('\n')
 }
 
+function getAnswerText(entry: string | { text: string; extraPts?: number } | undefined): string | undefined {
+	if (typeof entry === 'string') return entry
+	if (entry && typeof entry === 'object') return entry.text
+	return undefined
+}
+
+function getAnswerExtraPts(entry: string | { text: string; extraPts?: number } | undefined): number {
+	if (entry && typeof entry === 'object') return entry.extraPts ?? 0
+	return 0
+}
+
 function convertConfigQuestion(entry: ConfigQuestion): QuizQuestion {
 	const answers = uniqueAnswers([
-		...(entry.answers.kana ? [entry.answers.kana] : []),
-		...(entry.answers.romaji ? [entry.answers.romaji] : []),
-		...(entry.answers.kanji?.text ? [entry.answers.kanji.text] : []),
-	])
+		getAnswerText(entry.answers.kana),
+		getAnswerText(entry.answers.romaji),
+		getAnswerText(entry.answers.kanji),
+	].filter((t): t is string => Boolean(t)))
+
+	const extraPts = Math.max(
+		getAnswerExtraPts(entry.answers.kana),
+		getAnswerExtraPts(entry.answers.romaji),
+		getAnswerExtraPts(entry.answers.kanji),
+	)
+	const hasKanji = typeof entry.answers.kanji === 'object' && entry.answers.kanji !== null
+		&& typeof (entry.answers.kanji as { text?: string }).text === 'string'
+	const kanjiText = hasKanji ? (entry.answers.kanji as { text: string }).text : ''
 
 	return {
 		number: entry.no,
 		text: `${entry.hint}\n\n${formatAnswerOptionsBlock(entry.answers)}`,
 		answers,
-		...(entry.answers.kanji?.extraPts !== undefined ? { kanjiExtraPts: entry.answers.kanji.extraPts } : {}),
+		...(hasKanji ? { kanjiAnswers: [kanjiText] as const } : {}),
+		...(extraPts > 0 ? { extraPts } : {}),
 		explanation: entry.explanation ?? '',
 		imagePath: null,
 		isSpecialStage: entry.no === SPECIAL_STAGE_NUMBER,

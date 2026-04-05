@@ -91,7 +91,7 @@ describe('defineConfig', () => {
 		expect(config.questions).toHaveLength(1)
 		expect(config.questions[0]?.no).toBe(1)
 		expect(config.questions[0]?.hint).toBe('test')
-		expect(config.questions[0]?.answers.kana).toBe('あ')
+		expect(config.questions[0]?.answers.kana).toEqual({ text: 'あ', extraPts: 0 })
 	})
 
 	test('throws on invalid values', () => {
@@ -203,17 +203,18 @@ describe('loadQuizBundle schedule behavior', () => {
 		expect(q.text).not.toContain('🌸')
 	})
 
-	test('shows default +2pts marker when extraPts is missing, but omits when zero', async () => {
+	test('omits bonus marker when extraPts is missing or zero, shows when set', async () => {
 		const quizDir = await writeQuizDir('w20260404-kanji-missing', {
 			'kotaete.ts': [
 				"import { defineConfig } from '@mdrv/kotaete'",
 				'',
 				'export default defineConfig({',
 				"  intro: new Date('2026-04-04T07:50:00+07:00'),",
-				'  rounds: [{ emoji: "🌅", start: new Date("2026-04-04T08:00:00+07:00"), questionRange: [1, 2] }],',
+				'  rounds: [{ emoji: "🌅", start: new Date("2026-04-04T08:00:00+07:00"), questionRange: [1, 3] }],',
 				'  questions: [',
 				'    { no: 1, hint: "Missing", answers: { kana: "a", kanji: { text: "A" } } },',
 				'    { no: 2, hint: "Zero", answers: { kana: "b", kanji: { text: "B", extraPts: 0 } } },',
+				'    { no: 3, hint: "Set", answers: { kana: "c", kanji: { text: "C", extraPts: 3 } } },',
 				'  ],',
 				'})',
 			].join('\n'),
@@ -221,11 +222,15 @@ describe('loadQuizBundle schedule behavior', () => {
 
 		const bundle = await loadQuizBundle(quizDir)
 		const q1 = bundle.questions[0]!
-		expect(q1.text).toContain('🌸 漢字 (kanji) *+2pts*')
+		expect(q1.text).toContain('🌸 漢字 (kanji)')
+		expect(q1.text).not.toContain('*+')
 
 		const q2 = bundle.questions[1]!
 		expect(q2.text).toContain('🌸 漢字 (kanji)')
 		expect(q2.text).not.toContain('*+')
+
+		const q3 = bundle.questions[2]!
+		expect(q3.text).toContain('🌸 漢字 (kanji) *+3pts*')
 	})
 
 	test('throws when kotaete.ts is absent', async () => {

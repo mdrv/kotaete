@@ -11,7 +11,8 @@ export type QuizQuestion = {
 	number: number
 	text: string
 	answers: ReadonlyArray<string>
-	kanjiExtraPts?: number
+	kanjiAnswers?: ReadonlyArray<string>
+	extraPts?: number
 	explanation: string
 	imagePath: string | null
 	isSpecialStage: boolean
@@ -66,10 +67,12 @@ export type ConfigQuestionImage = {
 	god?: boolean
 }
 
+export type ConfigAnswerEntry = string | { text: string; extraPts?: number }
+
 export type ConfigQuestionAnswers = {
-	kana?: string
-	romaji?: string
-	kanji?: { text: string; extraPts?: number }
+	kana?: ConfigAnswerEntry
+	romaji?: ConfigAnswerEntry
+	kanji?: ConfigAnswerEntry
 }
 
 export type ConfigQuestion = {
