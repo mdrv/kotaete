@@ -99,7 +99,9 @@ function isValidAnswerEnding(text: string): boolean {
 }
 
 function formatWibTimeHint(timestampMs: number): string {
-	return WIB_TIME_HM_FMT.format(new Date(timestampMs)).replaceAll(':', '.')
+	// Ceiling to next minute since seconds are omitted from display
+	const ceiledMs = Math.ceil(timestampMs / 60_000) * 60_000
+	return WIB_TIME_HM_FMT.format(new Date(ceiledMs)).replaceAll(':', '.')
 }
 
 function formatWibTimeColon(timestampMs: number): string {
