@@ -63,15 +63,20 @@ export const seasonCmd = app
 						return
 					}
 
+					const reachedAt = store.getReachedAt(args.groupId)
 					const entries = [...points.entries()]
-						.sort((a, b) => b[1] - a[1])
 						.map(([mid, pts]) => {
 							const member = members.find((m) => m.mid === mid)
 							return {
 								mid,
 								name: member?.kananame ?? member?.nickname ?? mid,
 								points: pts,
+								reachedAt: reachedAt.get(mid) ?? Infinity,
 							}
+						})
+						.sort((a, b) => {
+							if (b.points !== a.points) return b.points - a.points
+							return a.reachedAt - b.reachedAt
 						})
 
 					if (flags.json) {
@@ -99,15 +104,20 @@ export const seasonCmd = app
 				const result = groups.map((groupId) => {
 					const points = store.getPoints(groupId)
 					const members = store.getMembers(groupId)
+					const reachedAt = store.getReachedAt(groupId)
 					const entries = [...points.entries()]
-						.sort((a, b) => b[1] - a[1])
 						.map(([mid, pts]) => {
 							const member = members.find((m) => m.mid === mid)
 							return {
 								mid,
 								name: member?.kananame ?? member?.nickname ?? mid,
 								points: pts,
+								reachedAt: reachedAt.get(mid) ?? Infinity,
 							}
+						})
+						.sort((a, b) => {
+							if (b.points !== a.points) return b.points - a.points
+							return a.reachedAt - b.reachedAt
 						})
 					return { groupId, entries }
 				})

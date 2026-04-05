@@ -48,10 +48,6 @@ type SeasonPointsSnapshotV2 = {
 
 type SeasonPointsSnapshot = SeasonPointsSnapshotV1 | SeasonPointsSnapshotV2
 
-function isV1Snapshot(parsed: SeasonPointsSnapshot): parsed is SeasonPointsSnapshotV1 {
-	return (parsed as SeasonPointsSnapshotV1).version === 1
-}
-
 /**
  * Migrate a v1 (lid-keyed) snapshot entry into mid-keyed maps.
  * Falls back to pn if lid is not resolvable from the members list.
@@ -117,9 +113,13 @@ export class SeasonStore {
 			if (!parsed.groups || typeof parsed.groups !== 'object') return
 
 			for (const [groupId, data] of Object.entries(parsed.groups)) {
-				if (isV1Snapshot(parsed)) {
+				// Detect format per-group, not just by top-level version
+				const groupData = data as SeasonPointsSnapshotV2['groups'][string] & SeasonPointsSnapshotV1['groups'][string]
+				const isV1Group = 'pointsByLid' in groupData && groupData.pointsByLid !== undefined
+
+				if (isV1Group) {
 					// Migrate v1 → v2 format
-					const { pointsByMid, reachedAtByMid } = migrateV1ToMid(data)
+					const { pointsByMid, reachedAtByMid } = migrateV1ToMid(data as SeasonPointsSnapshotV1['groups'][string])
 					this.groups.set(groupId, {
 						groupId,
 						members: data.members ?? [],
@@ -128,18 +128,17 @@ export class SeasonStore {
 					})
 				} else {
 					// V2: load directly
-					const v2Data = data as SeasonPointsSnapshotV2['groups'][string]
 					const pointsByMid = new Map<string, number>()
 					const reachedAtByMid = new Map<string, number>()
-					for (const entry of v2Data.pointsByMid ?? []) {
+					for (const entry of groupData.pointsByMid ?? []) {
 						pointsByMid.set(entry.mid, entry.points)
 					}
-					for (const entry of v2Data.reachedAtByMid ?? []) {
+					for (const entry of groupData.reachedAtByMid ?? []) {
 						reachedAtByMid.set(entry.mid, entry.reachedAt)
 					}
 					this.groups.set(groupId, {
 						groupId,
-						members: v2Data.members ?? [],
+						members: groupData.members ?? [],
 						pointsByMid,
 						reachedAtByMid,
 					})
