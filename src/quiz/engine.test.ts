@@ -858,8 +858,8 @@ describe('season accumulation behavior', () => {
 
 		// Pre-populate some points
 		await store.setGroupMembers('120@g.us', members)
-		await store.addPoints('120@g.us', members, new Map([['628111@lid', 50]]))
-		expect(store.getPoints('120@g.us').get('628111@lid')).toBe(50)
+		await store.addPoints('120@g.us', members, new Map([['1', 50]]))
+		expect(store.getPoints('120@g.us').get('1')).toBe(50)
 
 		const { engine } = createEngine({ seasonStore: store })
 		await engine.run(makeBundleWithSeason({ start: true }), members, '120@g.us', { noCooldown: true })
@@ -867,7 +867,7 @@ describe('season accumulation behavior', () => {
 		await engine.stopCurrentQuizWithFinal()
 
 		// After season start, points should be reset + quiz points only (10)
-		const points = store.getPoints('120@g.us').get('628111@lid')
+		const points = store.getPoints('120@g.us').get('1')
 		expect(points).toBe(10)
 	})
 
@@ -887,17 +887,31 @@ describe('season accumulation behavior', () => {
 		await engine2.onIncomingMessage(makeIncoming({ text: 'abc', key: { id: 'S-2', remoteJid: '120@g.us' } }))
 		await engine2.stopCurrentQuizWithFinal()
 
-		expect(store.getPoints('120@g.us').get('628111@lid')).toBe(20)
-		expect(store.getPoints('120@g.us').get('628111@lid') ?? 0).toBe(20)
+		expect(store.getPoints('120@g.us').get('1')).toBe(20)
+		expect(store.getPoints('120@g.us').get('1') ?? 0).toBe(20)
 	})
 
 	test('season end sends image+caption first and sends others message when >3 participants', async () => {
 		const store = makeSeasonStore()
 		const members = [
-			makeMember({ pn: '628111', kananame: 'アリ', nickname: 'Ari', classgroup: '10B' }),
-			makeMember({ lid: '628222@lid', pn: '628222', kananame: 'バニャ', nickname: 'Vanya', classgroup: '8B' }),
-			makeMember({ lid: '628333@lid', pn: '628333', kananame: 'ナディラ', nickname: 'Nadhila', classgroup: '10C' }),
-			makeMember({ lid: '628444@lid', pn: '628444', kananame: 'ララ', nickname: 'Rara', classgroup: '7B' }),
+			makeMember({ mid: '1', pn: '628111', kananame: 'アリ', nickname: 'Ari', classgroup: '10B' }),
+			makeMember({
+				mid: '2',
+				lid: '628222@lid',
+				pn: '628222',
+				kananame: 'バニャ',
+				nickname: 'Vanya',
+				classgroup: '8B',
+			}),
+			makeMember({
+				mid: '3',
+				lid: '628333@lid',
+				pn: '628333',
+				kananame: 'ナディラ',
+				nickname: 'Nadhila',
+				classgroup: '10C',
+			}),
+			makeMember({ mid: '4', lid: '628444@lid', pn: '628444', kananame: 'ララ', nickname: 'Rara', classgroup: '7B' }),
 		]
 
 		// Pre-accumulate points so we have varied scores
@@ -906,10 +920,10 @@ describe('season accumulation behavior', () => {
 			'120@g.us',
 			members,
 			new Map([
-				['628111@lid', 40],
-				['628222@lid', 50],
-				['628333@lid', 30],
-				['628444@lid', 10],
+				['1', 40],
+				['2', 50],
+				['3', 30],
+				['4', 10],
 			]),
 		)
 
@@ -936,14 +950,21 @@ describe('season accumulation behavior', () => {
 		expect(othersMessage).toContain('ララ')
 
 		// Points should be reset after season end
-		expect(store.getPoints('120@g.us').get('628222@lid')).toBe(50)
+		expect(store.getPoints('120@g.us').get('2')).toBe(50)
 	})
 
 	test('season end with <=3 participants does not send others message', async () => {
 		const store = makeSeasonStore()
 		const members = [
-			makeMember({ pn: '628111', kananame: 'アリ', nickname: 'Ari', classgroup: '10B' }),
-			makeMember({ lid: '628222@lid', pn: '628222', kananame: 'バニャ', nickname: 'Vanya', classgroup: '8B' }),
+			makeMember({ mid: '1', pn: '628111', kananame: 'アリ', nickname: 'Ari', classgroup: '10B' }),
+			makeMember({
+				mid: '2',
+				lid: '628222@lid',
+				pn: '628222',
+				kananame: 'バニャ',
+				nickname: 'Vanya',
+				classgroup: '8B',
+			}),
 		]
 
 		await store.setGroupMembers('120@g.us', members)
@@ -951,8 +972,8 @@ describe('season accumulation behavior', () => {
 			'120@g.us',
 			members,
 			new Map([
-				['628111@lid', 40],
-				['628222@lid', 50],
+				['1', 40],
+				['2', 50],
 			]),
 		)
 
@@ -976,7 +997,7 @@ describe('season accumulation behavior', () => {
 		expect(othersMessage).toBeFalsy()
 
 		// Points should be reset after season end
-		expect(store.getPoints('120@g.us').get('628222@lid')).toBe(50)
+		expect(store.getPoints('120@g.us').get('2')).toBe(50)
 	})
 
 	test('no season messages when season config is absent', async () => {

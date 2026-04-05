@@ -25,11 +25,12 @@ import {
 	formatNextRoundNotice,
 	formatQuestion,
 	formatQuestionWarning,
+	formatRomajiTease,
 	formatSeasonOthersMessage,
 	formatSeasonTopMessage,
 	formatTimeout,
 	formatWinner,
-	formatWinnerKanjiPerfect,
+	formatWinnerPerfect,
 } from './messages.ts'
 import { awardCorrectPoints, awardWrongPoints } from './scoring.ts'
 import { SeasonStore } from './season-store.ts'
@@ -55,9 +56,9 @@ type RunnerState = {
 	groupId: string
 	byLid: Map<string, NMember>
 	byCanonicalLid: Map<string, NMember>
-	pointsByLid: Map<string, number>
-	scoreReachedAtByLid: Map<string, number>
-	questionPointsByLid: Map<string, number>
+	pointsByMid: Map<string, number>
+	scoreReachedAtByMid: Map<string, number>
+	questionPointsByMid: Map<string, number>
 	cooldowns: Map<string, number>
 	noCooldown: boolean
 	cooldownWarningSent: boolean
@@ -105,16 +106,30 @@ function formatWibTimeColon(timestampMs: number): string {
 	return WIB_TIME_HM_FMT.format(new Date(timestampMs)).replaceAll('.', ':')
 }
 
-function hasKanji(input: string): boolean {
-	return /\p{Script=Han}/u.test(input)
-}
-
 type RoundMeta = {
 	index: number
 	total: number
 	emoji: string
 	startAt: Date
 	questions: ReadonlyArray<QuizQuestion>
+}
+
+/**
+ * Check if the user's answer is purely romaji (Latin letters only, possibly with whitespace/hyphens)
+ * and matches the first word of any expected answer (indicating they forgot the kana type suffix).
+ */
+function isRomajiWithoutType(input: string, answers: ReadonlyArray<string>): boolean {
+	const normalized = input.trim()
+	if (!normalized) return false
+	// Must be purely Latin/ASCII (romaji) — no CJK, kana, etc.
+	if (!/^[a-zA-Z\s\-]+$/.test(normalized)) return false
+	const firstWord = normalized.split(/\s+/)[0]?.trim().toLowerCase()
+	if (!firstWord) return false
+	for (const answer of answers) {
+		const answerFirstWord = answer.split(/\s+/)[0]?.trim().toLowerCase()
+		if (answerFirstWord && firstWord === answerFirstWord) return true
+	}
+	return false
 }
 
 function buildRoundPlan(bundle: QuizBundle): RoundMeta[] {
@@ -224,9 +239,9 @@ export class QuizEngine {
 			groupId,
 			byLid,
 			byCanonicalLid,
-			pointsByLid: new Map(),
-			scoreReachedAtByLid: new Map(),
-			questionPointsByLid: new Map(),
+			pointsByMid: new Map(),
+			scoreReachedAtByMid: new Map(),
+			questionPointsByMid: new Map(),
 			cooldowns: new Map(),
 			noCooldown: opts?.noCooldown ?? false,
 			cooldownWarningSent: false,
@@ -333,8 +348,8 @@ export class QuizEngine {
 			return
 		}
 
-		// Use member.lid as the stable key for all internal tracking
-		const memberKey = member.lid
+		// Use member.mid as the stable key for all internal tracking
+		const memberKey = member.mid
 
 		const question = this.currentQuestion()
 		if (!question) {
@@ -393,7 +408,17 @@ export class QuizEngine {
 		}
 
 		log.debug(`wrong answer key=${memberKey} q=${question.number}`)
-		await this.handleWrong(incoming, member, question)
+
+		if (isRomajiWithoutType(incoming.text, question.answers)) {
+			await this.handleWrong(incoming, member, question)
+			await this.sender.sendText(
+				state.groupId,
+				formatRomajiTease(incoming.text.trim(), state.bundle.messageTemplates),
+				{ linkPreview: false, quotedKey: incoming.key },
+			)
+		} else {
+			await this.handleWrong(incoming, member, question)
+		}
 	}
 
 	private currentQuestion(): QuizQuestion | null {
@@ -421,14 +446,18 @@ export class QuizEngine {
 	}
 
 	private currentScoreRows(state: RunnerState): Array<{ member: NMember; points: number }> {
-		return [...state.pointsByLid.entries()]
-			.map(([lid, points]) => ({
-				lid,
+		const byMid = new Map<string, NMember>()
+		for (const m of state.byLid.values()) {
+			byMid.set(m.mid, m)
+		}
+		return [...state.pointsByMid.entries()]
+			.map(([mid, points]) => ({
+				mid,
 				points,
-				member: state.byLid.get(lid),
-				reachedAt: state.scoreReachedAtByLid.get(lid) ?? Infinity,
+				member: byMid.get(mid),
+				reachedAt: state.scoreReachedAtByMid.get(mid) ?? Infinity,
 			}))
-			.filter((row): row is { lid: string; points: number; member: NMember; reachedAt: number } => Boolean(row.member))
+			.filter((row): row is { mid: string; points: number; member: NMember; reachedAt: number } => Boolean(row.member))
 			.toSorted((a, b) => {
 				if (b.points !== a.points) return b.points - a.points
 				return a.reachedAt - b.reachedAt
@@ -454,7 +483,7 @@ export class QuizEngine {
 		state.roundQuestionIndex += 1
 		state.wrongStreak.clear()
 		state.attemptedSpecial.clear()
-		state.questionPointsByLid.clear()
+		state.questionPointsByMid.clear()
 		state.cooldownWarningSent = false
 
 		if (state.roundQuestionIndex >= activeRound.questions.length) {
@@ -580,28 +609,28 @@ export class QuizEngine {
 		const state = this.state
 		if (!state?.active) return
 
-		const isKanjiPerfect = hasKanji(incoming.text)
-		await this.sender.react(state.groupId, incoming.key, isKanjiPerfect ? REACTION_CORRECT_KANJI : REACTION_CORRECT)
+		const hasExtraPts = (question.extraPts ?? 0) > 0
+		await this.sender.react(state.groupId, incoming.key, hasExtraPts ? REACTION_CORRECT_KANJI : REACTION_CORRECT)
 
-		const currentQuestionPoints = state.questionPointsByLid.get(member.lid) ?? 0
+		const currentQuestionPoints = state.questionPointsByMid.get(member.mid) ?? 0
 		let gained = awardCorrectPoints(currentQuestionPoints, question.isSpecialStage)
 		gained += question.extraPts ?? 0
 
 		if (gained !== 0) {
-			state.pointsByLid.set(member.lid, (state.pointsByLid.get(member.lid) ?? 0) + gained)
-			state.scoreReachedAtByLid.set(member.lid, Date.now())
-			state.questionPointsByLid.set(member.lid, currentQuestionPoints + gained)
+			state.pointsByMid.set(member.mid, (state.pointsByMid.get(member.mid) ?? 0) + gained)
+			state.scoreReachedAtByMid.set(member.mid, Date.now())
+			state.questionPointsByMid.set(member.mid, currentQuestionPoints + gained)
 			if (this.seasonStore && state.bundle.season) {
-				await this.seasonStore.addPoints(state.groupId, [...state.byLid.values()], new Map([[member.lid, gained]]))
+				await this.seasonStore.addPoints(state.groupId, [...state.byLid.values()], new Map([[member.mid, gained]]))
 			}
 		}
 
-		if (!question.isSpecialStage) state.cooldowns.set(member.lid, Date.now() + COOLDOWN_MS)
+		if (!question.isSpecialStage) state.cooldowns.set(member.mid, Date.now() + COOLDOWN_MS)
 
 		await this.sender.sendText(
 			state.groupId,
-			isKanjiPerfect
-				? formatWinnerKanjiPerfect(member, question.answers, gained, state.bundle.messageTemplates)
+			hasExtraPts
+				? formatWinnerPerfect(member, question.answers, gained, state.bundle.messageTemplates)
 				: formatWinner(member, question.answers, gained, state.bundle.messageTemplates),
 			{
 				linkPreview: false,
@@ -624,26 +653,26 @@ export class QuizEngine {
 		if (!state.acceptingAnswers) return
 
 		if (question.isSpecialStage) {
-			state.attemptedSpecial.add(member.lid)
+			state.attemptedSpecial.add(member.mid)
 			await this.sender.react(state.groupId, incoming.key, REACTION_NO_MORE_CHANCE)
 			return
 		}
 
-		const key = member.lid
+		const key = member.mid
 		const maxWrong = QUIZ_TUNABLES.wrongAttempts.maxCount
 		const remain = state.wrongStreak.get(key) ?? maxWrong
 		if (remain < 0) return
 
 		const gained = awardWrongPoints(question.isSpecialStage)
 		if (gained !== 0) {
-			state.pointsByLid.set(member.lid, (state.pointsByLid.get(member.lid) ?? 0) + gained)
-			state.scoreReachedAtByLid.set(member.lid, Date.now())
-			state.questionPointsByLid.set(
-				member.lid,
-				(state.questionPointsByLid.get(member.lid) ?? 0) + gained,
+			state.pointsByMid.set(member.mid, (state.pointsByMid.get(member.mid) ?? 0) + gained)
+			state.scoreReachedAtByMid.set(member.mid, Date.now())
+			state.questionPointsByMid.set(
+				member.mid,
+				(state.questionPointsByMid.get(member.mid) ?? 0) + gained,
 			)
 			if (this.seasonStore && state.bundle.season) {
-				await this.seasonStore.addPoints(state.groupId, [...state.byLid.values()], new Map([[member.lid, gained]]))
+				await this.seasonStore.addPoints(state.groupId, [...state.byLid.values()], new Map([[member.mid, gained]]))
 			}
 		}
 
@@ -713,14 +742,18 @@ export class QuizEngine {
 			const seasonMembers = this.seasonStore.getMembers(state.groupId)
 			const seasonReachedAt = this.seasonStore.getReachedAt(state.groupId)
 
+			const seasonByMid = new Map<string, NMember>()
+			for (const m of state.byLid.values()) {
+				seasonByMid.set(m.mid, m)
+			}
 			const seasonRows = [...seasonPoints.entries()]
-				.map(([lid, points]) => ({
-					lid,
+				.map(([mid, points]) => ({
+					mid,
 					points,
-					reachedAt: seasonReachedAt.get(lid) ?? Infinity,
-					member: state.byLid.get(lid) ?? seasonMembers.find((m) => m.lid === lid) ?? null,
+					reachedAt: seasonReachedAt.get(mid) ?? Infinity,
+					member: seasonByMid.get(mid) ?? seasonMembers.find((m) => m.mid === mid) ?? null,
 				}))
-				.filter((row): row is { lid: string; points: number; reachedAt: number; member: NMember } =>
+				.filter((row): row is { mid: string; points: number; reachedAt: number; member: NMember } =>
 					Boolean(row.member)
 				)
 				.toSorted((a, b) => {

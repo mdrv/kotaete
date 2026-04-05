@@ -222,11 +222,11 @@ describe('loadQuizBundle schedule behavior', () => {
 
 		const bundle = await loadQuizBundle(quizDir)
 		const q1 = bundle.questions[0]!
-		expect(q1.text).toContain('🌸 漢字 (kanji)')
+		expect(q1.text).toContain('✅ 漢字 (kanji)')
 		expect(q1.text).not.toContain('*+')
 
 		const q2 = bundle.questions[1]!
-		expect(q2.text).toContain('🌸 漢字 (kanji)')
+		expect(q2.text).toContain('✅ 漢字 (kanji)')
 		expect(q2.text).not.toContain('*+')
 
 		const q3 = bundle.questions[2]!

@@ -65,12 +65,11 @@ export const seasonCmd = app
 
 					const entries = [...points.entries()]
 						.sort((a, b) => b[1] - a[1])
-						.map(([lid, pts]) => {
-							const member = members.find((m) => m.lid === lid)
+						.map(([mid, pts]) => {
+							const member = members.find((m) => m.mid === mid)
 							return {
-								lid,
-								pn: member?.pn ?? undefined,
-								name: member?.kananame ?? member?.nickname ?? lid,
+								mid,
+								name: member?.kananame ?? member?.nickname ?? mid,
 								points: pts,
 							}
 						})
@@ -82,8 +81,7 @@ export const seasonCmd = app
 
 					console.log(`Season scores for ${args.groupId}:`)
 					for (const entry of entries) {
-						const pnSuffix = entry.pn ? ` (${entry.pn})` : ''
-						console.log(`  ${entry.points}\t${entry.name} [${entry.lid}]${pnSuffix}`)
+						console.log(`  ${entry.points}\t${entry.name} [${entry.mid}]`)
 					}
 					return
 				}
@@ -103,12 +101,11 @@ export const seasonCmd = app
 					const members = store.getMembers(groupId)
 					const entries = [...points.entries()]
 						.sort((a, b) => b[1] - a[1])
-						.map(([lid, pts]) => {
-							const member = members.find((m) => m.lid === lid)
+						.map(([mid, pts]) => {
+							const member = members.find((m) => m.mid === mid)
 							return {
-								lid,
-								pn: member?.pn ?? undefined,
-								name: member?.kananame ?? member?.nickname ?? lid,
+								mid,
+								name: member?.kananame ?? member?.nickname ?? mid,
 								points: pts,
 							}
 						})
@@ -126,8 +123,7 @@ export const seasonCmd = app
 						console.log('  (empty)')
 					} else {
 						for (const entry of group.entries) {
-							const pnSuffix = entry.pn ? ` (${entry.pn})` : ''
-							console.log(`  ${entry.points}\t${entry.name} [${entry.lid}]${pnSuffix}`)
+							console.log(`  ${entry.points}\t${entry.name} [${entry.mid}]`)
 						}
 					}
 					console.log('')
@@ -140,7 +136,7 @@ export const seasonCmd = app
 			.meta({ description: 'Adjust season points by signed integer delta' })
 			.args([
 				{ name: 'groupId', type: 'string', required: true },
-				{ name: 'memberLid', type: 'string', required: true },
+				{ name: 'memberMid', type: 'string', required: true },
 				{ name: 'points', type: 'string', required: true },
 			])
 			.run(async ({ args, flags }) => {
@@ -152,21 +148,21 @@ export const seasonCmd = app
 
 				const store = new SeasonStore()
 				await store.load()
-				await store.adjustPoints(args.groupId, args.memberLid, delta)
+				await store.adjustPoints(args.groupId, args.memberMid, delta)
 				await store.persist()
 
-				const current = store.getPoints(args.groupId).get(args.memberLid) ?? 0
+				const current = store.getPoints(args.groupId).get(args.memberMid) ?? 0
 				if (flags.json) {
 					console.log(
 						JSON.stringify(
-							{ ok: true, groupId: args.groupId, lid: args.memberLid, delta, total: current },
+							{ ok: true, groupId: args.groupId, mid: args.memberMid, delta, total: current },
 							null,
 							2,
 						),
 					)
 					return
 				}
-				console.log(`✅ ${args.memberLid}: +${delta} → ${current} pts`)
+				console.log(`✅ ${args.memberMid}: +${delta} → ${current} pts`)
 			}),
 	)
 	.command(
@@ -175,7 +171,7 @@ export const seasonCmd = app
 			.meta({ description: 'Set absolute season points (if <=0 remove entry)' })
 			.args([
 				{ name: 'groupId', type: 'string', required: true },
-				{ name: 'memberLid', type: 'string', required: true },
+				{ name: 'memberMid', type: 'string', required: true },
 				{ name: 'points', type: 'string', required: true },
 			])
 			.run(async ({ args, flags }) => {
@@ -187,20 +183,20 @@ export const seasonCmd = app
 
 				const store = new SeasonStore()
 				await store.load()
-				await store.setPoints(args.groupId, args.memberLid, points)
+				await store.setPoints(args.groupId, args.memberMid, points)
 				await store.persist()
 
 				if (flags.json) {
 					console.log(
 						JSON.stringify(
-							{ ok: true, groupId: args.groupId, lid: args.memberLid, points },
+							{ ok: true, groupId: args.groupId, mid: args.memberMid, points },
 							null,
 							2,
 						),
 					)
 					return
 				}
-				console.log(`✅ ${args.memberLid}: set to ${points} pts`)
+				console.log(`✅ ${args.memberMid}: set to ${points} pts`)
 			}),
 	)
 	.command(

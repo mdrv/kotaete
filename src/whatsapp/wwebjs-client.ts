@@ -424,7 +424,7 @@ export class WWebJsWhatsAppClient implements IWhatsAppClient {
 			groupId: message.from,
 			senderRawJid,
 			senderNumber: resolution.number,
-			senderLid: null,
+			senderLid: senderRawJid.endsWith(LID_SUFFIX) ? senderRawJid : null,
 			text,
 			key: {
 				remoteJid: message.from,

@@ -140,6 +140,9 @@ export class BaileysWhatsAppClient implements IWhatsAppClient {
 	private reconnectConflictCount = 0
 	private baileysRuntime: {
 		makeWASocket: (options: Record<string, unknown>) => BaileysSocketLike
+		makeInMemoryStore: (options: Record<string, unknown>) => {
+			bind: (ev: { on: (event: string, listener: (...args: unknown[]) => void) => void }) => void
+		}
 		Browsers: {
 			windows: (browser: string) => unknown
 		}
@@ -170,6 +173,9 @@ export class BaileysWhatsAppClient implements IWhatsAppClient {
 		) => Promise<unknown>
 		const runtime = (await dynamicImport(moduleSpecifier)) as {
 			default: (options: Record<string, unknown>) => BaileysSocketLike
+			makeInMemoryStore: (options: Record<string, unknown>) => {
+				bind: (ev: { on: (event: string, listener: (...args: unknown[]) => void) => void }) => void
+			}
 			Browsers: {
 				windows: (browser: string) => unknown
 			}
@@ -189,6 +195,7 @@ export class BaileysWhatsAppClient implements IWhatsAppClient {
 
 		this.baileysRuntime = {
 			makeWASocket: runtime.default,
+			makeInMemoryStore: runtime.makeInMemoryStore,
 			Browsers: runtime.Browsers,
 			fetchLatestBaileysVersion: runtime.fetchLatestBaileysVersion,
 			isJidGroup: runtime.isJidGroup,
@@ -215,6 +222,7 @@ export class BaileysWhatsAppClient implements IWhatsAppClient {
 		const { state, saveCreds } = await runtime.useMultiFileAuthState(this.options.authDir)
 		const versionInfo = await runtime.fetchLatestBaileysVersion()
 		const logger = pino({ level: 'silent' })
+		const store = runtime.makeInMemoryStore({})
 
 		const socket = runtime.makeWASocket({
 			auth: {
@@ -226,8 +234,18 @@ export class BaileysWhatsAppClient implements IWhatsAppClient {
 			logger,
 			markOnlineOnConnect: false,
 			syncFullHistory: true,
+			getMessage: async (key: { remoteJid?: string; id?: string }) => {
+				const msgId = key.id ?? ''
+				const remoteJid = key.remoteJid ?? ''
+				if (!msgId || !remoteJid) return undefined
+				const cached = (store as unknown as { messages: { get: (jid: string, id: string) => unknown } })
+					.messages.get(remoteJid, msgId)
+				return cached ?? undefined
+			},
 		})
 		this.sock = socket
+
+		store.bind(socket.ev)
 
 		socket.ev.on('creds.update', saveCreds)
 		socket.ev.on('lid-mapping.update', async (...args) => {

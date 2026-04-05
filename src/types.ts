@@ -34,7 +34,8 @@ export type QuizMessageTemplates = {
 	questionWarning: string
 	timeout: string
 	winner: string
-	winnerKanji: string
+	winnerPerfect: string
+	romajiTease: string
 	explanation: string
 	explanationSpecial: string
 	breakHeader: string
@@ -42,6 +43,8 @@ export type QuizMessageTemplates = {
 	finalRow: string
 	finalEmpty: string
 	finalFooterDefault: string
+	intro?: string
+	outro?: string
 }
 
 export type QuizBundle = {

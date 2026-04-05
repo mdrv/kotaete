@@ -34,7 +34,8 @@ const DEFAULT_TEMPLATES: QuizMessageTemplates = {
 	questionWarning: '⏰ Tinggal 10 menit lagi!',
 	timeout: '⏱️ Waktu habis untuk soal ini.\n✅ {answers}',
 	winner: '🤗 *せいかいだった！*\n🌸 *{name}({classgroup})* _+{points}pts_\n✅ {answers}',
-	winnerKanji: '🤩 *かんぺきだった！*\n🌸 *{name}({classgroup})* _+{points}pts_\n✅ {answers}',
+	winnerPerfect: '🤩 *かんぺきだった！*\n🌸 *{name}({classgroup})* _+{points}pts_\n✅ {answers}',
+	romajiTease: '🐻 Kayaknya ada yang lupa deh!\n💬 _{answer}_',
 	explanation: '🌻 *_Shitteimasu ka?_* *({progress})*\n{text}',
 	explanationSpecial: '🌻 *_Shitteimasu ka?_* *(神)*\n{text}',
 	breakHeader: '☕ *はやくこたえて！ BREAK*',
@@ -134,19 +135,27 @@ export function formatWinner(
 	})
 }
 
-export function formatWinnerKanjiPerfect(
+export function formatWinnerPerfect(
 	member: NMember,
 	answers: ReadonlyArray<string>,
 	points: number,
 	templates?: Partial<QuizMessageTemplates>,
 ): string {
 	const t = resolveTemplates(templates)
-	return applyTemplate(t.winnerKanji, {
+	return applyTemplate(t.winnerPerfect, {
 		name: member.kananame,
 		classgroup: member.classgroup,
 		points,
 		answers: answers.map((a) => `_${a}_`).join(' / '),
 	})
+}
+
+export function formatRomajiTease(
+	answer: string,
+	templates?: Partial<QuizMessageTemplates>,
+): string {
+	const t = resolveTemplates(templates)
+	return applyTemplate(t.romajiTease, { answer })
 }
 
 export function formatExplanation(

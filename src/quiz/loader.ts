@@ -318,13 +318,13 @@ function inferAnswerOptions(answers: string[]): { text: string; kanjiExtraPts: n
 		: null
 	const extraPts = extraPtsMatch ? Number(extraPtsMatch[1]) : (hasKanji ? POINTS_KANJI_BONUS : undefined)
 
+	const kanjiIcon = hasKanji && extraPts ? '🌸' : (hasKanji ? '✅' : '❌')
+
 	const text = [
 		'*Opsi jawab:*',
 		`${hasKana ? '✅' : '❌'} かな (kana)`,
 		`${hasRomaji ? '✅' : '❌'} romaji + jenis kana`,
-		hasKanji
-			? `🌸 漢字 (kanji)${extraPts ? ` *+${extraPts}pts*` : ''}`
-			: '❌ 漢字 (kanji)',
+		`${kanjiIcon} 漢字 (kanji)${extraPts ? ` *+${extraPts}pts*` : ''}`,
 	].join('\n')
 
 	return { text, kanjiExtraPts: extraPts }
@@ -638,13 +638,15 @@ function formatAnswerOptionsBlock(answers: ConfigQuestionAnswers): string {
 	const romajiExtraPts = romajiEntry?.extraPts ?? 0
 	const kanjiExtraPts = kanjiEntry?.extraPts ?? 0
 
+	const kanaIcon = hasKana ? (kanaExtraPts > 0 ? '🌸' : '✅') : '❌'
+	const romajiIcon = hasRomaji ? (romajiExtraPts > 0 ? '🌸' : '✅') : '❌'
+	const kanjiIcon = hasKanji ? (kanjiExtraPts > 0 ? '🌸' : '✅') : '❌'
+
 	return [
 		'*Opsi jawab:*',
-		`${hasKana ? '✅' : '❌'} かな (kana)${kanaExtraPts > 0 ? ` *+${kanaExtraPts}pts*` : ''}`,
-		`${hasRomaji ? '✅' : '❌'} romaji + jenis kana${romajiExtraPts > 0 ? ` *+${romajiExtraPts}pts*` : ''}`,
-		hasKanji
-			? `🌸 漢字 (kanji)${kanjiExtraPts > 0 ? ` *+${kanjiExtraPts}pts*` : ''}`
-			: '❌ 漢字 (kanji)',
+		`${kanaIcon} かな (kana)${kanaExtraPts > 0 ? ` *+${kanaExtraPts}pts*` : ''}`,
+		`${romajiIcon} romaji + jenis kana${romajiExtraPts > 0 ? ` *+${romajiExtraPts}pts*` : ''}`,
+		`${kanjiIcon} 漢字 (kanji)${kanjiExtraPts > 0 ? ` *+${kanjiExtraPts}pts*` : ''}`,
 	].join('\n')
 }
 
@@ -1103,8 +1105,8 @@ export async function loadQuizBundle(
 		startAt = resolvedStart
 	}
 
-	const introNote = await detectIntroNote(absDir, dirBasename)
-	const outroNote = await detectOutroNote(absDir)
+	const introNote = schedule.messages.intro ?? await detectIntroNote(absDir, dirBasename)
+	const outroNote = schedule.messages.outro ?? await detectOutroNote(absDir)
 
 	let questions: QuizQuestion[]
 	let rounds: ReadonlyArray<QuizRound>

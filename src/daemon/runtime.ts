@@ -684,22 +684,22 @@ export class DaemonRuntime {
 									const seasonMembers = this.seasonStore.getMembers(groupId)
 									if (seasonPoints.size > 0) {
 										const seasonRows = [...seasonPoints.entries()]
-											.map(([lid, points]) => ({
-												member: sampleBundle?.members?.find((m: any) => m.lid === lid) ?? seasonMembers.find((m) =>
-													m.lid === lid
+											.map(([mid, points]) => ({
+												member: sampleBundle?.members?.find((m: any) => m.mid === mid) ?? seasonMembers.find((m) =>
+													m.mid === mid
 												) ?? null,
 												points,
 											}))
 											.sort((a, b) => {
 												if (b.points !== a.points) return b.points - a.points
-												return (a.member?.lid ?? '').localeCompare(b.member?.lid ?? '')
+												return (a.member?.mid ?? '').localeCompare(b.member?.mid ?? '')
 											})
 
 										const top3 = seasonRows.slice(0, 3)
 										const topSlots = seasonRows.slice(0, 7).map((entry, index) => ({
 											rank: index + 1,
 											kananame: entry.member?.kananame ?? '',
-											nickname: entry.member?.nickname ?? entry.member?.lid ?? '',
+											nickname: entry.member?.nickname ?? entry.member?.mid ?? '',
 											classgroup: entry.member?.classgroup ?? '',
 											score: entry.points,
 										}))
