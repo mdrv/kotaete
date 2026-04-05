@@ -136,13 +136,11 @@ export class BaileysWhatsAppClient implements IWhatsAppClient {
 	private connectionOpen = false
 	private readonly seenMessageIds = new Set<string>()
 	private readonly seenMessageOrder: string[] = []
+	private readonly sentMessages = new Map<string, unknown>()
 	private lastReconnectAt = 0
 	private reconnectConflictCount = 0
 	private baileysRuntime: {
 		makeWASocket: (options: Record<string, unknown>) => BaileysSocketLike
-		makeInMemoryStore: (options: Record<string, unknown>) => {
-			bind: (ev: { on: (event: string, listener: (...args: unknown[]) => void) => void }) => void
-		}
 		Browsers: {
 			windows: (browser: string) => unknown
 		}
@@ -173,9 +171,6 @@ export class BaileysWhatsAppClient implements IWhatsAppClient {
 		) => Promise<unknown>
 		const runtime = (await dynamicImport(moduleSpecifier)) as {
 			default: (options: Record<string, unknown>) => BaileysSocketLike
-			makeInMemoryStore: (options: Record<string, unknown>) => {
-				bind: (ev: { on: (event: string, listener: (...args: unknown[]) => void) => void }) => void
-			}
 			Browsers: {
 				windows: (browser: string) => unknown
 			}
@@ -195,7 +190,6 @@ export class BaileysWhatsAppClient implements IWhatsAppClient {
 
 		this.baileysRuntime = {
 			makeWASocket: runtime.default,
-			makeInMemoryStore: runtime.makeInMemoryStore,
 			Browsers: runtime.Browsers,
 			fetchLatestBaileysVersion: runtime.fetchLatestBaileysVersion,
 			isJidGroup: runtime.isJidGroup,
@@ -222,7 +216,6 @@ export class BaileysWhatsAppClient implements IWhatsAppClient {
 		const { state, saveCreds } = await runtime.useMultiFileAuthState(this.options.authDir)
 		const versionInfo = await runtime.fetchLatestBaileysVersion()
 		const logger = pino({ level: 'silent' })
-		const store = runtime.makeInMemoryStore({})
 
 		const socket = runtime.makeWASocket({
 			auth: {
@@ -238,14 +231,10 @@ export class BaileysWhatsAppClient implements IWhatsAppClient {
 				const msgId = key.id ?? ''
 				const remoteJid = key.remoteJid ?? ''
 				if (!msgId || !remoteJid) return undefined
-				const cached = (store as unknown as { messages: { get: (jid: string, id: string) => unknown } })
-					.messages.get(remoteJid, msgId)
-				return cached ?? undefined
+				return this.sentMessages.get(`${remoteJid}:${msgId}`) as Record<string, unknown> | undefined
 			},
 		})
 		this.sock = socket
-
-		store.bind(socket.ev)
 
 		socket.ev.on('creds.update', saveCreds)
 		socket.ev.on('lid-mapping.update', async (...args) => {
@@ -563,9 +552,10 @@ export class BaileysWhatsAppClient implements IWhatsAppClient {
 		if (!this.sock) throw new Error('[wa:baileys] socket is not initialized')
 		const quotedKey = opts?.quotedKey ? buildBaileysMessageKey(opts.quotedKey) : null
 		const options = quotedKey ? { quoted: { key: quotedKey, message: { conversation: ' ' } } } : undefined
+		const messageContent = { text }
 		let sent: unknown
 		try {
-			sent = await this.sock.sendMessage(groupId, { text }, options)
+			sent = await this.sock.sendMessage(groupId, messageContent, options)
 		} catch (error) {
 			if (quotedKey?.participant) {
 				log.warning(
@@ -583,22 +573,28 @@ export class BaileysWhatsAppClient implements IWhatsAppClient {
 						message: { conversation: ' ' },
 					},
 				}
-				sent = await this.sock.sendMessage(groupId, { text }, fallbackOptions)
+				sent = await this.sock.sendMessage(groupId, messageContent, fallbackOptions)
 			} else {
 				throw error
 			}
 		}
-		return this.extractSentMessageKey(sent, groupId)
+		const key = this.extractSentMessageKey(sent, groupId)
+		if (key?.id) {
+			this.sentMessages.set(`${groupId}:${key.id}`, messageContent)
+		}
+		return key
 	}
 
 	async sendImageWithCaption(groupId: string, imagePath: string, caption: string): Promise<MessageKeyLike | null> {
 		await this.waitForConnection('sendImageWithCaption')
 		if (!this.sock) throw new Error('[wa:baileys] socket is not initialized')
-		const sent = await this.sock.sendMessage(groupId, {
-			image: { url: imagePath },
-			caption,
-		})
-		return this.extractSentMessageKey(sent, groupId)
+		const messageContent = { image: { url: imagePath }, caption }
+		const sent = await this.sock.sendMessage(groupId, messageContent)
+		const key = this.extractSentMessageKey(sent, groupId)
+		if (key?.id) {
+			this.sentMessages.set(`${groupId}:${key.id}`, messageContent)
+		}
+		return key
 	}
 
 	private extractSentMessageKey(payload: unknown, groupId: string): MessageKeyLike | null {
