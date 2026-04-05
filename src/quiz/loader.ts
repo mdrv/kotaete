@@ -502,7 +502,25 @@ async function loadConfigFileInput(
 	}
 
 	const specifier = `data:text/javascript;base64,${Buffer.from(jsModule, 'utf-8').toString('base64')}`
-	const mod = (await import(specifier)) as { default?: unknown }
+	let mod: { default?: unknown }
+	try {
+		mod = (await import(specifier)) as { default?: unknown }
+	} catch (error) {
+		// Bun's import resolver has a NameTooLong limit on data: URLs.
+		// Fall back to writing a temp .mjs file.
+		if (String(error).includes('NameTooLong') || String(error).includes('name too long')) {
+			const tmpFile = join(tmpdir(), `kotaete-config-${Date.now()}-${Math.random().toString(36).slice(2)}.mjs`)
+			await writeFile(tmpFile, jsModule, 'utf-8')
+			try {
+				const fileUrl = pathToFileURL(tmpFile).href
+				mod = (await import(fileUrl)) as { default?: unknown }
+			} finally {
+				await unlink(tmpFile).catch(() => undefined)
+			}
+		} else {
+			throw error
+		}
+	}
 	if (typeof mod.default === 'undefined') {
 		throw new Error(`[quiz] ${absPath} must have a default export`)
 	}
