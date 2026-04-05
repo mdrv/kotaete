@@ -440,6 +440,54 @@ describe('QuizEngine behavior', () => {
 		expect(String(finalCall[1])).toContain('+12 pts')
 	})
 
+	test('per-type extraPts: only the matched answer type awards its bonus', async () => {
+		const now = Date.now()
+		// kana has extraPts: 2, romaji has extraPts: 0, kanji has extraPts: 3
+		const bundle: QuizBundle = {
+			directory: '/tmp/quiz',
+			introAt: new Date(now),
+			startAt: new Date(now),
+			rounds: [],
+			introNote: null,
+			outroNote: null,
+			messageTemplates: {},
+			questions: [
+				{
+					number: 1,
+					text: 'Q1',
+					answers: ['りんご', 'ringo hiragana', '林檎'],
+					extraPts: 3,
+					answerExtraPts: new Map([
+						['りんご', 2],
+						['ringo hiragana', 0],
+						['林檎', 3],
+					]),
+					explanation: '',
+					imagePath: null,
+					isSpecialStage: false,
+				},
+			],
+		}
+
+		// Answer with romaji (extraPts: 0) — should get 10pts, not 12 or 13
+		const { engine, sendText, react } = createEngine()
+		await engine.run(bundle, [makeMember()], '120@g.us', { noCooldown: true })
+		await engine.onIncomingMessage(
+			makeIncoming({ text: 'ringo hiragana', key: { id: 'MSG-ROMAJI', remoteJid: '120@g.us' } }),
+		)
+
+		// Should use normal reaction (not 🌸) since romaji has 0 extraPts
+		const kanjiReaction = react.mock.calls.find((call) => Array.isArray(call) && call[2] === '🌸')
+		expect(kanjiReaction).toBeFalsy()
+
+		// Should show normal winner message with +10pts (no bonus)
+		const normalWinnerCall = sendText.mock.calls.find((call) =>
+			Array.isArray(call) && call.length > 1 && String(call[1]).includes('🤗 *せいかいだった！*')
+			&& String(call[1]).includes('_+10pts_')
+		)
+		expect(normalWinnerCall).toBeTruthy()
+	})
+
 	test('sends 10-minute warning as reply to question before timeout', async () => {
 		const now = Date.now()
 		const bundle: QuizBundle = {

@@ -38,5 +38,28 @@ export function isCorrectAnswer(
 	input: string,
 	answers: ReadonlyArray<string>,
 ): boolean {
-	return buildAnswerSet(answers).has(normalizeAnswer(input))
+	return findMatchingAnswer(input, answers) !== null
+}
+
+/**
+ * Find the first matching answer string for the given input.
+ * Returns the original (non-normalized) answer string that matched,
+ * or null if no match was found.
+ */
+export function findMatchingAnswer(
+	input: string,
+	answers: ReadonlyArray<string>,
+): string | null {
+	const normalizedInput = normalizeAnswer(input)
+	for (const raw of answers) {
+		const normalized = normalizeAnswer(raw)
+		if (normalized.length === 0) continue
+		for (const variant of normalized.split(SLASH_RE)) {
+			const trimmed = variant.trim()
+			if (trimmed.length > 0 && trimmed === normalizedInput) {
+				return raw
+			}
+		}
+	}
+	return null
 }

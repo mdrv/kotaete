@@ -662,11 +662,20 @@ function getAnswerExtraPts(entry: string | { text: string; extraPts?: number } |
 }
 
 function convertConfigQuestion(entry: ConfigQuestion): QuizQuestion {
+	const kanaText = getAnswerText(entry.answers.kana)
+	const romajiText = getAnswerText(entry.answers.romaji)
+	const kanjiTextRaw = getAnswerText(entry.answers.kanji)
 	const answers = uniqueAnswers([
-		getAnswerText(entry.answers.kana),
-		getAnswerText(entry.answers.romaji),
-		getAnswerText(entry.answers.kanji),
+		kanaText,
+		romajiText,
+		kanjiTextRaw,
 	].filter((t): t is string => Boolean(t)))
+
+	// Build a map from each answer string to its per-type extraPts
+	const answerExtraPts = new Map<string, number>()
+	if (kanaText) answerExtraPts.set(kanaText, getAnswerExtraPts(entry.answers.kana))
+	if (romajiText) answerExtraPts.set(romajiText, getAnswerExtraPts(entry.answers.romaji))
+	if (kanjiTextRaw) answerExtraPts.set(kanjiTextRaw, getAnswerExtraPts(entry.answers.kanji))
 
 	const extraPts = Math.max(
 		getAnswerExtraPts(entry.answers.kana),
@@ -683,6 +692,7 @@ function convertConfigQuestion(entry: ConfigQuestion): QuizQuestion {
 		answers,
 		...(hasKanji ? { kanjiAnswers: [kanjiText] as const } : {}),
 		...(extraPts > 0 ? { extraPts } : {}),
+		...(answerExtraPts.size > 0 ? { answerExtraPts } : {}),
 		explanation: entry.explanation ?? '',
 		imagePath: null,
 		isSpecialStage: entry.no === SPECIAL_STAGE_NUMBER,

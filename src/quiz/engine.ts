@@ -15,7 +15,7 @@ import { getLogger } from '../logger.ts'
 import type { IncomingGroupMessage, NMember, QuizBundle, QuizQuestion } from '../types.ts'
 import { normalizeLid } from '../utils/normalize.ts'
 import type { SendTextOptions } from '../whatsapp/types.ts'
-import { isCorrectAnswer } from './answer-checker.ts'
+import { findMatchingAnswer } from './answer-checker.ts'
 import {
 	formatCooldownWarning,
 	formatExplanation,
@@ -400,10 +400,11 @@ export class QuizEngine {
 			}
 		}
 
-		if (isCorrectAnswer(incoming.text, question.answers)) {
+		const matchedAnswer = findMatchingAnswer(incoming.text, question.answers)
+		if (matchedAnswer) {
 			log.debug(`correct answer accepted key=${memberKey} q=${question.number}`)
 			if (!this.claimCurrentQuestion(state)) return
-			await this.handleCorrect(incoming, member, question)
+			await this.handleCorrect(incoming, member, question, matchedAnswer)
 			return
 		}
 
@@ -605,16 +606,23 @@ export class QuizEngine {
 		incoming: IncomingGroupMessage,
 		member: NMember,
 		question: QuizQuestion,
+		matchedAnswer: string,
 	): Promise<void> {
 		const state = this.state
 		if (!state?.active) return
 
-		const hasExtraPts = (question.extraPts ?? 0) > 0
+		// Look up the extraPts for the specific answer type that matched.
+		// Fall back to question.extraPts when answerExtraPts is not populated
+		// (e.g. test bundles or direct QuizQuestion construction).
+		const matchedExtraPts = question.answerExtraPts?.has(matchedAnswer)
+			? (question.answerExtraPts.get(matchedAnswer) ?? 0)
+			: (question.extraPts ?? 0)
+		const hasExtraPts = matchedExtraPts > 0
 		await this.sender.react(state.groupId, incoming.key, hasExtraPts ? REACTION_CORRECT_KANJI : REACTION_CORRECT)
 
 		const currentQuestionPoints = state.questionPointsByMid.get(member.mid) ?? 0
 		let gained = awardCorrectPoints(currentQuestionPoints, question.isSpecialStage)
-		gained += question.extraPts ?? 0
+		gained += matchedExtraPts
 
 		if (gained !== 0) {
 			state.pointsByMid.set(member.mid, (state.pointsByMid.get(member.mid) ?? 0) + gained)

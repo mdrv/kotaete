@@ -35,7 +35,7 @@ const DEFAULT_TEMPLATES: QuizMessageTemplates = {
 	timeout: '⏱️ Waktu habis untuk soal ini.\n✅ {answers}',
 	winner: '🤗 *せいかいだった！*\n🌸 *{name}({classgroup})* _+{points}pts_\n✅ {answers}',
 	winnerPerfect: '🤩 *かんぺきだった！*\n🌸 *{name}({classgroup})* _+{points}pts_\n✅ {answers}',
-	romajiTease: '🐻 Kayaknya ada yang lupa deh!\n💬 _{answer}_',
+	romajiTease: 'Kayaknya ada yang lupa deh! 👀',
 	explanation: '🌻 *_Shitteimasu ka?_* *({progress})*\n{text}',
 	explanationSpecial: '🌻 *_Shitteimasu ka?_* *(神)*\n{text}',
 	breakHeader: '☕ *はやくこたえて！ BREAK*',
