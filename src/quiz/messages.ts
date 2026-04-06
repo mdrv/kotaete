@@ -21,12 +21,12 @@ const DEFAULT_TEMPLATES: QuizMessageTemplates = {
 		'🪽 *神のステージ (Kami no Stage)*',
 		'',
 		'Khusus stage ini, ketentuannya:',
-		'🌸 Jawaban benar = 25 poin!',
+		'🌸 Jawaban benar = {points} poin!',
 		'🥳 Siapa pun bisa jawab! (no cooldown)',
 		'🙈 Cuma 1x kesempatan per anggota',
-		'⏰ Timeout soal 30 menit',
+		'⏰ Timeout soal {timeoutMinutes} menit',
 		'',
-		'🐻 Soal akan muncul dalam 1 menit!',
+		'🐻 Soal akan muncul dalam {delayMinutes} menit!',
 	].join('\n'),
 	nextRoundNotice: 'Ronde berikutnya mulai pukul {time} WIB. Bersiaplah!',
 	questionFooter: '⏰ Batas waktu: {time} WIB',
@@ -217,8 +217,16 @@ export function formatNextRoundNotice(time: string, templates?: Partial<QuizMess
 	return applyTemplate(resolveTemplates(templates).nextRoundNotice, { time })
 }
 
-export function formatGodStageAnnouncement(templates?: Partial<QuizMessageTemplates>): string {
-	return resolveTemplates(templates).godStageAnnouncement
+export function formatGodStageAnnouncement(
+	templates?: Partial<QuizMessageTemplates>,
+	opts?: { points?: number; timeoutMinutes?: number; delayMinutes?: number },
+): string {
+	const t = resolveTemplates(templates)
+	return applyTemplate(t.godStageAnnouncement, {
+		points: opts?.points ?? 25,
+		timeoutMinutes: opts?.timeoutMinutes ?? 30,
+		delayMinutes: opts?.delayMinutes ?? 1,
+	})
 }
 
 // ---------------------------------------------------------------------------

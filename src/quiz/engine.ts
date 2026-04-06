@@ -536,9 +536,17 @@ export class QuizEngine {
 		state.roundQuestionTotal = currentRound.questions.length
 
 		if (question.isSpecialStage) {
-			await this.sender.sendText(state.groupId, formatGodStageAnnouncement(state.bundle.messageTemplates), {
-				linkPreview: false,
-			})
+			await this.sender.sendText(
+				state.groupId,
+				formatGodStageAnnouncement(state.bundle.messageTemplates, {
+					points: QUIZ_TUNABLES.points.special,
+					timeoutMinutes: GOD_STAGE_TIMEOUT_MS / 60_000,
+					delayMinutes: GOD_STAGE_ANNOUNCE_DELAY_MS / 60_000,
+				}),
+				{
+					linkPreview: false,
+				},
+			)
 			await this.sleep(GOD_STAGE_ANNOUNCE_DELAY_MS)
 		}
 

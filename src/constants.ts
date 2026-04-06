@@ -34,7 +34,7 @@ export const QUIZ_TUNABLES = {
 		/** Maximum total points for a correct answer in normal stage */
 		normalCap: 10,
 		/** Fixed points for a correct answer in special/god stage */
-		special: 25,
+		special: 15,
 		/** Bonus points when the correct answer contains kanji */
 		kanjiBonus: 2,
 	},

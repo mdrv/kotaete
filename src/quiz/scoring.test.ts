@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test'
+import { POINTS_SPECIAL } from '../constants.ts'
 import { awardCorrectPoints, awardWrongPoints } from './scoring.ts'
 
 describe('quiz scoring rules', () => {
@@ -16,7 +17,7 @@ describe('quiz scoring rules', () => {
 
 	test('special stage keeps fixed scoring behavior', () => {
 		expect(awardWrongPoints(true)).toBe(0)
-		expect(awardCorrectPoints(0, true)).toBe(25)
-		expect(awardCorrectPoints(10, true)).toBe(25)
+		expect(awardCorrectPoints(0, true)).toBe(POINTS_SPECIAL)
+		expect(awardCorrectPoints(10, true)).toBe(POINTS_SPECIAL)
 	})
 })
