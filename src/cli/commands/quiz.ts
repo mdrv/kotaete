@@ -9,6 +9,7 @@ import { createRunHandler } from './run.ts'
 type QuizControlPayload = {
 	type: 'quiz-status' | 'quiz-stop'
 	id?: string
+	silent?: boolean | undefined
 }
 
 async function sendQuizControlRequest(
@@ -103,15 +104,17 @@ export const quizCmd = app
 		app
 			.sub('stop')
 			.meta({ description: 'Stop a running quiz on daemon' })
+			.flags({
+				silent: { type: 'boolean', description: 'Stop the quiz silently without showing final scoreboard' },
+			})
 			.args([{ name: 'id', type: 'string' }])
 			.run(async ({ args, flags }) => {
 				const socketPath = expandHome(DEFAULT_SOCKET_PATH)
 
 				if (args.id) {
-					await runControl({ type: 'quiz-stop', id: args.id }, flags)
+					await runControl({ type: 'quiz-stop', id: args.id, silent: flags.silent }, flags)
 					return
 				}
-
 				// No id provided — fetch status first
 				const statusResponse = await sendQuizControlRequest(socketPath, { type: 'quiz-status' })
 				const jobs = statusResponse.jobs ?? []
@@ -126,7 +129,7 @@ export const quizCmd = app
 				}
 
 				if (jobs.length === 1) {
-					await runControl({ type: 'quiz-stop', id: jobs[0]!.id }, flags)
+					await runControl({ type: 'quiz-stop', id: jobs[0]!.id, silent: flags.silent }, flags)
 					return
 				}
 
@@ -160,7 +163,7 @@ export const quizCmd = app
 					process.exit(1)
 					return
 				}
-				await runControl({ type: 'quiz-stop', id: selectedId }, flags)
+				await runControl({ type: 'quiz-stop', id: selectedId, silent: flags.silent }, flags)
 			}),
 	)
 	// `kotaete quiz run` — relay request to daemon

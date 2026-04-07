@@ -27,6 +27,7 @@ export const relayStatusRequestSchema = z.object({
 export const relayStopRequestSchema = z.object({
 	type: z.literal('quiz-stop'),
 	id: z.string().optional(),
+	silent: z.boolean().optional(),
 })
 
 export const relayStopSeasonRequestSchema = z.object({

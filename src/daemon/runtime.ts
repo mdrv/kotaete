@@ -420,12 +420,16 @@ export class DaemonRuntime {
 		return undefined
 	}
 
-	private async forceEndJob(jobId: string): Promise<boolean> {
+	private async forceEndJob(jobId: string, opts?: { silent?: boolean }): Promise<boolean> {
 		const job = this.jobs.get(jobId)
 		if (!job) return false
-		const stopped = await job.engine.stopCurrentQuizWithFinal()
+		if (opts?.silent) {
+			job.engine.stopCurrentQuiz()
+		} else {
+			await job.engine.stopCurrentQuizWithFinal()
+		}
 		this.finishJob(jobId)
-		return stopped
+		return true
 	}
 
 	// ---------------------------------------------------------------------------
@@ -630,13 +634,19 @@ export class DaemonRuntime {
 
 							if (parsed.data.type === 'quiz-stop') {
 								const targetId = parsed.data.id
+								const silent = parsed.data.silent ?? false
 								if (targetId) {
-									const stopped = await this.forceEndJob(targetId)
+									const stopped = await this.forceEndJob(targetId, { silent })
 									if (!stopped) {
 										writeResponse(socket, { ok: false, message: `no active job with id "${targetId}"` })
 										return
 									}
-									writeResponse(socket, { ok: true, message: `job "${targetId}" stopped with final scoreboard` })
+									writeResponse(socket, {
+										ok: true,
+										message: silent
+											? `job "${targetId}" stopped silently`
+											: `job "${targetId}" stopped with final scoreboard`,
+									})
 									return
 								}
 								const allJobs = this.getJobStatus()
@@ -646,8 +656,13 @@ export class DaemonRuntime {
 								}
 								if (allJobs.length === 1) {
 									const jobId = allJobs[0]!.id
-									await this.forceEndJob(jobId)
-									writeResponse(socket, { ok: true, message: `job "${jobId}" stopped with final scoreboard` })
+									await this.forceEndJob(jobId, { silent })
+									writeResponse(socket, {
+										ok: true,
+										message: silent
+											? `job "${jobId}" stopped silently`
+											: `job "${jobId}" stopped with final scoreboard`,
+									})
 									return
 								}
 								writeResponse(socket, {

@@ -48,6 +48,6 @@ describe('season scoreboard helpers', () => {
 		expect(rendered).toContain('caption=&lt;Musim &amp; Final&gt;')
 		expect(rendered).toContain('1|アリ|Ari|10B|123')
 		expect(rendered).toContain('2|&lt;タグ&gt;|A&amp;B|8C|77')
-		expect(rendered).toContain('7|-|-|-|-')
+		expect(rendered).toContain('7|...||...|...')
 	})
 })

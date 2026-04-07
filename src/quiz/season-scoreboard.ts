@@ -29,7 +29,7 @@ export type SeasonScoreboardSlot = {
 /**
  * Render a season scoreboard SVG template with the given slots.
  * Replaces {{rank}}, {{kana}}, {{nickname}}, {{classgroup}}, {{score}} placeholders for each slot.
- * If fewer than 7 members, pads remaining slots with '-' placeholders.
+ * If fewer than 7 members, pads remaining slots with '...' placeholders (blank for nickname).
  */
 export function renderSeasonScoreboardSvg(
 	templateContent: string,
@@ -44,9 +44,9 @@ export function renderSeasonScoreboardSvg(
 	for (let i = 0; i < totalSlots; i++) {
 		const slot = slots[i]
 		const rank = slot?.rank ?? (i + 1)
-		const kana = slot?.kananame ?? '-'
-		const nickname = slot?.nickname ?? '-'
-		const classgroup = slot?.classgroup ?? '-'
+		const kana = slot?.kananame ?? '...'
+		const nickname = slot?.nickname ?? ''
+		const classgroup = slot?.classgroup ?? '...'
 		const score = slot?.score ?? 0
 
 		const n = String(i + 1)
@@ -55,7 +55,7 @@ export function renderSeasonScoreboardSvg(
 			.replaceAll(`{{kana${n}}}`, escapeXml(kana))
 			.replaceAll(`{{nickname${n}}}`, escapeXml(nickname))
 			.replaceAll(`{{classgroup${n}}}`, escapeXml(classgroup))
-			.replaceAll(`{{score${n}}}`, escapeXml(String(slot ? score : '-')))
+			.replaceAll(`{{score${n}}}`, escapeXml(String(slot ? score : '...')))
 	}
 
 	return rendered
