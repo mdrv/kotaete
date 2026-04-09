@@ -91,7 +91,7 @@ describe('defineConfig', () => {
 		expect(config.questions).toHaveLength(1)
 		expect(config.questions[0]?.no).toBe(1)
 		expect(config.questions[0]?.hint).toBe('test')
-		expect(config.questions[0]?.answers.kana).toEqual({ text: 'あ', extraPts: 0 })
+		expect(config.questions[0]?.answers.kana).toBe('あ')
 	})
 
 	test('throws on invalid values', () => {

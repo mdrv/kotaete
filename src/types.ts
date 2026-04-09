@@ -71,7 +71,7 @@ export type ConfigQuestionImage = {
 	god?: boolean
 }
 
-export type ConfigAnswerEntry = string | { text: string; extraPts?: number }
+export type ConfigAnswerEntry = string | string[] | { text: string | string[]; extraPts?: number }
 
 export type ConfigQuestionAnswers = {
 	kana?: ConfigAnswerEntry

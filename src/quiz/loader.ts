@@ -5,6 +5,7 @@ import { pathToFileURL } from 'node:url'
 import { POINTS_KANJI_BONUS, SPECIAL_STAGE_NUMBER } from '../constants.ts'
 import type {
 	ConfigQuestion,
+	ConfigAnswerEntry,
 	ConfigQuestionAnswers,
 	ConfigQuestionImage,
 	NMember,
@@ -47,27 +48,58 @@ function normalizeOptionalDateValue(
 	return normalizeDateValue(value, key, ctx)
 }
 
-type NormalizedAnswer = { text: string; extraPts: number }
 
-function normalizeAnswerEntry(input: unknown, label: string, ctx: string): NormalizedAnswer | undefined {
+function normalizeAnswerEntry(input: unknown, label: string, ctx: string): ConfigAnswerEntry | undefined {
 	if (typeof input === 'string') {
 		const trimmed = input.trim()
 		if (trimmed.length === 0) return undefined
-		return { text: trimmed, extraPts: 0 }
+		return trimmed
+	}
+	if (Array.isArray(input)) {
+		const results: string[] = []
+		for (const item of input) {
+			if (typeof item !== 'string') {
+				throw new Error(`[quiz] invalid answers.${label} in ${ctx}: array items must be strings`)
+			}
+			const trimmed = item.trim()
+			if (trimmed.length > 0) results.push(trimmed)
+		}
+		if (results.length === 0) return undefined
+		if (results.length === 1) return results[0]
+		return results
 	}
 	if (input && typeof input === 'object') {
 		const raw = input as { text?: unknown; extraPts?: unknown }
-		if (typeof raw.text !== 'string' || raw.text.trim().length === 0) {
+		let textValue: string | string[]
+		if (typeof raw.text === 'string') {
+			const trimmed = raw.text.trim()
+			if (trimmed.length === 0) {
+				throw new Error(`[quiz] invalid answers.${label}.text in ${ctx}: expected non-empty string`)
+			}
+			textValue = trimmed
+		} else if (Array.isArray(raw.text)) {
+			const strings: string[] = []
+			for (const item of raw.text) {
+				if (typeof item !== 'string' || item.trim().length === 0) {
+					throw new Error(`[quiz] invalid answers.${label}.text in ${ctx}: expected non-empty strings in array`)
+				}
+				strings.push(item.trim())
+			}
+			if (strings.length === 0) {
+				throw new Error(`[quiz] invalid answers.${label}.text in ${ctx}: array must not be empty`)
+			}
+			textValue = strings.length === 1 ? strings[0]! : strings
+		} else {
 			throw new Error(`[quiz] invalid answers.${label}.text in ${ctx}: expected non-empty string`)
 		}
-		let extraPts = 0
+		let extraPts: number | undefined
 		if (raw.extraPts !== undefined && raw.extraPts !== null) {
 			if (typeof raw.extraPts !== 'number' || !Number.isInteger(raw.extraPts) || raw.extraPts < 0) {
 				throw new Error(`[quiz] invalid answers.${label}.extraPts in ${ctx}: expected non-negative integer`)
 			}
 			extraPts = raw.extraPts
 		}
-		return { text: raw.text.trim(), extraPts }
+		return { text: textValue, ...(extraPts !== undefined ? { extraPts } : {}) }
 	}
 	return undefined
 }
@@ -644,17 +676,17 @@ function uniqueAnswers(input: ReadonlyArray<string>): string[] {
 }
 
 function formatAnswerOptionsBlock(answers: ConfigQuestionAnswers): string {
-	const kanaEntry = typeof answers.kana === 'object' ? answers.kana : null
-	const romajiEntry = typeof answers.romaji === 'object' ? answers.romaji : null
-	const kanjiEntry = typeof answers.kanji === 'object' ? answers.kanji : null
+	const kanaEntry = answers.kana != null ? answers.kana : null
+	const romajiEntry = answers.romaji != null ? answers.romaji : null
+	const kanjiEntry = answers.kanji != null ? answers.kanji : null
 
 	const hasKana = kanaEntry !== null
 	const hasRomaji = romajiEntry !== null
 	const hasKanji = kanjiEntry !== null
 
-	const kanaExtraPts = kanaEntry?.extraPts ?? 0
-	const romajiExtraPts = romajiEntry?.extraPts ?? 0
-	const kanjiExtraPts = kanjiEntry?.extraPts ?? 0
+	const kanaExtraPts = getAnswerExtraPts(kanaEntry)
+	const romajiExtraPts = getAnswerExtraPts(romajiEntry)
+	const kanjiExtraPts = getAnswerExtraPts(kanjiEntry)
 
 	const kanaIcon = hasKana ? (kanaExtraPts > 0 ? '🌸' : '✅') : '❌'
 	const romajiIcon = hasRomaji ? (romajiExtraPts > 0 ? '🌸' : '✅') : '❌'
@@ -668,47 +700,49 @@ function formatAnswerOptionsBlock(answers: ConfigQuestionAnswers): string {
 	].join('\n')
 }
 
-function getAnswerText(entry: string | { text: string; extraPts?: number } | undefined): string | undefined {
-	if (typeof entry === 'string') return entry
-	if (entry && typeof entry === 'object') return entry.text
-	return undefined
+/** Extract all answer texts from a ConfigAnswerEntry (handles string, string[], object) */
+function getAnswerTexts(entry: ConfigAnswerEntry | undefined | null): string[] {
+	if (entry == null) return []
+	if (typeof entry === 'string') return [entry]
+	if (Array.isArray(entry)) return entry
+	// object form: { text: string | string[], extraPts? }
+	if (typeof entry.text === 'string') return [entry.text]
+	if (Array.isArray(entry.text)) return entry.text
+	return []
 }
 
-function getAnswerExtraPts(entry: string | { text: string; extraPts?: number } | undefined): number {
-	if (entry && typeof entry === 'object') return entry.extraPts ?? 0
-	return 0
+/** Get extraPts from a ConfigAnswerEntry (0 for plain strings/arrays) */
+function getAnswerExtraPts(entry: ConfigAnswerEntry | undefined | null): number {
+	if (entry == null) return 0
+	if (typeof entry === 'string') return 0
+	if (Array.isArray(entry)) return 0
+	return entry.extraPts ?? 0
 }
 
 function convertConfigQuestion(entry: ConfigQuestion): QuizQuestion {
-	const kanaText = getAnswerText(entry.answers.kana)
-	const romajiText = getAnswerText(entry.answers.romaji)
-	const kanjiTextRaw = getAnswerText(entry.answers.kanji)
-	const answers = uniqueAnswers([
-		kanaText,
-		romajiText,
-		kanjiTextRaw,
-	].filter((t): t is string => Boolean(t)))
+	const kanaTexts = getAnswerTexts(entry.answers.kana)
+	const romajiTexts = getAnswerTexts(entry.answers.romaji)
+	const kanjiTexts = getAnswerTexts(entry.answers.kanji)
+
+	const answers = uniqueAnswers([...kanaTexts, ...romajiTexts, ...kanjiTexts])
 
 	// Build a map from each answer string to its per-type extraPts
 	const answerExtraPts = new Map<string, number>()
-	if (kanaText) answerExtraPts.set(kanaText, getAnswerExtraPts(entry.answers.kana))
-	if (romajiText) answerExtraPts.set(romajiText, getAnswerExtraPts(entry.answers.romaji))
-	if (kanjiTextRaw) answerExtraPts.set(kanjiTextRaw, getAnswerExtraPts(entry.answers.kanji))
+	const kanaPts = getAnswerExtraPts(entry.answers.kana)
+	const romajiPts = getAnswerExtraPts(entry.answers.romaji)
+	const kanjiPts = getAnswerExtraPts(entry.answers.kanji)
+	for (const t of kanaTexts) answerExtraPts.set(t, kanaPts)
+	for (const t of romajiTexts) answerExtraPts.set(t, romajiPts)
+	for (const t of kanjiTexts) answerExtraPts.set(t, kanjiPts)
 
-	const extraPts = Math.max(
-		getAnswerExtraPts(entry.answers.kana),
-		getAnswerExtraPts(entry.answers.romaji),
-		getAnswerExtraPts(entry.answers.kanji),
-	)
-	const hasKanji = typeof entry.answers.kanji === 'object' && entry.answers.kanji !== null
-		&& typeof (entry.answers.kanji as { text?: string }).text === 'string'
-	const kanjiText = hasKanji ? (entry.answers.kanji as { text: string }).text : ''
+	const extraPts = Math.max(kanaPts, romajiPts, kanjiPts)
+	const hasKanji = entry.answers.kanji != null
 
 	return {
 		number: entry.no,
 		text: `${entry.hint}\n\n${formatAnswerOptionsBlock(entry.answers)}`,
 		answers,
-		...(hasKanji ? { kanjiAnswers: [kanjiText] as const } : {}),
+		...(hasKanji ? { kanjiAnswers: kanjiTexts as ReadonlyArray<string> } : {}),
 		...(extraPts > 0 ? { extraPts } : {}),
 		...(answerExtraPts.size > 0 ? { answerExtraPts } : {}),
 		explanation: entry.explanation ?? '',
@@ -716,7 +750,6 @@ function convertConfigQuestion(entry: ConfigQuestion): QuizQuestion {
 		isSpecialStage: entry.no === SPECIAL_STAGE_NUMBER,
 	}
 }
-
 function escapeXml(value: string): string {
 	return value
 		.replaceAll('&', '&amp;')
