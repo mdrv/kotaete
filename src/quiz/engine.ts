@@ -648,8 +648,8 @@ export class QuizEngine {
 		await this.sender.sendText(
 			state.groupId,
 			hasExtraPts
-				? formatWinnerPerfect(member, question.answers, gained, state.bundle.messageTemplates)
-				: formatWinner(member, question.answers, gained, state.bundle.messageTemplates),
+			? formatWinnerPerfect(member, question.answers, gained, question.answerExtraPts, state.bundle.messageTemplates)
+			: formatWinner(member, question.answers, gained, question.answerExtraPts, state.bundle.messageTemplates),
 			{
 				linkPreview: false,
 				quotedKey: incoming.key,

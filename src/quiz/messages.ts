@@ -120,10 +120,19 @@ export function formatOutroHeader(outroAt: Date): string {
 	return `🗓️ *${formatDayId(outroAt)}*`
 }
 
+function formatAnswerList(
+	answers: ReadonlyArray<string>,
+	answerExtraPts?: ReadonlyMap<string, number> | undefined,
+): string {
+	return answers
+		.map((a) => (answerExtraPts?.get(a) ? `_*${a}*_` : `_${a}_`))
+		.join(' / ')
+}
 export function formatWinner(
 	member: NMember,
 	answers: ReadonlyArray<string>,
 	points: number,
+	answerExtraPts?: ReadonlyMap<string, number> | undefined,
 	templates?: Partial<QuizMessageTemplates>,
 ): string {
 	const t = resolveTemplates(templates)
@@ -131,7 +140,7 @@ export function formatWinner(
 		name: member.kananame,
 		classgroup: member.classgroup,
 		points,
-		answers: answers.map((a) => `_${a}_`).join(' / '),
+		answers: formatAnswerList(answers, answerExtraPts),
 	})
 }
 
@@ -139,6 +148,7 @@ export function formatWinnerPerfect(
 	member: NMember,
 	answers: ReadonlyArray<string>,
 	points: number,
+	answerExtraPts?: ReadonlyMap<string, number> | undefined,
 	templates?: Partial<QuizMessageTemplates>,
 ): string {
 	const t = resolveTemplates(templates)
@@ -146,7 +156,7 @@ export function formatWinnerPerfect(
 		name: member.kananame,
 		classgroup: member.classgroup,
 		points,
-		answers: answers.map((a) => `_${a}_`).join(' / '),
+		answers: formatAnswerList(answers, answerExtraPts),
 	})
 }
 
