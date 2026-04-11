@@ -42,12 +42,30 @@ export const relayLookupRequestSchema = z.object({
 	value: z.string().min(1),
 })
 
+export const relayPluginEnableRequestSchema = z.object({
+	type: z.literal('plugin-enable'),
+	sourcePath: z.string().min(1),
+	args: z.record(z.string(), z.string()).optional(),
+})
+
+export const relayPluginDisableRequestSchema = z.object({
+	type: z.literal('plugin-disable'),
+	name: z.string().min(1),
+})
+
+export const relayPluginListRequestSchema = z.object({
+	type: z.literal('plugin-list'),
+})
+
 export const relayRequestSchema = z.discriminatedUnion('type', [
 	relayRunRequestSchema,
 	relayStatusRequestSchema,
 	relayStopRequestSchema,
 	relayStopSeasonRequestSchema,
 	relayLookupRequestSchema,
+	relayPluginEnableRequestSchema,
+	relayPluginDisableRequestSchema,
+	relayPluginListRequestSchema,
 ])
 
 export type RelayRunRequest = z.infer<typeof relayRunRequestSchema>
@@ -55,7 +73,21 @@ export type RelayStatusRequest = z.infer<typeof relayStatusRequestSchema>
 export type RelayStopRequest = z.infer<typeof relayStopRequestSchema>
 export type RelayStopSeasonRequest = z.infer<typeof relayStopSeasonRequestSchema>
 export type RelayLookupRequest = z.infer<typeof relayLookupRequestSchema>
+export type RelayPluginEnableRequest = z.infer<typeof relayPluginEnableRequestSchema>
+export type RelayPluginDisableRequest = z.infer<typeof relayPluginDisableRequestSchema>
+export type RelayPluginListRequest = z.infer<typeof relayPluginListRequestSchema>
 export type RelayRequest = z.infer<typeof relayRequestSchema>
+
+export const pluginStatusSchema = z.object({
+	name: z.string(),
+	sourcePath: z.string(),
+	args: z.record(z.string(), z.string()),
+	enabledAt: z.string(),
+	active: z.boolean(),
+	lastError: z.object({ at: z.string(), message: z.string() }).optional(),
+})
+
+export type PluginStatus = z.infer<typeof pluginStatusSchema>
 
 export const jobStatusSchema = z.object({
 	id: z.string(),
@@ -77,6 +109,7 @@ export const relayResponseSchema = z.object({
 	message: z.string(),
 	jobs: z.array(jobStatusSchema).optional(),
 	jobId: z.string().optional(),
+	plugins: z.array(pluginStatusSchema).optional(),
 })
 
 export type RelayResponse = z.infer<typeof relayResponseSchema>

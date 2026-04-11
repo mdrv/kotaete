@@ -12,13 +12,14 @@ import {
 } from '../constants.ts'
 import { getLogger } from '../logger.ts'
 import { loadMembers } from '../members/loader.ts'
+import { PluginManager } from '../plugin/manager.ts'
 import { QuizEngine } from '../quiz/engine.ts'
 import { loadQuizBundle } from '../quiz/loader.ts'
 import { SeasonStore } from '../quiz/season-store.ts'
 import type { NMember } from '../types.ts'
 import { expandHome } from '../utils/path.ts'
 import { WhatsAppClient } from '../whatsapp/client.ts'
-import type { OutgoingMessageKey } from '../whatsapp/types.ts'
+import type { OutgoingMessageKey, WhatsAppProvider } from '../whatsapp/types.ts'
 import { parseWhatsAppProvider } from '../whatsapp/types.ts'
 import { type JobStatus, relayRequestSchema, type RelayResponse } from './protocol.ts'
 
@@ -159,6 +160,7 @@ export class DaemonRuntime {
 	private readonly statePath: string
 	private readonly fresh: boolean
 	private readonly wa: WhatsAppClient
+	private readonly pluginManager: PluginManager
 	private jobs = new Map<string, JobRecord>()
 	private jobCounter = 0
 	private outboundQueue: Promise<OutgoingMessageKey | null> = Promise.resolve(null)
@@ -181,6 +183,9 @@ export class DaemonRuntime {
 			authDir: this.authDir,
 			provider,
 			onIncoming: async (incoming) => {
+				// Plugin hooks are fire-and-forget, non-blocking
+				this.pluginManager.emitIncoming(incoming)
+
 				const jobs = [...this.jobs.values()]
 				if (jobs.length === 0) {
 					const startupHint = this.fresh
@@ -206,6 +211,28 @@ export class DaemonRuntime {
 					}
 				}
 			},
+		})
+
+		// Plugin manager — initialized after wa since it references it via deps
+		this.pluginManager = new PluginManager({
+			sendText: (groupId, text, opts) =>
+				this.enqueueOutbound(
+					groupId,
+					() => this.wa.sendText(groupId, text, opts),
+					{ typing: (opts as any)?.typing ?? true },
+				),
+			sendImageWithCaption: (groupId, imagePath, caption) =>
+				this.enqueueOutbound(
+					groupId,
+					() => this.wa.sendImageWithCaption(groupId, imagePath, caption),
+					{ typing: true },
+				),
+			sendTyping: (groupId) => this.wa.sendTyping(groupId),
+			react: (groupId, key, emoji) => this.wa.react(groupId, key, emoji),
+			lookupPnByLid: (lid) => this.wa.lookupPnByLid(lid),
+			lookupLidByPn: (pn) => this.wa.lookupLidByPn(pn),
+			isConnected: () => this.wa.isConnected(),
+			getProvider: () => this.wa.provider as WhatsAppProvider,
 		})
 	}
 
@@ -582,6 +609,15 @@ export class DaemonRuntime {
 			// Load season points store
 			await this.seasonStore.load()
 
+			// Initialize plugin manager and restore persisted plugins
+			await this.pluginManager.init()
+			if (!this.fresh) {
+				await this.pluginManager.restoreFromManifest()
+			}
+
+			// Emit WA connected event to plugins
+			this.pluginManager.emitWaConnected()
+
 			// Recover persisted jobs unless fresh mode
 			if (!this.fresh) {
 				await this.recoverJobs()
@@ -792,6 +828,62 @@ export class DaemonRuntime {
 								return
 							}
 
+							if (parsed.data.type === 'plugin-enable') {
+								try {
+									const args = parsed.data.args ?? {}
+									const name = await this.pluginManager.enable(parsed.data.sourcePath, args)
+									writeResponse(socket, {
+										ok: true,
+										message: `plugin "${name}" enabled`,
+									})
+								} catch (error) {
+									writeResponse(socket, {
+										ok: false,
+										message: `plugin enable failed: ${error instanceof Error ? error.message : String(error)}`,
+									})
+								}
+								return
+							}
+
+							if (parsed.data.type === 'plugin-disable') {
+								const pluginName = parsed.data.name
+								const entry = this.pluginManager.list().find((p) => p.name === pluginName)
+								if (!entry) {
+									writeResponse(socket, {
+										ok: false,
+										message: `no plugin named "${pluginName}" found`,
+									})
+									return
+								}
+								await this.pluginManager.disable(pluginName)
+								writeResponse(socket, {
+									ok: true,
+									message: `plugin "${pluginName}" disabled`,
+								})
+								return
+							}
+
+							if (parsed.data.type === 'plugin-list') {
+								const plugins = this.pluginManager.list()
+								if (plugins.length === 0) {
+									writeResponse(socket, {
+										ok: true,
+										message: 'no plugins loaded',
+										plugins: [],
+									})
+									return
+								}
+								const lines = plugins.map(
+									(p) => `[${p.active ? 'active' : 'inactive'}] ${p.name} (${p.sourcePath})`,
+								)
+								writeResponse(socket, {
+									ok: true,
+									message: `${plugins.length} plugin(s):\n${lines.join('\n')}`,
+									plugins,
+								})
+								return
+							}
+
 							if (!(await this.wa.isConnected())) {
 								writeResponse(socket, {
 									ok: false,
@@ -924,6 +1016,7 @@ export class DaemonRuntime {
 
 		const shutdown = async () => {
 			log.info('Shutting down daemon...')
+			await this.pluginManager.shutdown()
 			await this.wa.stop()
 			await new Promise<void>((resolve) => {
 				this.server?.close(() => resolve())
