@@ -98,10 +98,12 @@ function isValidAnswerEnding(text: string): boolean {
 	return ANSWER_ENDING_RE.test(text)
 }
 
-function formatWibTimeHint(timestampMs: number): string {
-	// Ceiling to next minute since seconds are omitted from display
-	const ceiledMs = Math.ceil(timestampMs / 60_000) * 60_000
-	return WIB_TIME_HM_FMT.format(new Date(ceiledMs)).replaceAll(':', '.')
+function formatWibTimeHint(timestampMs: number, { floor } = { floor: false }): string {
+	// Floor/ceil to minute boundary since seconds are omitted from display
+	const roundedMs = floor
+		? Math.floor(timestampMs / 60_000) * 60_000
+		: Math.ceil(timestampMs / 60_000) * 60_000
+	return WIB_TIME_HM_FMT.format(new Date(roundedMs)).replaceAll(':', '.')
 }
 
 function formatWibTimeColon(timestampMs: number): string {
@@ -556,7 +558,7 @@ export class QuizEngine {
 		const caption = formatQuestion(
 			question,
 			progress,
-			formatWibTimeHint(state.deadlineAtMs),
+			formatWibTimeHint(state.deadlineAtMs, { floor: true }),
 			state.bundle.messageTemplates,
 		)
 		if (question.imagePath) {
