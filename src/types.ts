@@ -14,6 +14,7 @@ export type QuizQuestion = {
 	kanjiAnswers?: ReadonlyArray<string>
 	extraPts?: number
 	answerExtraPts?: ReadonlyMap<string, number>
+	extraHint?: string
 	explanation: string
 	imagePath: string | null
 	isSpecialStage: boolean
@@ -83,6 +84,7 @@ export type ConfigQuestion = {
 	no: number
 	hint: string
 	answers: ConfigQuestionAnswers
+	extraHint?: string
 	explanation?: string
 	image?: ConfigQuestionImage
 }

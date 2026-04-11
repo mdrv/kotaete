@@ -604,8 +604,14 @@ export class QuizEngine {
 		if (token !== state.questionToken) return
 		if (!state.acceptingAnswers) return
 
+		const question = this.currentQuestion()
+		const warningBase = formatQuestionWarning(state.bundle.messageTemplates)
+		const warningText = question?.extraHint
+			? `${warningBase}\n\n💡 _${question.extraHint}_`
+			: warningBase
+
 		const quotedKey = state.questionMessageKey ?? undefined
-		await this.sender.sendText(state.groupId, formatQuestionWarning(state.bundle.messageTemplates), {
+		await this.sender.sendText(state.groupId, warningText, {
 			linkPreview: false,
 			...(quotedKey ? { quotedKey } : {}),
 		})
@@ -648,8 +654,8 @@ export class QuizEngine {
 		await this.sender.sendText(
 			state.groupId,
 			hasExtraPts
-			? formatWinnerPerfect(member, question.answers, gained, question.answerExtraPts, state.bundle.messageTemplates)
-			: formatWinner(member, question.answers, gained, question.answerExtraPts, state.bundle.messageTemplates),
+				? formatWinnerPerfect(member, question.answers, gained, question.answerExtraPts, state.bundle.messageTemplates)
+				: formatWinner(member, question.answers, gained, question.answerExtraPts, state.bundle.messageTemplates),
 			{
 				linkPreview: false,
 				quotedKey: incoming.key,

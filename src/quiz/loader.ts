@@ -4,8 +4,8 @@ import { basename, dirname, extname, join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { POINTS_KANJI_BONUS, SPECIAL_STAGE_NUMBER } from '../constants.ts'
 import type {
-	ConfigQuestion,
 	ConfigAnswerEntry,
+	ConfigQuestion,
 	ConfigQuestionAnswers,
 	ConfigQuestionImage,
 	NMember,
@@ -47,7 +47,6 @@ function normalizeOptionalDateValue(
 	if (value === undefined || value === null) return null
 	return normalizeDateValue(value, key, ctx)
 }
-
 
 function normalizeAnswerEntry(input: unknown, label: string, ctx: string): ConfigAnswerEntry | undefined {
 	if (typeof input === 'string') {
@@ -745,6 +744,7 @@ function convertConfigQuestion(entry: ConfigQuestion): QuizQuestion {
 		...(hasKanji ? { kanjiAnswers: kanjiTexts as ReadonlyArray<string> } : {}),
 		...(extraPts > 0 ? { extraPts } : {}),
 		...(answerExtraPts.size > 0 ? { answerExtraPts } : {}),
+		...(entry.extraHint ? { extraHint: entry.extraHint } : {}),
 		explanation: entry.explanation ?? '',
 		imagePath: null,
 		isSpecialStage: entry.no === SPECIAL_STAGE_NUMBER,
