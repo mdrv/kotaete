@@ -82,7 +82,7 @@ export default defineConfig({
 		nextRoundNotice: 'Ronde berikutnya mulai pukul {time} WIB. Bersiaplah!',
 
 		// Footer shown with each question (deadline hint).
-		questionFooter: '⏰ Batas waktu: {time} WIB',
+		questionFooter: '⏰ *{time} WIB*',
 
 		// Shown when a player tries to answer during cooldown.
 		cooldownWarning: 'Baru bisa jawab lagi mulai {time} WIB!',

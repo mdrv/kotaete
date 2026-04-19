@@ -617,7 +617,7 @@ export class QuizEngine {
 			entries.push({
 				name: member.kananame,
 				classgroup: member.classgroup,
-				time: formatWibTimeHint(cooldownUntil),
+				time: `${formatWibTimeHint(cooldownUntil)} WIB`,
 			})
 		}
 		return entries

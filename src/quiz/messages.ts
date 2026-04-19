@@ -29,7 +29,7 @@ const DEFAULT_TEMPLATES: QuizMessageTemplates = {
 		'🐻 Soal akan muncul dalam {delayMinutes} menit!',
 	].join('\n'),
 	nextRoundNotice: 'Ronde berikutnya mulai pukul {time} WIB. Bersiaplah!',
-	questionFooter: '⏰ Batas waktu: {time} WIB',
+	questionFooter: '⏰ *{time} WIB*',
 	cooldownWarning: 'Baru bisa jawab lagi mulai {time} WIB!',
 	questionCooldown: '*Cooldown:*\n{entries}',
 	questionWarning: '⏰ Tinggal 10 menit lagi!',
