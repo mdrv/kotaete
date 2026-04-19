@@ -25,8 +25,8 @@ export const QUIZ_TUNABLES = {
 		godAnnounceDelayMs: 60 * 1000,
 	},
 	cooldown: {
-		/** Cooldown duration in ms after a correct answer (default: 30 min) */
-		ms: 30 * 60 * 1000,
+		/** Cooldown duration in ms after a correct answer (default: 25 min) */
+		ms: 25 * 60 * 1000,
 	},
 	points: {
 		/** Points awarded per wrong answer (normal stage only) */

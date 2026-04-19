@@ -31,6 +31,7 @@ const DEFAULT_TEMPLATES: QuizMessageTemplates = {
 	nextRoundNotice: 'Ronde berikutnya mulai pukul {time} WIB. Bersiaplah!',
 	questionFooter: '⏰ Batas waktu: {time} WIB',
 	cooldownWarning: 'Baru bisa jawab lagi mulai {time} WIB!',
+	questionCooldown: '*Cooldown:*\n{entries}',
 	questionWarning: '⏰ Tinggal 10 menit lagi!',
 	timeout: '⏱️ Waktu habis untuk soal ini.\n✅ {answers}',
 	winner: '🤗 *せいかいだった！*\n🌸 *{name}({classgroup})* _+{points}pts_\n✅ {answers}',
@@ -108,12 +109,22 @@ export function formatQuestion(
 	progress: QuestionProgress | null,
 	timeHint: string,
 	templates?: Partial<QuizMessageTemplates>,
+	cooldownEntries?: ReadonlyArray<{ name: string; classgroup: string; time: string }> | null,
 ): string {
 	const t = resolveTemplates(templates)
 	const header = progress
 		? `🌟 *はやくこたえて！ (${progress.index}/${progress.total})*`
 		: '🌈 *はやくこたえて！ (神)*'
-	return `${header}\n\n${question.text}\n\n${applyTemplate(t.questionFooter, { time: timeHint })}`
+	let result = `${header}\n\n${question.text}`
+	if (cooldownEntries && cooldownEntries.length > 0) {
+		const entries = cooldownEntries
+			.toSorted((a, b) => a.time.localeCompare(b.time))
+			.map((e) => `${e.name} (${e.classgroup}) - ${e.time}`)
+			.join('\n')
+		result += `\n\n${applyTemplate(t.questionCooldown, { entries })}`
+	}
+	result += `\n\n${applyTemplate(t.questionFooter, { time: timeHint })}`
+	return result
 }
 
 export function formatOutroHeader(outroAt: Date): string {

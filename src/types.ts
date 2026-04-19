@@ -33,6 +33,7 @@ export type QuizMessageTemplates = {
 	nextRoundNotice: string
 	questionFooter: string
 	cooldownWarning: string
+	questionCooldown: string
 	questionWarning: string
 	timeout: string
 	winner: string

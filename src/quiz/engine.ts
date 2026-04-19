@@ -555,11 +555,15 @@ export class QuizEngine {
 		const progress = this.getQuestionProgress(question)
 		const timeoutMs = question.isSpecialStage ? GOD_STAGE_TIMEOUT_MS : QUESTION_TIMEOUT_MS
 		state.deadlineAtMs = Date.now() + timeoutMs
+		const cooldownEntries = !question.isSpecialStage && state.cooldowns.size > 0
+			? this.buildCooldownEntries(state)
+			: null
 		const caption = formatQuestion(
 			question,
 			progress,
 			formatWibTimeHint(state.deadlineAtMs, { floor: true }),
 			state.bundle.messageTemplates,
+			cooldownEntries,
 		)
 		if (question.imagePath) {
 			state.questionMessageKey = await this.sender.sendImageWithCaption(state.groupId, question.imagePath, caption)
@@ -598,6 +602,25 @@ export class QuizEngine {
 			state.timeoutToken = null
 		}
 		return true
+	}
+	private buildCooldownEntries(state: RunnerState): Array<{ name: string; classgroup: string; time: string }> {
+		const now = Date.now()
+		const byMid = new Map<string, NMember>()
+		for (const m of state.byLid.values()) {
+			byMid.set(m.mid, m)
+		}
+		const entries: Array<{ name: string; classgroup: string; time: string }> = []
+		for (const [mid, cooldownUntil] of state.cooldowns) {
+			if (cooldownUntil <= now) continue
+			const member = byMid.get(mid)
+			if (!member) continue
+			entries.push({
+				name: member.kananame,
+				classgroup: member.classgroup,
+				time: formatWibTimeHint(cooldownUntil),
+			})
+		}
+		return entries
 	}
 
 	private async handleQuestionWarning(token: number): Promise<void> {
@@ -656,8 +679,8 @@ export class QuizEngine {
 		await this.sender.sendText(
 			state.groupId,
 			hasExtraPts
-				? formatWinnerPerfect(member, question.answers, gained, question.answerExtraPts, state.bundle.messageTemplates)
-				: formatWinner(member, question.answers, gained, question.answerExtraPts, state.bundle.messageTemplates),
+				? formatWinnerPerfect(member, question.answers, currentQuestionPoints + gained, question.answerExtraPts, state.bundle.messageTemplates)
+				: formatWinner(member, question.answers, currentQuestionPoints + gained, question.answerExtraPts, state.bundle.messageTemplates),
 			{
 				linkPreview: false,
 				quotedKey: incoming.key,
