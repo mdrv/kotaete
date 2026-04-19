@@ -20,6 +20,7 @@
         "@types/bun": "latest",
         "@types/qrcode-terminal": "latest",
         "dprint": "latest",
+        "typescript": "latest",
       },
     },
   },
@@ -43,9 +44,9 @@
 
     "@cacheable/utils": ["@cacheable/utils@2.4.1", "", { "dependencies": { "hashery": "^1.5.1", "keyv": "^5.6.0" } }, "sha512-eiFgzCbIneyMlLOmNG4g9xzF7Hv3Mga4LjxjcSC/ues6VYq2+gUbQI8JqNuw/ZM8tJIeIaBGpswAsqV2V7ApgA=="],
 
-    "@crustjs/core": ["@crustjs/core@0.0.15", "", { "peerDependencies": { "typescript": "^5" } }, "sha512-dgR1hSNj202a3IUfdj2S7QEG6Wd/2v24aq0Iz45NGTQxxNbBs6j2ENQSJTZeYkaeXjj+hnNrIZ1PiLnHuDxYaA=="],
+    "@crustjs/core": ["@crustjs/core@0.0.16", "", { "peerDependencies": { "typescript": "^6.0.2" } }, "sha512-2yybZnmBjdNH9XisCtDAWUVuBQSobcrdvhVcW8O4GumCF1oM6FHsBVq+gsxOM5PemEqtdpEo78h0rzI7clVcAA=="],
 
-    "@crustjs/plugins": ["@crustjs/plugins@0.0.20", "", { "dependencies": { "@crustjs/style": "0.0.6" }, "peerDependencies": { "@crustjs/core": "0.0.15", "typescript": "^5" } }, "sha512-bXH67QK7fnV7Ko2dqgbZjsdbGrEHTF99fi92/gyXYcVY+ZKd61MVN1BDWCdTL0hC/11uYWHE3Qh9TgKVq4panQ=="],
+    "@crustjs/plugins": ["@crustjs/plugins@0.0.21", "", { "dependencies": { "@crustjs/style": "0.0.6" }, "peerDependencies": { "@crustjs/core": "0.0.16", "typescript": "^6.0.2" } }, "sha512-8XAB3UU0ztUxeTsxGuXhOpsDRFXZ1N3/g5fS8QR3GPD/qV940GMp0wsjjAlAyqrY9b7mudYFs0PQmyTTYTTXpw=="],
 
     "@crustjs/style": ["@crustjs/style@0.0.6", "", { "peerDependencies": { "typescript": "^5" } }, "sha512-GB15j1g/IeOa+ZhacHOzEj9D7TKDFJ2axdwvTCyyfl3U1c+tbi+gBs+2HWmExDjEDhuN3ABwuUlLMljTUlxI4w=="],
 
@@ -531,7 +532,7 @@
 
     "typed-query-selector": ["typed-query-selector@2.12.1", "", {}, "sha512-uzR+FzI8qrUEIu96oaeBJmd9E7CFEiQ3goA5qCVgc4s5llSubcfGHq9yUstZx/k4s9dXHVKsE35YWoFyvEqEHA=="],
 
-    "typescript": ["typescript@5.9.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw=="],
+    "typescript": ["typescript@6.0.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-y2TvuxSZPDyQakkFRPZHKFm+KKVqIisdg9/CZwm9ftvKXLP8NRWj38/ODjNbr43SsoXqNuAisEf1GdCxqWcdBw=="],
 
     "uint8array-extras": ["uint8array-extras@1.5.0", "", {}, "sha512-rvKSBiC5zqCCiDZ9kAOszZcDvdAHwwIKJG33Ykj43OKcWsnmcBRL09YTU4nOeHZ8Y2a7l1MgTd08SBe9A8Qj6A=="],
 

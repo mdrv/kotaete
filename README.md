@@ -102,7 +102,7 @@ Adjust scoring and timing behavior via `QUIZ_TUNABLES` in `src/constants.ts`:
 - `points.kanjiBonus`: Bonus points for kanji-containing answers (default: 2)
 - `timeout.normalMs`: Normal question timeout in ms (default: 60 min)
 - `timeout.specialMs`: God stage question timeout in ms (default: 30 min)
-- `cooldown.ms`: Cooldown duration after correct answer (default: 30 min)
+- `cooldown.ms`: Cooldown duration after correct answer (default: 25 min)
 - `wrongAttempts.maxCount`: Wrong answers allowed per player (default: 2)
 
 ## Answer Types

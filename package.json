@@ -30,8 +30,8 @@
 		"docs:build": "cd docs/astro && bun run build"
 	},
 	"dependencies": {
-		"@crustjs/core": "^0.0.15",
-		"@crustjs/plugins": "^0.0.20",
+		"@crustjs/core": "^0.0.16",
+		"@crustjs/plugins": "^0.0.21",
 		"@logtape/file": "^2.0.5",
 		"@logtape/logtape": "^2.0.5",
 		"@logtape/pretty": "^2.0.5",
@@ -44,7 +44,8 @@
 	"devDependencies": {
 		"@types/bun": "^1.3.12",
 		"@types/qrcode-terminal": "^0.12.2",
-		"dprint": "^0.54.0"
+		"dprint": "^0.54.0",
+		"typescript": "^6.0.3"
 	},
 	"trustedDependencies": [
 		"@whiskeysockets/baileys",
