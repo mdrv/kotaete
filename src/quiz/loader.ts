@@ -173,6 +173,7 @@ function normalizeQuestions(input: unknown, ctx = 'kotaete config'): ReadonlyArr
 			hint?: unknown
 			answers?: unknown
 			explanation?: unknown
+			extraHint?: unknown
 			image?: unknown
 		}
 
@@ -201,6 +202,9 @@ function normalizeQuestions(input: unknown, ctx = 'kotaete config'): ReadonlyArr
 				? { explanation: raw.explanation.trim() }
 				: {}),
 			...(image ? { image } : {}),
+			...(typeof raw.extraHint === 'string' && raw.extraHint.trim().length > 0
+				? { extraHint: raw.extraHint.trim() }
+				: {}),
 		}
 	})
 }
