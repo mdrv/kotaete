@@ -368,4 +368,36 @@ describe('runtime state snapshot helpers', () => {
 			expect(result).toContain('has passed')
 		})
 	})
+
+	test('job status schema accepts optional queuePosition', () => {
+		const result = jobStatusSchema.safeParse({
+			id: 'q-1',
+			groupId: '120@g.us',
+			quizDir: '/tmp/q',
+			noCooldown: false,
+			status: 'scheduled',
+			createdAt: '2026-04-04T07:45:00.000Z',
+			queuePosition: 0,
+		})
+		expect(result.success).toBe(true)
+		if (result.success) {
+			expect(result.data.queuePosition).toBe(0)
+		}
+	})
+
+	test('computeStopSilenceFromStatus: scheduled jobs are silent by default', () => {
+		const { __runtimeTestInternals } = require('./runtime.ts')
+		const firstRoundAt = new Date(Date.now() + 60_000)
+		const silent = __runtimeTestInternals.computeStopSilenceFromStatus(firstRoundAt, Date.now(), false, false)
+		expect(silent).toBe(true)
+	})
+
+	test('computeStopSilenceFromStatus: running jobs keep final scoreboard unless --silent', () => {
+		const { __runtimeTestInternals } = require('./runtime.ts')
+		const firstRoundAt = new Date(Date.now() - 60_000)
+		const normalStop = __runtimeTestInternals.computeStopSilenceFromStatus(firstRoundAt, Date.now(), true, false)
+		expect(normalStop).toBe(false)
+		const forcedSilent = __runtimeTestInternals.computeStopSilenceFromStatus(firstRoundAt, Date.now(), true, true)
+		expect(forcedSilent).toBe(true)
+	})
 })

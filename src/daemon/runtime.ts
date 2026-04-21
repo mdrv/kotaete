@@ -144,6 +144,11 @@ export const __runtimeTestInternals = {
 	 * queue ordering, advancement, and clearing behavior.
 	 */
 	createQueueTestContext,
+	computeStopSilenceFromStatus(firstRoundAt: Date | null, nowMs: number, isRunning: boolean, requestedSilent?: boolean): boolean {
+		const roundElapsed = firstRoundAt ? nowMs - firstRoundAt.getTime() : 0
+		const effectiveRunning = (roundElapsed >= 0 && isRunning)
+		return (requestedSilent ?? false) || !effectiveRunning
+	},
 }
 
 /** ---------------------------------------------------------------------------
@@ -646,16 +651,27 @@ export class DaemonRuntime {
 		})
 	}
 
-	private async forceEndJob(jobId: string, opts?: { silent?: boolean }): Promise<boolean> {
+	private async forceEndJob(
+		jobId: string,
+		opts?: { silent?: boolean },
+	): Promise<{ stopped: boolean; silent: boolean }> {
 		const job = this.jobs.get(jobId)
-		if (!job) return false
-		if (opts?.silent) {
+		if (!job) return { stopped: false, silent: false }
+
+		const effectiveSilent = __runtimeTestInternals.computeStopSilenceFromStatus(
+			job.meta.firstRoundAt,
+			Date.now(),
+			job.engine.isRunning(),
+			opts?.silent,
+		)
+
+		if (effectiveSilent) {
 			job.engine.stopCurrentQuiz()
 		} else {
 			await job.engine.stopCurrentQuizWithFinal()
 		}
 		this.finishJob(jobId)
-		return true
+		return { stopped: true, silent: effectiveSilent }
 	}
 
 	// ---------------------------------------------------------------------------
@@ -873,14 +889,14 @@ export class DaemonRuntime {
 								const targetId = parsed.data.id
 								const silent = parsed.data.silent ?? false
 								if (targetId) {
-									const stopped = await this.forceEndJob(targetId, { silent })
-									if (!stopped) {
+									const result = await this.forceEndJob(targetId, { silent })
+									if (!result.stopped) {
 										writeResponse(socket, { ok: false, message: `no active job with id "${targetId}"` })
 										return
 									}
 									writeResponse(socket, {
 										ok: true,
-										message: silent
+										message: result.silent
 											? `job "${targetId}" stopped silently`
 											: `job "${targetId}" stopped with final scoreboard`,
 									})
@@ -893,10 +909,10 @@ export class DaemonRuntime {
 								}
 								if (allJobs.length === 1) {
 									const jobId = allJobs[0]!.id
-									await this.forceEndJob(jobId, { silent })
+									const result = await this.forceEndJob(jobId, { silent })
 									writeResponse(socket, {
 										ok: true,
-										message: silent
+										message: result.silent
 											? `job "${jobId}" stopped silently`
 											: `job "${jobId}" stopped with final scoreboard`,
 									})
@@ -959,11 +975,12 @@ export class DaemonRuntime {
 
 										try {
 											const { generateSeasonScoreboardImage } = await import('../quiz/season-scoreboard.ts')
+											const groupIdStem = groupId.split('@')[0] ?? groupId
 											const scoreboardOutput = await generateSeasonScoreboardImage(topSlots, {
 												...(sampleBundle?.season?.scoreboardTemplate
 													? { templatePath: sampleBundle.season.scoreboardTemplate }
 													: {}),
-												outputStem: 'season-scoreboard',
+											outputStem: `scoreboard-${groupIdStem}`,
 											})
 
 											const { formatSeasonTopMessage, formatSeasonOthersMessage } = await import('../quiz/messages.ts')

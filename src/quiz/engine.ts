@@ -843,10 +843,11 @@ export class QuizEngine {
 				try {
 					const { generateSeasonScoreboardImage } = await import('./season-scoreboard.ts')
 					await mkdir(state.bundle.directory, { recursive: true })
+					const groupIdStem = state.groupId.split('@')[0] ?? state.groupId
 					const scoreboardOutput = await generateSeasonScoreboardImage(topSlots, {
 						...(season.scoreboardTemplate ? { templatePath: season.scoreboardTemplate } : {}),
 						outputDir: state.bundle.directory,
-						outputStem: 'season-scoreboard',
+						outputStem: `scoreboard-${groupIdStem}`,
 						...(season.caption ? { caption: season.caption } : {}),
 					})
 					const imgCaption = formatSeasonTopMessage(top3, season.caption)
