@@ -16,7 +16,7 @@ import { PluginManager } from '../plugin/manager.ts'
 import { QuizEngine } from '../quiz/engine.ts'
 import { loadQuizBundle } from '../quiz/loader.ts'
 import { SeasonStore } from '../quiz/season-store.ts'
-import type { NMember } from '../types.ts'
+import type { NMember, QuizBundle } from '../types.ts'
 import { expandHome } from '../utils/path.ts'
 import { WhatsAppClient } from '../whatsapp/client.ts'
 import type { OutgoingMessageKey, WhatsAppProvider } from '../whatsapp/types.ts'
@@ -67,7 +67,13 @@ function writeResponse(socket: Socket, payload: RelayResponse): void {
 	socket.end()
 }
 
-type JobRecord = {
+type DeferredPayload = {
+	quizBundle: QuizBundle
+	members: ReadonlyArray<NMember>
+	runOptions: { noCooldown: boolean } | undefined
+}
+
+export type JobRecord = {
 	id: string
 	engine: QuizEngine
 	meta: {
@@ -82,6 +88,7 @@ type JobRecord = {
 		introAt: Date | null
 		firstRoundAt: Date | null
 	}
+	deferred: DeferredPayload | null
 }
 
 // ---------------------------------------------------------------------------
@@ -131,6 +138,135 @@ export const __runtimeTestInternals = {
 		}
 		return null
 	},
+	/**
+	 * Create an isolated queue context that mirrors DaemonRuntime's per-group queue
+	 * logic. No side effects (no network, filesystem, timers). Useful for testing
+	 * queue ordering, advancement, and clearing behavior.
+	 */
+	createQueueTestContext,
+}
+
+/** ---------------------------------------------------------------------------
+ * Pure-function reimplementation of the per-group queue logic for testing.
+ * Mirrors the private methods on DaemonRuntime without requiring a full
+ * instance (no WhatsApp client, no filesystem, no timers).
+ * ---------------------------------------------------------------------------
+ */
+type QueueTestContext = {
+	jobs: Map<string, JobRecord>
+	groupQueues: Map<string, string[]>
+	addToQueue(jobId: string, groupId: string): number
+	removeFromQueue(jobId: string, groupId: string): void
+	getActiveJobIdForGroup(groupId: string): string | undefined
+	isActiveJob(jobId: string, groupId: string): boolean
+	finishJob(jobId: string): void
+	advanceQueue(groupId: string): void
+	clearGroupQueue(groupId: string): void
+	getJobStatus(): JobStatus[]
+}
+
+function createQueueTestContext(): QueueTestContext {
+	const jobs = new Map<string, JobRecord>()
+	const groupQueues = new Map<string, string[]>()
+	const startedJobs = new Set<string>()
+
+	function addToQueue(jobId: string, groupId: string): number {
+		const queue = groupQueues.get(groupId) ?? []
+		queue.push(jobId)
+		queue.sort((a, b) => {
+			const jobA = jobs.get(a)
+			const jobB = jobs.get(b)
+			const atA = jobA?.meta.firstRoundAt?.getTime() ?? Infinity
+			const atB = jobB?.meta.firstRoundAt?.getTime() ?? Infinity
+			return atA - atB
+		})
+		groupQueues.set(groupId, queue)
+		return queue.indexOf(jobId)
+	}
+
+	function removeFromQueue(jobId: string, groupId: string): void {
+		const queue = groupQueues.get(groupId)
+		if (!queue) return
+		const idx = queue.indexOf(jobId)
+		if (idx >= 0) queue.splice(idx, 1)
+		if (queue.length === 0) {
+			groupQueues.delete(groupId)
+		}
+	}
+
+	function getActiveJobIdForGroup(groupId: string): string | undefined {
+		const queue = groupQueues.get(groupId)
+		return queue?.[0]
+	}
+
+	function isActiveJob(jobId: string, groupId: string): boolean {
+		return getActiveJobIdForGroup(groupId) === jobId
+	}
+
+	function finishJob(jobId: string): void {
+		const job = jobs.get(jobId)
+		if (!job) return
+		const groupId = job.meta.groupId
+		startedJobs.delete(jobId)
+		removeFromQueue(jobId, groupId)
+		jobs.delete(jobId)
+		advanceQueue(groupId)
+	}
+
+	function advanceQueue(groupId: string): void {
+		const queue = groupQueues.get(groupId)
+		if (!queue || queue.length === 0) return
+		const nextJobId = queue[0]!
+		const nextJob = jobs.get(nextJobId)
+		if (!nextJob || !nextJob.deferred) return
+		nextJob.deferred = null
+		startedJobs.add(nextJobId)
+	}
+
+	function clearGroupQueue(groupId: string): void {
+		const queue = groupQueues.get(groupId)
+		if (!queue) return
+		for (const jobId of queue) {
+			jobs.delete(jobId)
+			startedJobs.delete(jobId)
+		}
+		groupQueues.delete(groupId)
+	}
+
+	function getJobStatus(): JobStatus[] {
+		return [...jobs.values()].map((job) => {
+			const queue = groupQueues.get(job.meta.groupId) ?? []
+			const queuePosition = queue.indexOf(job.id)
+			const running = startedJobs.has(job.id)
+			const result: JobStatus = {
+				id: job.id,
+				groupId: job.meta.groupId,
+				quizDir: job.meta.quizDir,
+				...(job.meta.membersFile ? { membersFile: job.meta.membersFile } : {}),
+				noCooldown: job.meta.noCooldown,
+				...(job.meta.noGeneration ? { noGeneration: true } : {}),
+				...(queuePosition >= 0 ? { queuePosition } : {}),
+				status: (running ? 'running' : 'scheduled') as 'scheduled' | 'running',
+				introAt: job.meta.introAt?.toISOString(),
+				firstRoundAt: job.meta.firstRoundAt?.toISOString(),
+				createdAt: job.meta.createdAt.toISOString(),
+			}
+			return result
+		})
+	}
+
+	return {
+		jobs,
+		groupQueues,
+		addToQueue,
+		removeFromQueue,
+		getActiveJobIdForGroup,
+		isActiveJob,
+		finishJob,
+		advanceQueue,
+		clearGroupQueue,
+		getJobStatus,
+	}
 }
 
 function serializeSnapshot(jobs: ReadonlyMap<string, JobRecord>): RuntimeStateSnapshot {
@@ -162,6 +298,7 @@ export class DaemonRuntime {
 	private readonly wa: WhatsAppClient
 	private readonly pluginManager: PluginManager
 	private jobs = new Map<string, JobRecord>()
+	private groupQueues = new Map<string, string[]>()
 	private jobCounter = 0
 	private outboundQueue: Promise<OutgoingMessageKey | null> = Promise.resolve(null)
 	private lastOutboundAt = 0
@@ -186,7 +323,7 @@ export class DaemonRuntime {
 				// Plugin hooks are fire-and-forget, non-blocking
 				this.pluginManager.emitIncoming(incoming)
 
-				const jobs = [...this.jobs.values()]
+				const jobs = [...this.jobs.values()].filter((job) => this.isActiveJob(job.id, job.meta.groupId))
 				if (jobs.length === 0) {
 					const startupHint = this.fresh
 						? ' (fresh mode: start one via `kotaete quiz run ...` first)'
@@ -201,7 +338,7 @@ export class DaemonRuntime {
 				for (const job of jobs) {
 					try {
 						log.debug(
-							`dispatch incoming to job=${job.id} incomingGroup=${incoming.groupId} jobGroup=${job.meta.groupId}`,
+							`dispatch incoming to active job=${job.id} incomingGroup=${incoming.groupId} jobGroup=${job.meta.groupId}`,
 						)
 						await job.engine.onIncomingMessage(incoming)
 					} catch (error) {
@@ -237,8 +374,12 @@ export class DaemonRuntime {
 	}
 
 	private finishJob(jobId: string): void {
-		if (!this.jobs.has(jobId)) return
+		const job = this.jobs.get(jobId)
+		if (!job) return
+		const groupId = job.meta.groupId
+		this.removeFromQueue(jobId, groupId)
 		this.jobs.delete(jobId)
+		this.advanceQueue(groupId)
 		void this.persistState().catch(() => undefined)
 	}
 
@@ -266,6 +407,74 @@ export class DaemonRuntime {
 	private generateJobId(): string {
 		this.jobCounter += 1
 		return `q-${Date.now()}-${this.jobCounter}`
+	}
+
+	// ---------------------------------------------------------------------------
+	// Per-group queue management
+	// ---------------------------------------------------------------------------
+
+	/** Get the active (first-in-queue) job ID for a group, or undefined if none. */
+	private getActiveJobIdForGroup(groupId: string): string | undefined {
+		const queue = this.groupQueues.get(groupId)
+		return queue?.[0]
+	}
+
+	/** Check whether a job is the active (first-in-queue) job for its group. */
+	private isActiveJob(jobId: string, groupId: string): boolean {
+		return this.getActiveJobIdForGroup(groupId) === jobId
+	}
+
+	/**
+	 * Add a job ID to its group's queue, sorted by firstRoundAt (earliest first).
+	 * Returns the position in the queue (0-based).
+	 */
+	private addToQueue(jobId: string, groupId: string): number {
+		const queue = this.groupQueues.get(groupId) ?? []
+		queue.push(jobId)
+		queue.sort((a, b) => {
+			const jobA = this.jobs.get(a)
+			const jobB = this.jobs.get(b)
+			const atA = jobA?.meta.firstRoundAt?.getTime() ?? Infinity
+			const atB = jobB?.meta.firstRoundAt?.getTime() ?? Infinity
+			return atA - atB
+		})
+		this.groupQueues.set(groupId, queue)
+		return queue.indexOf(jobId)
+	}
+
+	/** Remove a job ID from its group's queue. Returns the groupId. */
+	private removeFromQueue(jobId: string, groupId: string): void {
+		const queue = this.groupQueues.get(groupId)
+		if (!queue) return
+		const idx = queue.indexOf(jobId)
+		if (idx >= 0) queue.splice(idx, 1)
+		if (queue.length === 0) {
+			this.groupQueues.delete(groupId)
+		}
+	}
+
+	/**
+	 * Start the engine for the next job in a group's queue.
+	 * Called after a job finishes or is removed.
+	 */
+	private advanceQueue(groupId: string): void {
+		const queue = this.groupQueues.get(groupId)
+		if (!queue || queue.length === 0) return
+
+		const nextJobId = queue[0]!
+		const nextJob = this.jobs.get(nextJobId)
+		if (!nextJob || !nextJob.deferred) return
+
+		const { quizBundle, members, runOptions } = nextJob.deferred
+		nextJob.deferred = null // consumed
+
+		log.info(`advancing queue for group ${groupId}: starting job ${nextJobId}`)
+		void nextJob.engine
+			.run(quizBundle, members, groupId, runOptions)
+			.catch((error: unknown) => {
+				log.error(`queued job ${nextJobId} runtime failed: ${error instanceof Error ? error.message : String(error)}`)
+				this.finishJob(nextJobId)
+			})
 	}
 
 	// ---------------------------------------------------------------------------
@@ -324,17 +533,15 @@ export class DaemonRuntime {
 			return
 		}
 
-		// Deduplicate by groupId: keep latest createdAt
-		const deduped = new Map<string, (typeof parsed.jobs)[number]>()
-		for (const entry of parsed.jobs) {
-			const prev = deduped.get(entry.groupId)
-			if (!prev || entry.createdAt > prev.createdAt) {
-				deduped.set(entry.groupId, entry)
-			}
-		}
+		const entries = [...parsed.jobs].sort((a, b) => {
+			const atA = a.firstRoundAt ? new Date(a.firstRoundAt).getTime() : Number.POSITIVE_INFINITY
+			const atB = b.firstRoundAt ? new Date(b.firstRoundAt).getTime() : Number.POSITIVE_INFINITY
+			if (atA !== atB) return atA - atB
+			return a.createdAt.localeCompare(b.createdAt)
+		})
 
 		let recovered = 0
-		for (const entry of deduped.values()) {
+		for (const entry of entries) {
 			try {
 				const sourceList = entry.sources && entry.sources.length > 0
 					? entry.sources
@@ -388,17 +595,13 @@ export class DaemonRuntime {
 						introAt,
 						firstRoundAt,
 					},
+					deferred: { quizBundle, members, runOptions },
 				}
 				this.jobs.set(jobId, jobRecord)
-
-				void engine
-					.run(quizBundle, members, resolvedGroupId, runOptions)
-					.catch((error: unknown) => {
-						log.error(
-							`recovered job ${jobId} runtime failed: ${error instanceof Error ? error.message : String(error)}`,
-						)
-						this.finishJob(jobId)
-					})
+				const position = this.addToQueue(jobId, resolvedGroupId)
+				if (position === 0) {
+					this.advanceQueue(resolvedGroupId)
+				}
 
 				recovered += 1
 				log.info(`recovered job ${jobId} for group ${resolvedGroupId} (original id ${entry.id})`)
@@ -425,6 +628,8 @@ export class DaemonRuntime {
 			const firstRoundAt = job.meta.firstRoundAt
 			const roundElapsed = firstRoundAt ? now - firstRoundAt.getTime() : 0
 			const status: 'scheduled' | 'running' = (roundElapsed >= 0 && job.engine.isRunning()) ? 'running' : 'scheduled'
+			const queue = this.groupQueues.get(job.meta.groupId) ?? []
+			const queuePosition = queue.indexOf(job.id)
 			return {
 				id: job.id,
 				groupId: job.meta.groupId,
@@ -432,19 +637,13 @@ export class DaemonRuntime {
 				...(job.meta.membersFile ? { membersFile: job.meta.membersFile } : {}),
 				noCooldown: job.meta.noCooldown,
 				...(job.meta.noGeneration ? { noGeneration: true } : {}),
+				...(queuePosition >= 0 ? { queuePosition } : {}),
 				status,
 				introAt: introAt?.toISOString(),
 				firstRoundAt: firstRoundAt?.toISOString(),
 				createdAt: job.meta.createdAt.toISOString(),
 			}
 		})
-	}
-
-	private findJobByGroup(groupId: string): JobRecord | undefined {
-		for (const job of this.jobs.values()) {
-			if (job.meta.groupId === groupId) return job
-		}
-		return undefined
 	}
 
 	private async forceEndJob(jobId: string, opts?: { silent?: boolean }): Promise<boolean> {
@@ -656,9 +855,11 @@ export class DaemonRuntime {
 								}
 								const lines = allJobs.map(
 									(job) =>
-										`[${job.status}] ${job.id} group=${job.groupId} quizDir=${job.quizDir} cooldown=${
-											job.noCooldown ? 'off' : 'on'
-										} generation=${job.noGeneration ? 'off' : 'on'}`,
+										`[${job.status}] ${job.id} group=${job.groupId} queue=${
+											job.queuePosition ?? '-'
+										} quizDir=${job.quizDir} cooldown=${job.noCooldown ? 'off' : 'on'} generation=${
+											job.noGeneration ? 'off' : 'on'
+										}`,
 								)
 								writeResponse(socket, {
 									ok: true,
@@ -729,6 +930,7 @@ export class DaemonRuntime {
 									}
 									this.finishJob(job.id)
 								}
+								this.groupQueues.delete(groupId)
 
 								if (!parsed.data.noScoreboard) {
 									const seasonPoints = this.seasonStore.getPoints(groupId)
@@ -920,8 +1122,6 @@ export class DaemonRuntime {
 								throw new Error('[quiz] missing members source (set members in config or provide members file)')
 							}
 
-							const existingGroupJob = this.findJobByGroup(resolvedGroupId)
-
 							const runOptions = parsed.data.noCooldown === undefined
 								? undefined
 								: { noCooldown: parsed.data.noCooldown }
@@ -940,11 +1140,6 @@ export class DaemonRuntime {
 									message: `[quiz] ${scheduleError}`,
 								})
 								return
-							}
-
-							if (existingGroupJob) {
-								log.info(`force-ending existing job ${existingGroupJob.id} for group ${resolvedGroupId}`)
-								await this.forceEndJob(existingGroupJob.id)
 							}
 
 							const introDelayMs = Math.max(0, quizBundle.introAt.getTime() - now)
@@ -967,29 +1162,31 @@ export class DaemonRuntime {
 									introAt: quizBundle.introAt,
 									firstRoundAt,
 								},
+								deferred: { quizBundle, members, runOptions },
 							}
 							this.jobs.set(jobId, jobRecord)
+							const queuePosition = this.addToQueue(jobId, resolvedGroupId)
+							if (queuePosition === 0) {
+								this.advanceQueue(resolvedGroupId)
+							}
 							void this.persistState().catch(() => undefined)
-
-							void engine
-								.run(quizBundle, members, resolvedGroupId, runOptions)
-								.catch((error: unknown) => {
-									log.error(`job ${jobId} runtime failed: ${error instanceof Error ? error.message : String(error)}`)
-									this.finishJob(jobId)
-								})
 
 							if (parsed.data.noSchedule) {
 								writeResponse(socket, {
 									ok: true,
-									message: `quiz running immediately (${jobId}) (--no-schedule)`,
+									message: queuePosition === 0
+										? `quiz queued and running immediately (${jobId}) (--no-schedule)`
+										: `quiz queued (${jobId}) at position ${queuePosition + 1} (--no-schedule)`,
 									jobId,
 								})
 							} else {
 								writeResponse(socket, {
 									ok: true,
-									message: `quiz scheduled (${jobId}) (intro ${formatWibDateTime(quizBundle.introAt)} WIB; in ${
-										formatDelay(introDelayMs)
-									} | round1 ${formatWibDateTime(firstRoundAt)} WIB; in ${formatDelay(startDelayMs)})`,
+									message: `quiz queued (${jobId}) pos=${queuePosition + 1} (intro ${
+										formatWibDateTime(quizBundle.introAt)
+									} WIB; in ${formatDelay(introDelayMs)} | round1 ${formatWibDateTime(firstRoundAt)} WIB; in ${
+										formatDelay(startDelayMs)
+									})`,
 									jobId,
 								})
 							}

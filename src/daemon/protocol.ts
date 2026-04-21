@@ -100,6 +100,7 @@ export const jobStatusSchema = z.object({
 	introAt: z.string().optional(),
 	firstRoundAt: z.string().optional(),
 	createdAt: z.string(),
+	queuePosition: z.number().int().min(0).optional(),
 })
 
 export type JobStatus = z.infer<typeof jobStatusSchema>
