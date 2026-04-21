@@ -1,4 +1,3 @@
-import { Surreal } from 'surrealdb'
 import { definePlugin } from '../src/plugin/define-plugin.ts'
 import { generateDailyTotp4, msUntilNextTotp } from '../src/utils/totp.ts'
 
@@ -12,6 +11,9 @@ function formatTimeRemaining(ms: number): string {
 	if (hours > 0) return `${hours}h ${minutes}m`
 	return `${minutes}m`
 }
+
+type Surreal = import('surrealdb').Surreal
+const surrealdbModulePath = '../node_modules/surrealdb/dist/surrealdb.mjs'
 
 type MemberRecord = {
 	id: string
@@ -36,10 +38,11 @@ export default definePlugin({
 
 		async function getDb(): Promise<Surreal> {
 			if (db) return db
+			const { Surreal } = await import(surrealdbModulePath) as typeof import('surrealdb')
 			const instance = new Surreal()
 			await instance.connect(endpoint)
 			await instance.signin({ username, password })
-			await instance.use(namespace, database)
+			await instance.use({ namespace, database })
 			db = instance
 			return db
 		}
@@ -66,7 +69,7 @@ export default definePlugin({
 						{ lid: senderLid },
 					)
 
-					const rec = rows?.[0]?.[0]
+					const rec = (rows as any)?.[0]?.[0] as MemberRecord | undefined
 					if (!rec || !rec.totp_secret) {
 						ctx.log.info(`login: no member found for LID=${senderLid}`)
 						await ctx.sendDmText(
@@ -76,8 +79,9 @@ export default definePlugin({
 						return
 					}
 
-					const primaryMid = rec.mids?.find((m) => m.primary)?.value
-						?? rec.mids?.[0]?.value
+					const primaryMid = (rec.mids as Array<{ value: string; primary: boolean }>)
+						?.find((m) => m.primary)?.value
+						?? (rec.mids as Array<{ value: string; primary: boolean }>)?.[0]?.value
 						?? '???'
 
 					const code = generateDailyTotp4(String(rec.totp_secret))
