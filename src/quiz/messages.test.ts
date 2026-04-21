@@ -40,7 +40,7 @@ describe('formatIntro date header', () => {
 		expect(text).toContain('🌈 *はやくこたえて！ (神)*')
 		expect(text).not.toContain('(1/4)')
 		expect(text).not.toContain('SPECIAL')
-		expect(text).toContain('⏰ Batas waktu: 23.59 WIB')
+		expect(text).toContain('⏰ *23.59 WIB*')
 	})
 
 	test('uses outro note when provided', () => {

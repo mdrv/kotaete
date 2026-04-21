@@ -61,7 +61,7 @@ type RunnerState = {
 	questionPointsByMid: Map<string, number>
 	cooldowns: Map<string, number>
 	noCooldown: boolean
-	cooldownWarningSent: boolean
+	cooldownWarningSent: Set<string>
 	wrongStreak: Map<string, number>
 	attemptedSpecial: Set<string>
 	index: number
@@ -121,13 +121,18 @@ type RoundMeta = {
 /**
  * Check if the user's answer is purely romaji (Latin letters only, possibly with whitespace/hyphens)
  * and matches the first word of any expected answer (indicating they forgot the kana type suffix).
+ * Only triggers for single-word inputs — if the user already included a kana type suffix
+ * (even an incorrect one like "oshimeeda katakana"), no tease is sent.
  */
 function isRomajiWithoutType(input: string, answers: ReadonlyArray<string>): boolean {
 	const normalized = input.trim()
 	if (!normalized) return false
 	// Must be purely Latin/ASCII (romaji) — no CJK, kana, etc.
 	if (!/^[a-zA-Z\s\-]+$/.test(normalized)) return false
-	const firstWord = normalized.split(/\s+/)[0]?.trim().toLowerCase()
+	// Must be a single word — if there's a second word (kana type), user already knows the format
+	const words = normalized.split(/\s+/)
+	if (words.length > 1) return false
+	const firstWord = words[0]?.trim().toLowerCase()
 	if (!firstWord) return false
 	for (const answer of answers) {
 		const answerFirstWord = answer.split(/\s+/)[0]?.trim().toLowerCase()
@@ -248,7 +253,7 @@ export class QuizEngine {
 			questionPointsByMid: new Map(),
 			cooldowns: new Map(),
 			noCooldown: opts?.noCooldown ?? false,
-			cooldownWarningSent: false,
+			cooldownWarningSent: new Set(),
 			wrongStreak: new Map(),
 			attemptedSpecial: new Set(),
 			index: -1,
@@ -388,8 +393,8 @@ export class QuizEngine {
 			if (Date.now() < cooldownUntil) {
 				log.debug(`cooldown active key=${memberKey} q=${question.number} until=${cooldownUntil}`)
 				await this.sender.react(state.groupId, incoming.key, REACTION_COOLDOWN)
-				if (!state.cooldownWarningSent) {
-					state.cooldownWarningSent = true
+				if (!state.cooldownWarningSent.has(memberKey)) {
+					state.cooldownWarningSent.add(memberKey)
 					const wibTime = formatWibTimeHint(cooldownUntil)
 					await this.sender.sendText(
 						state.groupId,
@@ -489,7 +494,7 @@ export class QuizEngine {
 		state.wrongStreak.clear()
 		state.attemptedSpecial.clear()
 		state.questionPointsByMid.clear()
-		state.cooldownWarningSent = false
+		state.cooldownWarningSent.clear()
 
 		if (state.roundQuestionIndex >= activeRound.questions.length) {
 			const nextRoundIndex = state.roundIndex + 1
@@ -632,7 +637,7 @@ export class QuizEngine {
 		const question = this.currentQuestion()
 		const warningBase = formatQuestionWarning(state.bundle.messageTemplates)
 		const warningText = question?.extraHint
-			? `${warningBase}\n\n💡 _${question.extraHint}_`
+			? `${warningBase}\n💡 _${question.extraHint}_`
 			: warningBase
 
 		const quotedKey = state.questionMessageKey ?? undefined
@@ -679,8 +684,20 @@ export class QuizEngine {
 		await this.sender.sendText(
 			state.groupId,
 			hasExtraPts
-				? formatWinnerPerfect(member, question.answers, currentQuestionPoints + gained, question.answerExtraPts, state.bundle.messageTemplates)
-				: formatWinner(member, question.answers, currentQuestionPoints + gained, question.answerExtraPts, state.bundle.messageTemplates),
+				? formatWinnerPerfect(
+					member,
+					question.answers,
+					currentQuestionPoints + gained,
+					question.answerExtraPts,
+					state.bundle.messageTemplates,
+				)
+				: formatWinner(
+					member,
+					question.answers,
+					currentQuestionPoints + gained,
+					question.answerExtraPts,
+					state.bundle.messageTemplates,
+				),
 			{
 				linkPreview: false,
 				quotedKey: incoming.key,

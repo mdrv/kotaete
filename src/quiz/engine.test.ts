@@ -252,7 +252,7 @@ describe('QuizEngine behavior', () => {
 		expect(react.mock.calls.length).toBe(0)
 	})
 
-	test('cooldown warning is only sent once per question', async () => {
+	test('cooldown warning is only sent once per member per question', async () => {
 		const { engine, sendText, react } = createEngine()
 		await engine.run(makeBundle(), [makeMember()], '120@g.us')
 
@@ -268,6 +268,80 @@ describe('QuizEngine behavior', () => {
 		expect(warningCalls.length).toBe(1)
 		expect(String(warningCalls[0]?.[1])).not.toContain(':')
 		expect(react.mock.calls.length).toBeGreaterThan(0)
+	})
+
+	test('each member on cooldown gets their own warning', async () => {
+		const member1 = makeMember()
+		const member2 = makeMember({
+			mid: '2',
+			kananame: 'User2',
+			nickname: 'User2',
+			lid: '628222@lid',
+			pn: '628222',
+		})
+		const makeMsg2 = (overrides?: Partial<IncomingGroupMessage>) =>
+			makeIncoming({
+				senderRawJid: '628222@s.whatsapp.net',
+				senderNumber: '628222',
+				senderLid: '628222@lid',
+				key: { id: 'MSG-M2', remoteJid: '120@g.us', participant: '628222@s.whatsapp.net', fromMe: false },
+				...overrides,
+			})
+
+		// Create a 3-question bundle so both members can answer separately
+		const now = Date.now()
+		const multiBundle: QuizBundle = {
+			directory: '/tmp/quiz',
+			introAt: new Date(now),
+			startAt: new Date(now),
+			rounds: [{
+				emoji: '🌟',
+				startAt: new Date(now),
+				questions: [
+					{ number: 1, text: 'Q1', answers: ['abc'], explanation: '', imagePath: null, isSpecialStage: false },
+					{ number: 2, text: 'Q2', answers: ['abc'], explanation: '', imagePath: null, isSpecialStage: false },
+					{ number: 3, text: 'Q3', answers: ['abc'], explanation: '', imagePath: null, isSpecialStage: false },
+				],
+			}],
+			introNote: null,
+			outroNote: null,
+			messageTemplates: {},
+			questions: [
+				{ number: 1, text: 'Q1', answers: ['abc'], explanation: '', imagePath: null, isSpecialStage: false },
+				{ number: 2, text: 'Q2', answers: ['abc'], explanation: '', imagePath: null, isSpecialStage: false },
+				{ number: 3, text: 'Q3', answers: ['abc'], explanation: '', imagePath: null, isSpecialStage: false },
+			],
+		}
+
+		const { engine, sendText, react } = createEngine()
+		await engine.run(multiBundle, [member1, member2], '120@g.us')
+
+		// member1 answers Q1 correctly → cooldown set
+		await engine.onIncomingMessage(makeIncoming())
+		// member2 answers Q2 correctly → cooldown set
+		await engine.onIncomingMessage(makeMsg2())
+
+		const beforeCount = sendText.mock.calls.length
+
+		// both members on cooldown try to answer Q3
+		await engine.onIncomingMessage(makeIncoming({ key: { id: 'MSG-M1-CD', remoteJid: '120@g.us' } }))
+		await engine.onIncomingMessage(makeMsg2({ key: { id: 'MSG-M2-CD', remoteJid: '120@g.us' } }))
+
+		// each member should get exactly one warning
+		const warningCalls = sendText.mock.calls
+			.slice(beforeCount)
+			.filter((call) => call.length > 1 && String(call[1]).startsWith('Baru bisa jawab lagi mulai '))
+		expect(warningCalls.length).toBe(2)
+		expect(react.mock.calls.length).toBeGreaterThanOrEqual(2)
+
+		// second cooldown attempt from each member — no additional warnings
+		const beforeCount2 = sendText.mock.calls.length
+		await engine.onIncomingMessage(makeIncoming({ key: { id: 'MSG-M1-CD2', remoteJid: '120@g.us' } }))
+		await engine.onIncomingMessage(makeMsg2({ key: { id: 'MSG-M2-CD2', remoteJid: '120@g.us' } }))
+		const warningCalls2 = sendText.mock.calls
+			.slice(beforeCount2)
+			.filter((call) => call.length > 1 && String(call[1]).startsWith('Baru bisa jawab lagi mulai '))
+		expect(warningCalls2.length).toBe(0)
 	})
 
 	test('filters answers ending with symbols', async () => {
@@ -1073,5 +1147,63 @@ describe('season accumulation behavior', () => {
 
 		const texts = sendText.mock.calls.map((call) => String(call[1] ?? ''))
 		expect(texts.find((text) => text.includes('🏆 *Hasil NIPBANG Kotaete!*'))).toBeFalsy()
+	})
+
+	describe('romaji tease', () => {
+		function makeRomajiBundle(): QuizBundle {
+			const now = Date.now()
+			const questions = [
+				{
+					number: 1,
+					text: 'Q1',
+					answers: ['おしまえだ', 'oshimeeda hiragana'],
+					explanation: '',
+					imagePath: null,
+					isSpecialStage: false,
+				},
+			]
+			return {
+				directory: '/tmp/quiz',
+				introAt: new Date(now),
+				startAt: new Date(now),
+				rounds: [{ emoji: '🌟', startAt: new Date(now), questions }],
+				introNote: null,
+				outroNote: null,
+				messageTemplates: {},
+				questions,
+			}
+		}
+
+		test('tease sent when answer is romaji without kana type', async () => {
+			const { engine, sendText } = createEngine()
+			await engine.run(makeRomajiBundle(), [makeMember()], '120@g.us', { noCooldown: true })
+
+			// "oshimeeda" matches first word of "oshimeeda hiragana" — single word, no kana type
+			await engine.onIncomingMessage(makeIncoming({ text: 'oshimeeda' }))
+
+			const texts = sendText.mock.calls.map((call) => String(call[1] ?? ''))
+			expect(texts.some((t) => t.includes('kelupaan'))).toBe(true)
+		})
+
+		test('no tease when answer has wrong kana type', async () => {
+			const { engine, sendText } = createEngine()
+			await engine.run(makeRomajiBundle(), [makeMember()], '120@g.us', { noCooldown: true })
+
+			// "oshimeeda katakana" has two words — user knows the format, just wrong kana type
+			await engine.onIncomingMessage(makeIncoming({ text: 'oshimeeda katakana' }))
+
+			const texts = sendText.mock.calls.map((call) => String(call[1] ?? ''))
+			expect(texts.some((t) => t.includes('kelupaan'))).toBe(false)
+		})
+
+		test('no tease for non-romaji wrong answers', async () => {
+			const { engine, sendText } = createEngine()
+			await engine.run(makeRomajiBundle(), [makeMember()], '120@g.us', { noCooldown: true })
+
+			await engine.onIncomingMessage(makeIncoming({ text: 'wrong' }))
+
+			const texts = sendText.mock.calls.map((call) => String(call[1] ?? ''))
+			expect(texts.some((t) => t.includes('kelupaan'))).toBe(false)
+		})
 	})
 })
