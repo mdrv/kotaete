@@ -5,7 +5,9 @@ export type {
 	KotaetePluginDefinition,
 	KotaetePluginHooks,
 	KotaetePluginIncomingEvent,
+	KotaetePluginDmEvent,
 	PluginRuntimeReason,
 	RawPluginArgs,
 } from './plugin/index.ts'
 export { defineConfig } from './quiz/loader.ts'
+export type { IncomingDmMessage, IncomingGroupMessage } from './types.ts'

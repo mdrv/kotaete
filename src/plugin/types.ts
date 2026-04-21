@@ -1,5 +1,5 @@
 import type { z } from 'zod'
-import type { IncomingGroupMessage } from '../types.ts'
+import type { IncomingDmMessage, IncomingGroupMessage } from '../types.ts'
 import type { OutgoingMessageKey, SendTextOptions, WhatsAppProvider } from '../whatsapp/types.ts'
 
 export type MaybePromise<T> = T | Promise<T>
@@ -16,6 +16,11 @@ export type KotaetePluginIncomingEvent = {
 	receivedAt: Date
 }
 
+export type KotaetePluginDmEvent = {
+	message: IncomingDmMessage
+	receivedAt: Date
+}
+
 export type KotaetePluginConnectedEvent = {
 	provider: WhatsAppProvider
 	connectedAt: Date
@@ -24,6 +29,7 @@ export type KotaetePluginConnectedEvent = {
 export interface KotaetePluginHooks {
 	onWaConnected?(event: KotaetePluginConnectedEvent): MaybePromise<void>
 	onIncomingMessage?(event: KotaetePluginIncomingEvent): MaybePromise<void>
+	onIncomingDmMessage?(event: KotaetePluginDmEvent): MaybePromise<void>
 	teardown?(reason: PluginRuntimeReason): MaybePromise<void>
 }
 
@@ -43,6 +49,11 @@ export interface KotaetePluginContext {
 		opts?: { typing?: boolean },
 	): Promise<OutgoingMessageKey | null>
 	sendTyping(groupId: string): Promise<void>
+	sendDmText(
+		senderJid: string,
+		text: string,
+		opts?: SendTextOptions,
+	): Promise<OutgoingMessageKey | null>
 	react(groupId: string, key: IncomingGroupMessage['key'], emoji: string): Promise<void>
 
 	lookupPnByLid(lid: string): Promise<string | null>

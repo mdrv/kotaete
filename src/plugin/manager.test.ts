@@ -31,6 +31,7 @@ function makeMockDeps(): PluginManagerDeps {
 		sendTyping: mock(() => Promise.resolve()),
 		react: mock(() => Promise.resolve()),
 		lookupPnByLid: mock(() => Promise.resolve(null)),
+		sendDmText: mock(() => Promise.resolve(null)),
 		lookupLidByPn: mock(() => Promise.resolve(null)),
 		isConnected: mock(() => Promise.resolve(true)),
 		getProvider: mock(() => 'wwebjs' as const),

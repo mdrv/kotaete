@@ -1,6 +1,6 @@
 import type { ZodTypeAny } from 'zod'
 import { getLogger } from '../logger.ts'
-import type { IncomingGroupMessage } from '../types.ts'
+import type { IncomingDmMessage, IncomingGroupMessage } from '../types.ts'
 import type { OutgoingMessageKey, SendTextOptions, WhatsAppProvider } from '../whatsapp/types.ts'
 import { loadPlugin } from './loader.ts'
 import { PluginStore } from './store.ts'
@@ -9,6 +9,7 @@ import type {
 	KotaetePluginConnectedEvent,
 	KotaetePluginContext,
 	KotaetePluginDefinition,
+	KotaetePluginDmEvent,
 	KotaetePluginHooks,
 	KotaetePluginIncomingEvent,
 	PluginRuntimeReason,
@@ -31,6 +32,7 @@ export type PluginManagerDeps = {
 	): Promise<OutgoingMessageKey | null>
 	sendTyping(groupId: string): Promise<void>
 	react(groupId: string, key: IncomingGroupMessage['key'], emoji: string): Promise<void>
+	sendDmText(senderJid: string, text: string, opts?: SendTextOptions): Promise<OutgoingMessageKey | null>
 	lookupPnByLid(lid: string): Promise<string | null>
 	lookupLidByPn(pn: string): Promise<string | null>
 	isConnected(): Promise<boolean>
@@ -142,6 +144,17 @@ export class PluginManager {
 		}
 	}
 
+	emitIncomingDm(message: IncomingDmMessage): void {
+		const event: KotaetePluginDmEvent = {
+			message,
+			receivedAt: new Date(),
+		}
+		for (const entry of this.activePlugins.values()) {
+			if (!entry.hooks.onIncomingDmMessage) continue
+			void this.invokeHook(entry, 'onIncomingDmMessage', event)
+		}
+	}
+
 	emitWaConnected(): void {
 		const event: KotaetePluginConnectedEvent = {
 			provider: this.deps.getProvider(),
@@ -200,6 +213,7 @@ export class PluginManager {
 				return this.deps.sendImageWithCaption(groupId, imagePath, caption)
 			},
 			sendTyping: (groupId) => this.deps.sendTyping(groupId),
+			sendDmText: (senderJid, text, opts) => this.deps.sendDmText(senderJid, text, opts),
 			react: (groupId, key, emoji) => this.deps.react(groupId, key, emoji),
 
 			lookupPnByLid: (lid) => this.deps.lookupPnByLid(lid),

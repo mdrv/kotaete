@@ -298,11 +298,14 @@ export class BaileysWhatsAppClient implements IWhatsAppClient {
 						continue
 					}
 				}
-				const groupId = message.key.remoteJid
-				if (!groupId || !runtime.isJidGroup(groupId)) {
-					log.debug(`baileys drop non-group id=${message.key.id ?? 'null'} remoteJid=${groupId ?? 'null'}`)
-					continue
-				}
+			const remoteJid = message.key.remoteJid
+			if (!remoteJid) {
+				log.debug(`baileys drop no remoteJid id=${message.key.id ?? 'null'}`)
+				continue
+			}
+
+			if (runtime.isJidGroup(remoteJid)) {
+				// Group message
 				const text = extractInboundText(message.message)
 				const senderRawJid = extractSenderJid(message.key)
 				if (!text.trim() || !senderRawJid) {
@@ -322,13 +325,13 @@ export class BaileysWhatsAppClient implements IWhatsAppClient {
 				const normalizedSenderJid = runtime2.jidNormalizedUser(senderRawJid)
 				const senderLid = runtime2.isLidUser(normalizedSenderJid) ? normalizeLidJid(normalizedSenderJid) : null
 				log.debug(
-					`baileys inbound message group=${groupId} sender=${senderRawJid} senderNumber=${
+					`baileys inbound message group=${remoteJid} sender=${senderRawJid} senderNumber=${
 						resolution.number ?? 'null'
 					} senderLid=${senderLid ?? 'null'} source=${resolution.source} len=${text.length}`,
 				)
 
 				await this.options.onIncoming({
-					groupId,
+					groupId: remoteJid,
 					senderRawJid,
 					senderNumber: resolution.number,
 					senderLid,
@@ -340,6 +343,40 @@ export class BaileysWhatsAppClient implements IWhatsAppClient {
 						fromMe: message.key.fromMe ?? null,
 					},
 				})
+			} else {
+				// DM message
+				if (!this.options.onIncomingDm) continue
+				const text = extractInboundText(message.message)
+				const senderRawJid = extractSenderJid(message.key)
+				if (!text.trim() || !senderRawJid) continue
+
+				const senderAltJid = message.key.participantAlt ?? message.key.remoteJidAlt ?? null
+				await this.maybePersistLidPnMapping(runtime, senderRawJid, senderAltJid)
+				const resolution = await this.resolveSenderNumber(senderRawJid, senderAltJid)
+				const runtime2 = await this.getRuntime()
+				const normalizedSenderJid = runtime2.jidNormalizedUser(senderRawJid)
+				const senderLid = runtime2.isLidUser(normalizedSenderJid) ? normalizeLidJid(normalizedSenderJid) : null
+
+				log.debug(
+					`baileys inbound DM sender=${senderRawJid} senderNumber=${
+						resolution.number ?? 'null'
+					} senderLid=${senderLid ?? 'null'} source=${resolution.source} len=${text.length}`,
+				)
+
+				await this.options.onIncomingDm({
+					senderJid: senderRawJid,
+					senderNumber: resolution.number,
+					senderLid,
+					text,
+					key: {
+						remoteJid: message.key.remoteJid ?? null,
+						participant: senderRawJid || null,
+						id: message.key.id ?? null,
+						fromMe: message.key.fromMe ?? null,
+					},
+				})
+				continue
+			}
 			}
 		})
 

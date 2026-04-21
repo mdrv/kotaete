@@ -26,6 +26,7 @@ export class WhatsAppClient implements IWhatsAppClient {
 		const baseOptions: BaseWhatsAppClientOptions = {
 			authDir: options.authDir,
 			onIncoming: options.onIncoming,
+			...(options.onIncomingDm != null ? { onIncomingDm: options.onIncomingDm } : {}),
 		}
 
 		if (this.provider === 'baileys') {

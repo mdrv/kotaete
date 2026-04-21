@@ -148,6 +148,14 @@ export type IncomingGroupMessage = {
 	key: MessageKeyLike
 }
 
+export type IncomingDmMessage = {
+	senderJid: string
+	senderNumber: string | null
+	senderLid: string | null
+	text: string
+	key: MessageKeyLike
+}
+
 export type SeasonConfig = {
 	start?: boolean
 	end?: boolean

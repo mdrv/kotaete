@@ -393,7 +393,7 @@ export class WWebJsWhatsAppClient implements IWhatsAppClient {
 	private async handleIncomingMessage(message: WWebJsMessageLike): Promise<void> {
 		if (!this.client || this.stopping) return
 		if (message.fromMe) return
-		if (!message.from.endsWith('@g.us')) return
+
 		if (this.isDuplicateMessage(message.id._serialized)) {
 			log.debug(`wwebjs drop duplicate id=${message.id._serialized}`)
 			return
@@ -411,28 +411,55 @@ export class WWebJsWhatsAppClient implements IWhatsAppClient {
 		const text = message.body?.trim() ?? ''
 		if (!text) return
 
-		const senderRawJid = message.author ?? message.from
-		const resolution = await this.resolveSenderNumber(senderRawJid)
+		if (message.from.endsWith('@g.us')) {
+			// Group message
+			const senderRawJid = message.author ?? message.from
+			const resolution = await this.resolveSenderNumber(senderRawJid)
 
-		log.debug(
-			`wwebjs inbound message group=${message.from} sender=${senderRawJid} senderNumber=${
-				resolution.number ?? 'null'
-			} source=${resolution.source} len=${text.length}`,
-		)
+			log.debug(
+				`wwebjs inbound message group=${message.from} sender=${senderRawJid} senderNumber=${
+					resolution.number ?? 'null'
+				} source=${resolution.source} len=${text.length}`,
+			)
 
-		await this.options.onIncoming({
-			groupId: message.from,
-			senderRawJid,
-			senderNumber: resolution.number,
-			senderLid: senderRawJid.endsWith(LID_SUFFIX) ? senderRawJid : null,
-			text,
-			key: {
-				remoteJid: message.from,
-				participant: senderRawJid,
-				id: message.id._serialized,
-				fromMe: message.fromMe,
-			},
-		})
+			await this.options.onIncoming({
+				groupId: message.from,
+				senderRawJid,
+				senderNumber: resolution.number,
+				senderLid: senderRawJid.endsWith(LID_SUFFIX) ? senderRawJid : null,
+				text,
+				key: {
+					remoteJid: message.from,
+					participant: senderRawJid,
+					id: message.id._serialized,
+					fromMe: message.fromMe,
+				},
+			})
+		} else {
+			// DM message
+			if (!this.options.onIncomingDm) return
+			const senderRawJid = message.from
+			const resolution = await this.resolveSenderNumber(senderRawJid)
+
+			log.debug(
+				`wwebjs inbound DM sender=${senderRawJid} senderNumber=${
+					resolution.number ?? 'null'
+				} source=${resolution.source} len=${text.length}`,
+			)
+
+			await this.options.onIncomingDm({
+				senderJid: senderRawJid,
+				senderNumber: resolution.number,
+				senderLid: senderRawJid.endsWith(LID_SUFFIX) ? senderRawJid : null,
+				text,
+				key: {
+					remoteJid: senderRawJid,
+					participant: null,
+					id: message.id._serialized,
+					fromMe: message.fromMe,
+				},
+			})
+		}
 	}
 
 	private isDuplicateMessage(messageId: string): boolean {

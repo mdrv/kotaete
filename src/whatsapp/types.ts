@@ -1,11 +1,12 @@
 import { DEFAULT_WHATSAPP_PROVIDER } from '../constants.ts'
-import type { IncomingGroupMessage } from '../types.ts'
+import type { IncomingDmMessage, IncomingGroupMessage } from '../types.ts'
 
 export type WhatsAppProvider = 'wwebjs' | 'baileys'
 
 export type BaseWhatsAppClientOptions = {
 	authDir: string
 	onIncoming: (message: IncomingGroupMessage) => Promise<void>
+	onIncomingDm?: (message: IncomingDmMessage) => Promise<void>
 }
 
 export type SendTextOptions = {

@@ -353,6 +353,10 @@ export class DaemonRuntime {
 					}
 				}
 			},
+			onIncomingDm: async (dm) => {
+				// Plugin DM hooks are fire-and-forget, non-blocking
+				this.pluginManager.emitIncomingDm(dm)
+			},
 		})
 
 		// Plugin manager — initialized after wa since it references it via deps
@@ -371,6 +375,12 @@ export class DaemonRuntime {
 				),
 			sendTyping: (groupId) => this.wa.sendTyping(groupId),
 			react: (groupId, key, emoji) => this.wa.react(groupId, key, emoji),
+			sendDmText: (senderJid, text, opts) =>
+				this.enqueueOutbound(
+					senderJid,
+					() => this.wa.sendText(senderJid, text, opts),
+					{ typing: true },
+				),
 			lookupPnByLid: (lid) => this.wa.lookupPnByLid(lid),
 			lookupLidByPn: (pn) => this.wa.lookupLidByPn(pn),
 			isConnected: () => this.wa.isConnected(),

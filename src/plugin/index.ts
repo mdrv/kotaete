@@ -9,6 +9,7 @@ export type {
 	KotaetePluginDefinition,
 	KotaetePluginHooks,
 	KotaetePluginIncomingEvent,
+	KotaetePluginDmEvent,
 	MaybePromise,
 	PluginModule,
 	PluginRuntimeReason,
