@@ -401,7 +401,10 @@ export default definePlugin({
 		}
 
 		// Tool definitions for function calling
-		const webSearchTools = webSearch
+
+		// Tool definitions for function calling
+		// Tool definitions for function calling
+		const searchTools = webSearch
 			? [{
 				type: 'function' as const,
 				function: {
@@ -419,8 +422,51 @@ export default definePlugin({
 						required: ['query'],
 					},
 				},
+			}, {
+				type: 'function' as const,
+				function: {
+					name: 'image_search',
+					description:
+						'Search for images on the web. Use when the user asks to see, show, or find a picture, photo, or visual content. Returns a downloaded image that will be sent to the user.',
+					parameters: {
+						type: 'object',
+						properties: {
+							query: {
+								type: 'string',
+								description: 'The image search query',
+							},
+						},
+						required: ['query'],
+					},
+				},
 			}]
 			: []
+
+		// Track downloaded images for verification and sending
+		const downloadedImages: Array<{ path: string; query: string; sourceUrl: string }> = []
+
+		// Download an image URL to a temp file
+		async function downloadImage(imageUrl: string, _query: string): Promise<string | null> {
+			try {
+				const resp = await fetch(imageUrl, {
+					signal: AbortSignal.timeout(15_000),
+					headers: { 'User-Agent': 'Kotaete/1.0' },
+				})
+				if (!resp.ok) return null
+				const contentType = resp.headers.get('content-type') ?? ''
+				if (!contentType.startsWith('image/')) return null
+				const ext = contentType.split('/')[1]?.replace('jpeg', 'jpg') ?? 'jpg'
+				const buffer = await resp.arrayBuffer()
+				const tmpPath = `/tmp/kotaete-img-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`
+				const { writeFileSync } = await import('node:fs')
+				writeFileSync(tmpPath, Buffer.from(buffer))
+				ctx.log.info(`ask: downloaded image to ${tmpPath} (${buffer.byteLength} bytes)`)
+				return tmpPath
+			} catch (err) {
+				ctx.log.warn(`ask: image download failed: ${err instanceof Error ? err.message : String(err)}`)
+				return null
+			}
+		}
 
 		// Execute a tool call by name
 		async function executeToolCall(name: string, argsJson: string): Promise<string> {
@@ -430,7 +476,105 @@ export default definePlugin({
 				const results = await searxngSearch(query, searxngConfig, { maxResults: searchMaxResults })
 				return formatSearchResults(results)
 			}
+			if (name === 'image_search') {
+				const { query } = JSON.parse(argsJson) as { query: string }
+				ctx.log.info(`ask: image search: "${query}"`)
+				const results = await searxngSearch(query, searxngConfig, {
+					categories: 'images',
+					maxResults: 3,
+				})
+				if (results.results.length === 0) {
+					return 'No images found for this query.'
+				}
+				// Try downloading the first available image
+				for (const r of results.results) {
+					const imgUrl = r.img_src ?? r.thumbnail ?? r.url
+					if (!imgUrl) continue
+					const tmpPath = await downloadImage(imgUrl, query)
+					if (tmpPath) {
+						downloadedImages.push({ path: tmpPath, query, sourceUrl: r.url })
+						return `Found image: "${r.title}" (${r.url}). Image downloaded and ready to send.`
+					}
+				}
+				return 'Found image results but could not download any image.'
+			}
 			return `Unknown tool: ${name}`
+		}
+
+		// Verify downloaded images with vision before sending
+		async function verifyAndSendImages(
+			question: string,
+			sendImageFn: (path: string, caption: string) => Promise<void>,
+		): Promise<void> {
+			for (const img of downloadedImages) {
+				try {
+					const { readFileSync } = await import('node:fs')
+					const imgBuffer = readFileSync(img.path)
+					const imgBase64 = imgBuffer.toString('base64')
+					const ext = img.path.split('.').pop() ?? 'jpg'
+					const mime = ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg'
+
+					// Send image to LLM for verification
+					const url = apiUrl.endsWith('/') ? `${apiUrl}chat/completions` : `${apiUrl}/chat/completions`
+					const token = await getBearerToken()
+					const verifyResponse = await fetch(url, {
+						method: 'POST',
+						headers: getApiHeaders(token),
+						body: JSON.stringify({
+							model,
+							messages: [
+								{
+									role: 'system',
+									content:
+										'You are an image verification assistant. You will receive an image and the original user question. Decide if the image is appropriate and relevant. Reply with ONLY a JSON object: {"send": true/false, "caption": "WhatsApp caption for the image"}. No other text.',
+								},
+								{
+									role: 'user',
+									content: [
+										{ type: 'text', text: `Original question: ${question}\n\nIs this image relevant and appropriate?` },
+										{ type: 'image_url', image_url: { url: `data:${mime};base64,${imgBase64}` } },
+									],
+								},
+							],
+							temperature: 0.3,
+						}),
+					})
+
+					if (!verifyResponse.ok) {
+						ctx.log.warn(`ask: image verification API error: ${verifyResponse.status}`)
+						continue
+					}
+
+					const vData = (await verifyResponse.json()) as any
+					const vContent = (vData.choices?.[0]?.message?.content ?? '').trim()
+					ctx.log.info(`ask: image verification response: ${vContent}`)
+
+					// Parse the JSON response
+					try {
+						const verdict = JSON.parse(vContent) as { send?: boolean; caption?: string }
+						if (verdict.send && verdict.caption) {
+							await sendImageFn(img.path, verdict.caption)
+							ctx.log.info(`ask: sent verified image with caption: ${verdict.caption}`)
+						} else {
+							ctx.log.info(`ask: image verification rejected (send=${verdict.send})`)
+						}
+					} catch {
+						// If JSON parse fails, try to send anyway with a default caption
+						ctx.log.warn(`ask: could not parse verification response, sending with default caption`)
+						await sendImageFn(img.path, img.query)
+					}
+				} catch (err) {
+					ctx.log.warn(`ask: image verification/send failed: ${err instanceof Error ? err.message : String(err)}`)
+				} finally {
+					// Clean up temp file
+					try {
+						const { unlinkSync } = await import('node:fs')
+						unlinkSync(img.path)
+					} catch {
+						// Ignore cleanup errors
+					}
+				}
+			}
 		}
 
 		// LLM call with function calling loop
@@ -471,8 +615,8 @@ export default definePlugin({
 					messages,
 					temperature: 0.7,
 				}
-				if (webSearchTools.length > 0) {
-					body.tools = webSearchTools
+				if (searchTools.length > 0) {
+					body.tools = searchTools
 				}
 
 				const response = await fetch(url, {
@@ -587,6 +731,7 @@ export default definePlugin({
 			reply: (msg: string) => Promise<void>,
 			reactFn: ((emoji: string) => Promise<void>) | null,
 			sourceContext: string,
+			sendImageFn?: (path: string, caption: string) => Promise<void>,
 		): Promise<void> {
 			const question = text.replace(/^\/ask\s*/, '').trim()
 			if (!question && !media) {
@@ -605,7 +750,6 @@ export default definePlugin({
 				return
 			}
 
-			// Rate limit (pooled across group + DM by LID) — admins bypass
 			const isAdmin = senderLid && adminLids.has(senderLid)
 			if (!isAdmin) {
 				const count = rateLimits.get(senderLid) ?? 0
@@ -618,15 +762,6 @@ export default definePlugin({
 				}
 				rateLimits.set(senderLid, count + 1)
 			}
-			const count = rateLimits.get(senderLid) ?? 0
-			if (count >= maxMessages) {
-				const nextResetWib = formatWibHourMinute(getNextResetAt())
-				await reply(
-					`🐻 Hai, ${member.nickname}. Tunggu pukul ${nextResetWib} WIB biar Bearcu bisa jawab, ya!`,
-				)
-				return
-			}
-			rateLimits.set(senderLid, count + 1)
 
 			const actualQuestion = media ? (question || '(describe this image)') : question
 			const cleanQuestion = stripOwnMention(actualQuestion) || actualQuestion
@@ -655,6 +790,11 @@ export default definePlugin({
 				const rawAnswer = await askAi(effectiveQuestion, member, media, senderLid, sourceContext)
 				const answer = normalizeForWhatsApp(rawAnswer)
 				await reply(answer)
+
+				// Send verified images if any were downloaded during tool calls
+				if (downloadedImages.length > 0 && sendImageFn) {
+					await verifyAndSendImages(effectiveQuestion, sendImageFn)
+				}
 
 				// Save assistant reply to memory
 				await saveMemoryEntry(senderLid, { role: 'assistant', content: answer, ts: Date.now() })
@@ -702,8 +842,6 @@ export default definePlugin({
 				}
 
 				// Resolve all @mentions to names
-
-				// Resolve all @mentions to names
 				const resolvedText = await resolveMentions(text, message.mentionedJids)
 				ctx.log.debug(`ask: resolved mentions text=${JSON.stringify(resolvedText)}`)
 				const cleanText = resolvedText.replace(/^\/ask\s*/, '').trim()
@@ -722,6 +860,8 @@ export default definePlugin({
 					// React takes groupId + key + emoji; wrap to only pass emoji
 					(emoji) => ctx.react(message.groupId, message.key, emoji),
 					`group ${message.groupId}`,
+					// Send image: use group sendImageWithCaption (works with any JID)
+					(path, caption) => ctx.sendImageWithCaption(message.groupId, path, caption).then(() => {}),
 				)
 			},
 
@@ -742,6 +882,8 @@ export default definePlugin({
 					// DM react: use reactDm with sender JID
 					(emoji) => ctx.reactDm(message.senderJid, message.key, emoji),
 					'personal message',
+					// Send image: sendImageWithCaption works with DM JID too
+					(path, caption) => ctx.sendImageWithCaption(message.senderJid, path, caption).then(() => {}),
 				)
 			},
 
