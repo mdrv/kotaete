@@ -440,14 +440,13 @@ export class WWebJsWhatsAppClient implements IWhatsAppClient {
 			// Group message
 			const senderRawJid = message.author ?? message.from
 			const resolution = await this.resolveSenderNumber(senderRawJid)
+			const mentionedJids = message.mentionedIds ?? []
 
 			log.debug(
 				`wwebjs inbound message group=${message.from} sender=${senderRawJid} senderNumber=${
 					resolution.number ?? 'null'
-				} source=${resolution.source} len=${text.length}`,
+				} source=${resolution.source} len=${text.length} mentionedJids=${JSON.stringify(mentionedJids)}`,
 			)
-
-			const mentionedJids = message.mentionedIds ?? []
 
 			await this.options.onIncoming({
 				groupId: message.from,
@@ -469,14 +468,13 @@ export class WWebJsWhatsAppClient implements IWhatsAppClient {
 			if (!this.options.onIncomingDm) return
 			const senderRawJid = message.from
 			const resolution = await this.resolveSenderNumber(senderRawJid)
+			const mentionedJids = message.mentionedIds ?? []
 
 			log.debug(
 				`wwebjs inbound DM sender=${senderRawJid} senderNumber=${
 					resolution.number ?? 'null'
-				} source=${resolution.source} len=${text.length}`,
+				} source=${resolution.source} len=${text.length} mentionedJids=${JSON.stringify(mentionedJids)}`,
 			)
-
-			const mentionedJids = message.mentionedIds ?? []
 
 			await this.options.onIncomingDm({
 				senderJid: senderRawJid,

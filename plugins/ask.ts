@@ -547,6 +547,13 @@ export default definePlugin({
 		return {
 			async onIncomingMessage({ message }) {
 				const text = message.text?.trim() ?? ''
+				ctx.log.debug(
+					`ask: incoming group msg groupId=${message.groupId} senderLid=${message.senderLid ?? 'null'} senderNumber=${
+						message.senderNumber ?? 'null'
+					} text=${JSON.stringify(text)} mentionedJids=${JSON.stringify(message.mentionedJids)} ownJid=${
+						ctx.getOwnJid() ?? 'null'
+					}`,
+				)
 				// Group trigger: bot is among mentioned JIDs
 				if (!isBotMentioned(message.mentionedJids, text)) return
 
