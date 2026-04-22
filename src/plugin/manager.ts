@@ -37,6 +37,11 @@ export type PluginManagerDeps = {
 	getProvider(): WhatsAppProvider
 	getOwnJid(): string | null
 	isQuizRunning(groupId: string): Promise<boolean>
+	getSeasonScores(
+		groupId: string,
+	): Promise<
+		Array<{ mid: string; nickname: string; kananame: string; classgroup: string; score: number; rank: number }>
+	>
 }
 
 export type PluginListEntry = {
@@ -228,6 +233,7 @@ export class PluginManager {
 			isConnected: () => this.deps.isConnected(),
 			getOwnJid: () => this.deps.getOwnJid(),
 			isQuizRunning: (groupId) => this.deps.isQuizRunning(groupId),
+			getSeasonScores: (groupId) => this.deps.getSeasonScores(groupId),
 			log: {
 				debug: (msg) => pluginLog.debug(msg),
 				info: (msg) => pluginLog.info(msg),
@@ -263,7 +269,7 @@ export class PluginManager {
 		return result ?? {}
 	}
 
-	private async invokeHook<K extends keyof KotaetePluginHooks>(
+	private async invokeHook<K extends 'onWaConnected' | 'onIncomingMessage' | 'onIncomingDmMessage' | 'teardown'>(
 		entry: ActivePluginEntry,
 		hookName: K,
 		...args: Parameters<NonNullable<KotaetePluginHooks[K]>>

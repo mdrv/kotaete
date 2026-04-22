@@ -38,6 +38,7 @@ function makeMockDeps(): PluginManagerDeps {
 		getProvider: mock(() => 'wwebjs' as const),
 		getOwnJid: mock(() => '6280000000@s.whatsapp.net'),
 		isQuizRunning: mock(() => Promise.resolve(false)),
+		getSeasonScores: mock(() => Promise.resolve([])),
 	}
 }
 

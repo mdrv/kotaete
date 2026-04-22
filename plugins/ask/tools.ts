@@ -79,3 +79,75 @@ export const getMemberInfoTool: ToolDef = {
 		},
 	},
 }
+
+// ── Admin-only tools ──────────────────────────────────────────────────────
+
+export const getSeasonScoresTool: ToolDef = {
+	type: 'function' as const,
+	function: {
+		name: 'get_season_scores',
+		description:
+			'Get the current season leaderboard/scoreboard. Returns all members ranked by their cumulative season points (highest first). Includes rank, nickname, kananame, classgroup, and score. Use when someone asks about standings, rankings, leaderboard, or "who is winning".',
+		parameters: {
+			type: 'object',
+			properties: {
+				groupId: {
+					type: 'string',
+					description: 'The group ID to get scores for. If not provided, uses the current group.',
+				},
+			},
+			required: [],
+		},
+	},
+}
+
+export const searchMembersTool: ToolDef = {
+	type: 'function' as const,
+	function: {
+		name: 'search_members',
+		description:
+			'Search for members by nickname or kananame. Returns matching members with their mid, nickname, kananame, and classgroup. Use when you need to find who a name belongs to, list members in a class, or look up member details by name.',
+		parameters: {
+			type: 'object',
+			properties: {
+				query: {
+					type: 'string',
+					description: 'Search query — matches against nickname or kananame (partial match)',
+				},
+				classgroup: {
+					type: 'string',
+					description:
+						'Filter by classgroup (e.g. "A", "B"). If provided without query, lists all members in that class.',
+				},
+			},
+			required: [],
+		},
+	},
+}
+
+export const bashTool: ToolDef = {
+	type: 'function' as const,
+	function: {
+		name: 'bash',
+		description:
+			'Execute a bash shell command and return its stdout/stderr. Use for system administration tasks, checking files, running scripts, or any task that requires shell access. Use with caution — this has full system access.',
+		parameters: {
+			type: 'object',
+			properties: {
+				command: {
+					type: 'string',
+					description: 'The bash command to execute',
+				},
+				timeout: {
+					type: 'number',
+					description: 'Timeout in seconds (default: 10, max: 30)',
+				},
+			},
+			required: ['command'],
+		},
+	},
+}
+
+export function buildAdminTools(): ToolDef[] {
+	return [getSeasonScoresTool, searchMembersTool, bashTool]
+}

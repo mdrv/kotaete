@@ -75,6 +75,11 @@ export interface KotaetePluginContext {
 		error(msg: string): void
 	}
 	isQuizRunning(groupId: string): Promise<boolean>
+	getSeasonScores(
+		groupId: string,
+	): Promise<
+		Array<{ mid: string; nickname: string; kananame: string; classgroup: string; score: number; rank: number }>
+	>
 }
 
 type InferPluginArgs<TSchema extends z.ZodTypeAny | undefined> = TSchema extends z.ZodTypeAny ? z.infer<TSchema>

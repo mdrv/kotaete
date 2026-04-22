@@ -40,7 +40,7 @@ export async function handleAsk(
 		return
 	}
 
-	const isAdmin = senderLid && ac.config.adminLids.has(senderLid)
+	const isAdmin = senderLid != null && ac.config.adminLids.has(senderLid)
 	if (!isAdmin) {
 		const count = ac.rateLimits.get(senderLid) ?? 0
 		if (count >= ac.config.maxMessages) {
@@ -86,7 +86,7 @@ export async function handleAsk(
 	)
 
 	try {
-		const rawAnswer = await askAi(ac, effectiveQuestion, member, media, senderLid, sourceContext, groupId)
+		const rawAnswer = await askAi(ac, effectiveQuestion, member, media, senderLid, sourceContext, groupId, isAdmin)
 		const answer = normalizeForWhatsApp(rawAnswer)
 		await reply(answer)
 

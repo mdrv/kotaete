@@ -393,6 +393,7 @@ export class DaemonRuntime {
 			getProvider: () => this.wa.provider as WhatsAppProvider,
 			getOwnJid: () => this.wa.getOwnJid(),
 			isQuizRunning: async (groupId) => this.isQuizRunningForGroup(groupId),
+			getSeasonScores: async (groupId) => this.getSeasonScoresForGroup(groupId),
 		})
 	}
 
@@ -453,6 +454,43 @@ export class DaemonRuntime {
 		if (!activeJobId) return false
 		const job = this.jobs.get(activeJobId)
 		return job?.engine.isActivelyRunning() ?? false
+	}
+
+	private async getSeasonScoresForGroup(
+		groupId: string,
+	): Promise<
+		Array<{ mid: string; nickname: string; kananame: string; classgroup: string; score: number; rank: number }>
+	> {
+		const points = this.seasonStore.getPoints(groupId)
+		const members = this.seasonStore.getMembers(groupId)
+		const reachedAt = this.seasonStore.getReachedAt(groupId)
+		if (points.size === 0) return []
+
+		// Build member lookup
+		const memberMap = new Map<string, { mid: string; kananame: string; nickname: string; classgroup: string }>()
+		for (const m of members) {
+			memberMap.set(m.mid, { mid: m.mid, kananame: m.kananame, nickname: m.nickname, classgroup: m.classgroup })
+		}
+
+		// Sort: highest points first, tie-break by earliest reachedAt
+		const sorted = [...points.entries()].sort((a, b) => {
+			if (b[1] !== a[1]) return b[1] - a[1]
+			const aTime = reachedAt.get(a[0]) ?? Infinity
+			const bTime = reachedAt.get(b[0]) ?? Infinity
+			return aTime - bTime
+		})
+
+		return sorted.map(([mid, score], i) => {
+			const m = memberMap.get(mid)
+			return {
+				mid,
+				nickname: m?.nickname ?? mid,
+				kananame: m?.kananame ?? '-',
+				classgroup: m?.classgroup ?? '-',
+				score,
+				rank: i + 1,
+			}
+		})
 	}
 
 	/**

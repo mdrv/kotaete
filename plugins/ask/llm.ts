@@ -1,7 +1,7 @@
 import type { IncomingMedia } from '../../src/types.ts'
 import { formatSearchResults, searxngSearch } from '../../src/utils/searxng.ts'
 import { getApiHeaders, getBearerToken, getDb, loadGroupMemory, loadMemory } from './memory.ts'
-import { buildSearchTools, getMemberInfoTool, readFileTool } from './tools.ts'
+import { buildAdminTools, buildSearchTools, getMemberInfoTool, readFileTool } from './tools.ts'
 import type { AskContext, MemberInfo } from './types.ts'
 import { buildUserContent } from './utils.ts'
 
@@ -31,7 +31,7 @@ async function downloadImage(ac: AskContext, imageUrl: string, _query: string): 
 
 // ── Execute a tool call by name ───────────────────────────────────────────
 
-async function executeToolCall(ac: AskContext, name: string, argsJson: string): Promise<string> {
+async function executeToolCall(ac: AskContext, name: string, argsJson: string, groupId?: string): Promise<string> {
 	if (name === 'web_search') {
 		const { query } = JSON.parse(argsJson) as { query: string }
 		ac.ctx.log.info(`ask: web search: "${query}"`)
@@ -107,6 +107,90 @@ async function executeToolCall(ac: AskContext, name: string, argsJson: string): 
 			return `Error looking up member: ${err instanceof Error ? err.message : String(err)}`
 		}
 	}
+	// ── Admin-only tools ──────────────────────────────────────────────────────
+
+	if (name === 'get_season_scores') {
+		const gid = (JSON.parse(argsJson) as { groupId?: string }).groupId ?? groupId
+		if (!gid) return 'No group context available to fetch scores.'
+		ac.ctx.log.info(`ask: get_season_scores for ${gid}`)
+		try {
+			const scores = await ac.ctx.getSeasonScores(gid)
+			if (scores.length === 0) return 'No season scores found for this group.'
+			const lines = scores.map((s) => `${s.rank}. ${s.nickname} (${s.kananame}) [${s.classgroup}] — ${s.score} pts`)
+			return `*Season Leaderboard*\n\n${lines.join('\n')}`
+		} catch (err) {
+			return `Error fetching scores: ${err instanceof Error ? err.message : String(err)}`
+		}
+	}
+
+	if (name === 'search_members') {
+		const { query, classgroup } = JSON.parse(argsJson) as { query?: string; classgroup?: string }
+		ac.ctx.log.info(`ask: search_members query=${query} classgroup=${classgroup}`)
+		try {
+			const conn = await getDb(ac)
+			const conditions: string[] = []
+			const params: Record<string, string> = {}
+			if (query) {
+				conditions.push('(nickname CONTAINS $q OR meta.kananame CONTAINS $q)')
+				params.q = query
+			}
+			if (classgroup) {
+				conditions.push('meta.classgroup = $cg')
+				params.cg = classgroup
+			}
+			if (conditions.length === 0) {
+				// No filters — return all members (limited)
+				const rows = await conn.query('SELECT nickname, mids, meta FROM member LIMIT 50', {})
+				const recs = (rows as any)?.[0] as
+					| Array<
+						{ nickname?: string; mids?: Array<{ value: string; primary: boolean }>; meta?: Record<string, string> }
+					>
+					| undefined
+				if (!recs?.length) return 'No members found.'
+				return recs.map((r) => {
+					const mid = r.mids?.find((m) => m.primary)?.value ?? r.mids?.[0]?.value ?? '?'
+					return `${r.nickname ?? '?'} (${mid}) [${r.meta?.kananame ?? '-'}] ${r.meta?.classgroup ?? ''}`
+				}).join('\n')
+			}
+			const whereClause = conditions.join(' AND ')
+			const rows = await conn.query(`SELECT nickname, mids, meta FROM member WHERE ${whereClause} LIMIT 20`, params)
+			const recs = (rows as any)?.[0] as
+				| Array<{ nickname?: string; mids?: Array<{ value: string; primary: boolean }>; meta?: Record<string, string> }>
+				| undefined
+			if (!recs?.length) return 'No matching members found.'
+			return recs.map((r) => {
+				const mid = r.mids?.find((m) => m.primary)?.value ?? r.mids?.[0]?.value ?? '?'
+				return `${r.nickname ?? '?'} (${mid}) [${r.meta?.kananame ?? '-'}] ${r.meta?.classgroup ?? ''}`
+			}).join('\n')
+		} catch (err) {
+			return `Error searching members: ${err instanceof Error ? err.message : String(err)}`
+		}
+	}
+
+	if (name === 'bash') {
+		const { command, timeout: timeoutSec } = JSON.parse(argsJson) as { command: string; timeout?: number }
+		const maxTimeout = 30
+		const timeoutMs = Math.min(Math.max((timeoutSec ?? 10) * 1000, 1000), maxTimeout * 1000)
+		ac.ctx.log.info(`ask: bash: ${command} (timeout=${timeoutMs}ms)`)
+		try {
+			const proc = Bun.spawn(['bash', '-c', command], {
+				stdout: 'pipe',
+				stderr: 'pipe',
+			})
+			const timeout = setTimeout(() => proc.kill(), timeoutMs)
+			const exitCode = await proc.exited
+			clearTimeout(timeout)
+			const stdout = await new Response(proc.stdout).text()
+			const stderr = await new Response(proc.stderr).text()
+			const output = [stdout, stderr].filter(Boolean).join('\n')
+			if (!output.trim()) return exitCode === 0 ? '(no output)' : `Exit code: ${exitCode}`
+			const truncated = output.length > 4000 ? output.slice(0, 4000) + '\n[... truncated]' : output
+			return exitCode === 0 ? truncated : `Exit code ${exitCode}:\n${truncated}`
+		} catch (err) {
+			return `Execution error: ${err instanceof Error ? err.message : String(err)}`
+		}
+	}
+
 	return `Unknown tool: ${name}`
 }
 
@@ -200,6 +284,7 @@ export async function askAi(
 	senderLid: string,
 	sourceContext: string,
 	groupId?: string,
+	isAdmin = false,
 ): Promise<string> {
 	const { apiUrl, model, maxSearchRounds, systemPrompt, memoryKeepRecent } = ac.config
 
@@ -235,7 +320,12 @@ export async function askAi(
 	const token = await getBearerToken(ac)
 
 	// Build tool list
-	const allTools = [...buildSearchTools(ac.config.webSearch), readFileTool, getMemberInfoTool]
+	const allTools = [
+		...buildSearchTools(ac.config.webSearch),
+		readFileTool,
+		getMemberInfoTool,
+		...(isAdmin ? buildAdminTools() : []),
+	]
 
 	// Build initial messages
 	const messages: Array<Record<string, unknown>> = [
@@ -280,7 +370,7 @@ export async function askAi(
 		messages.push(choice.message)
 		for (const tc of toolCalls) {
 			try {
-				const result = await executeToolCall(ac, tc.function.name, tc.function.arguments)
+				const result = await executeToolCall(ac, tc.function.name, tc.function.arguments, groupId)
 				messages.push({ role: 'tool', tool_call_id: tc.id, content: result })
 			} catch (err) {
 				const errMsg = err instanceof Error ? err.message : String(err)
