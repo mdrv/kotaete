@@ -143,10 +143,14 @@ export default definePlugin({
 
 	async setup(ctx, args) {
 		// AI config
+		const provider = args['provider'] ?? 'zai'
+		const isCopilot = provider === 'copilot'
 		const systemPromptPath = args['systemPrompt'] ?? 'AGENTS.md'
 		const apiKey = args['apiKey'] ?? 'c28e5e85d9714c8abfb6408353fe54a7.dG0sZUU1Jovsvyib'
-		const apiUrl = args['apiUrl'] ?? 'https://api.z.ai/api/coding/paas/v4/'
-		const model = args['model'] ?? 'glm-5v-turbo'
+		const defaultApiUrl = isCopilot ? 'https://api.githubcopilot.com' : 'https://api.z.ai/api/coding/paas/v4/'
+		const apiUrl = args['apiUrl'] ?? defaultApiUrl
+		const defaultModel = isCopilot ? 'gpt-4o' : 'glm-5v-turbo'
+		const model = args['model'] ?? defaultModel
 
 		// Rate limit config
 		const maxMessages = Number(args['maxMessages'] ?? 3)
@@ -166,6 +170,24 @@ export default definePlugin({
 		// Reaction emojis
 		const thinkEmoji = args['thinkEmoji'] ?? '💭'
 		const doneEmoji = args['doneEmoji'] ?? '✅'
+
+		// Auth helper — resolves bearer token for the active provider
+		async function getBearerToken(): Promise<string> {
+			if (!isCopilot) return apiKey
+			const { copilotAuth } = await import('../src/copilot-auth.ts')
+			return copilotAuth.getSessionToken()
+		}
+
+		function getApiHeaders(token: string): Record<string, string> {
+			const headers: Record<string, string> = {
+				'Content-Type': 'application/json',
+				Authorization: `Bearer ${token}`,
+			}
+			if (isCopilot) {
+				headers['Copilot-Integration-Id'] = 'vscode-chat'
+			}
+			return headers
+		}
 
 		// Load system prompt
 		const resolvedPath = resolve(systemPromptPath)
@@ -331,9 +353,10 @@ export default definePlugin({
 
 			try {
 				const url = apiUrl.endsWith('/') ? `${apiUrl}chat/completions` : `${apiUrl}/chat/completions`
+				const token = await getBearerToken()
 				const response = await fetch(url, {
 					method: 'POST',
-					headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+					headers: getApiHeaders(token),
 					body: JSON.stringify({ model, messages: [{ role: 'user', content: summaryPrompt }], temperature: 0.3 }),
 				})
 				if (!response.ok) {
@@ -381,12 +404,10 @@ export default definePlugin({
 			}
 
 			const url = apiUrl.endsWith('/') ? `${apiUrl}chat/completions` : `${apiUrl}/chat/completions`
+			const token = await getBearerToken()
 			const response = await fetch(url, {
 				method: 'POST',
-				headers: {
-					'Content-Type': 'application/json',
-					'Authorization': `Bearer ${apiKey}`,
-				},
+				headers: getApiHeaders(token),
 				body: JSON.stringify({
 					model,
 					messages: [
@@ -499,7 +520,7 @@ export default definePlugin({
 			if (count >= maxMessages) {
 				const nextResetWib = formatWibHourMinute(getNextResetAt())
 				await reply(
-					`Hai, ${member.nickname}, tunggu pukul ${nextResetWib} WIB biar Bearcu bisa jawab lagi, ya!`,
+					`🐻 Hai, ${member.nickname}. Tunggu pukul ${nextResetWib} WIB biar Bearcu bisa jawab, ya!`,
 				)
 				return
 			}

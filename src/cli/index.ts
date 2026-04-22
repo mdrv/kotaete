@@ -2,6 +2,7 @@
 
 import { helpPlugin, versionPlugin } from '@crustjs/plugins'
 import packageJson from '../../package.json' with { type: 'json' }
+import { authCmd } from './commands/auth.ts'
 import { daemonCmd } from './commands/daemon.ts'
 import { pluginCmd } from './commands/plugin.ts'
 import { quizCmd } from './commands/quiz.ts'
@@ -13,6 +14,7 @@ await app
 	.use(versionPlugin(packageJson.version ?? '0.0.0'))
 	.use(helpPlugin())
 	.command(daemonCmd)
+	.command(authCmd)
 	.command(quizCmd)
 	.command(seasonCmd)
 	.command(toolCmd)
