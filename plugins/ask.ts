@@ -525,7 +525,25 @@ export default definePlugin({
 				},
 			},
 		}
-		const allTools: ToolDef[] = [...searchTools, readFileTool]
+		const getMemberInfoTool: ToolDef = {
+			type: 'function' as const,
+			function: {
+				name: 'get_member_info',
+				description:
+					'Look up detailed information about a group member by their name, kananame, or mention. Returns their full name (kananame), class/group, and other available details. Use when you need to know more about who you are talking to or who they are referring to.',
+				parameters: {
+					type: 'object',
+					properties: {
+						identifier: {
+							type: 'string',
+							description: 'Name, kananame, or @mention of the member to look up',
+						},
+					},
+					required: ['identifier'],
+				},
+			},
+		}
+		const allTools: ToolDef[] = [...searchTools, readFileTool, getMemberInfoTool]
 
 		// Track downloaded images for verification and sending
 		const downloadedImages: Array<{ path: string; query: string; sourceUrl: string }> = []
@@ -601,6 +619,34 @@ export default definePlugin({
 					return content
 				} catch {
 					return `File not found or unreadable: ${filePath}`
+				}
+			}
+			if (name === 'get_member_info') {
+				const { identifier } = JSON.parse(argsJson) as { identifier: string }
+				const cleanId = identifier.replace(/^@/, '').trim()
+				ctx.log.info(`ask: get_member_info: "${cleanId}"`)
+				try {
+					const conn = await getDb()
+					// Try matching by nickname or kananame (case-insensitive)
+					const rows = await conn.query(
+						'SELECT nickname, meta FROM member WHERE nickname = $id OR meta.kananame = $id OR string::lowercase(nickname) = string::lowercase($id) OR string::lowercase(meta.kananame) = string::lowercase($id) LIMIT 5',
+						{ id: cleanId },
+					)
+					const results = (rows as any)?.[0] as Array<any> ?? []
+					if (results.length === 0) {
+						return `No member found matching "${cleanId}".`
+					}
+					const formatted = results.map((r: any) => {
+						const meta = r.meta ?? {}
+						return [
+							`Name: ${r.nickname ?? 'unknown'}`,
+							meta.kananame ? `Kananame: ${meta.kananame}` : null,
+							meta.classgroup ? `Class: ${meta.classgroup}` : null,
+						].filter(Boolean).join(', ')
+					}).join('\n')
+					return formatted
+				} catch (err) {
+					return `Error looking up member: ${err instanceof Error ? err.message : String(err)}`
 				}
 			}
 			return `Unknown tool: ${name}`
