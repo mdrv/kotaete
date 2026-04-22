@@ -283,6 +283,7 @@ export default definePlugin({
 		// Ensure memory table exists
 		async function ensureMemoryTable(): Promise<void> {
 			const conn = await getDb()
+			// Per-user memory (personal conversation history)
 			await conn.query('DEFINE TABLE IF NOT EXISTS kotaete_ask_memory SCHEMAFULL')
 			await conn.query('DEFINE FIELD IF NOT EXISTS lid ON kotaete_ask_memory TYPE string')
 			await conn.query('DEFINE FIELD IF NOT EXISTS messages ON kotaete_ask_memory TYPE array')
@@ -293,6 +294,20 @@ export default definePlugin({
 			await conn.query('DEFINE FIELD IF NOT EXISTS summary ON kotaete_ask_memory TYPE option<string>')
 			await conn.query('DEFINE FIELD IF NOT EXISTS created_at ON kotaete_ask_memory TYPE datetime')
 			await conn.query('DEFINE FIELD IF NOT EXISTS updated_at ON kotaete_ask_memory TYPE datetime')
+			// Per-group memory (shared conversation history across members)
+			await conn.query('DEFINE TABLE IF NOT EXISTS kotaete_ask_group_memory SCHEMAFULL')
+			await conn.query('DEFINE FIELD IF NOT EXISTS group_id ON kotaete_ask_group_memory TYPE string')
+			await conn.query('DEFINE FIELD IF NOT EXISTS messages ON kotaete_ask_group_memory TYPE array')
+			await conn.query('DEFINE FIELD IF NOT EXISTS messages[*] ON kotaete_ask_group_memory TYPE object')
+			await conn.query('DEFINE FIELD IF NOT EXISTS messages[*].role ON kotaete_ask_group_memory TYPE string')
+			await conn.query('DEFINE FIELD IF NOT EXISTS messages[*].content ON kotaete_ask_group_memory TYPE string')
+			await conn.query('DEFINE FIELD IF NOT EXISTS messages[*].ts ON kotaete_ask_group_memory TYPE number')
+			await conn.query(
+				'DEFINE FIELD IF NOT EXISTS messages[*].nickname ON kotaete_ask_group_memory TYPE option<string>',
+			)
+			await conn.query('DEFINE FIELD IF NOT EXISTS summary ON kotaete_ask_group_memory TYPE option<string>')
+			await conn.query('DEFINE FIELD IF NOT EXISTS created_at ON kotaete_ask_group_memory TYPE datetime')
+			await conn.query('DEFINE FIELD IF NOT EXISTS updated_at ON kotaete_ask_group_memory TYPE datetime')
 		}
 
 		const memberCache = new Map<string, MemberInfo | null>()
@@ -357,6 +372,43 @@ export default definePlugin({
 				}
 			} catch (err) {
 				ctx.log.warn(`ask: memory save failed: ${err instanceof Error ? err.message : String(err)}`)
+			}
+		}
+		// ── Group Memory: load shared conversation for a group ──
+		async function loadGroupMemory(groupId: string): Promise<MemoryRecord | null> {
+			try {
+				const conn = await getDb()
+				const rows = await conn.query(
+					'SELECT * FROM kotaete_ask_group_memory WHERE group_id = $groupId LIMIT 1',
+					{ groupId },
+				)
+				return ((rows as any)?.[0]?.[0] as MemoryRecord) ?? null
+			} catch (err) {
+				ctx.log.warn(`ask: group memory load failed: ${err instanceof Error ? err.message : String(err)}`)
+				return null
+			}
+		}
+
+		// ── Group Memory: save a conversation turn to group ──
+		async function saveGroupMemoryEntry(groupId: string, entry: MemoryEntry & { nickname?: string }): Promise<void> {
+			try {
+				const conn = await getDb()
+				const existing = await loadGroupMemory(groupId)
+				const now = new Date()
+				if (existing) {
+					const updatedMessages = [...existing.messages, entry]
+					await conn.query(
+						'UPDATE $id SET messages = $messages, updated_at = $now WHERE id = $id',
+						{ id: existing.id, messages: updatedMessages, now },
+					)
+				} else {
+					await conn.query(
+						'CREATE kotaete_ask_group_memory SET group_id = $groupId, messages = [$entry], summary = NONE, created_at = $now, updated_at = $now',
+						{ groupId, entry, now },
+					)
+				}
+			} catch (err) {
+				ctx.log.warn(`ask: group memory save failed: ${err instanceof Error ? err.message : String(err)}`)
 			}
 		}
 
@@ -637,17 +689,33 @@ export default definePlugin({
 			media: IncomingMedia | null,
 			senderLid: string,
 			sourceContext: string,
+			groupId?: string,
 		): Promise<string> {
 			// Build message array with memory context
 			const memoryMessages: Array<{ role: string; content: string }> = []
+			// Personal memory
 			const rec = await loadMemory(senderLid)
 			if (rec?.summary) {
-				memoryMessages.push({ role: 'system', content: `[Previous conversation summary]\n${rec.summary}` })
+				memoryMessages.push({ role: 'system', content: `[Your previous conversation summary]\n${rec.summary}` })
 			}
 			if (rec?.messages.length) {
 				const recent = rec.messages.slice(-memoryKeepRecent)
 				for (const m of recent) {
 					memoryMessages.push({ role: m.role, content: m.content })
+				}
+			}
+			// Group memory (shared context from all members)
+			if (groupId) {
+				const groupRec = await loadGroupMemory(groupId)
+				if (groupRec?.summary) {
+					memoryMessages.push({ role: 'system', content: `[Group conversation summary]\n${groupRec.summary}` })
+				}
+				if (groupRec?.messages.length) {
+					const recentGroup = groupRec.messages.slice(-memoryKeepRecent)
+					for (const m of recentGroup) {
+						const label = (m as any).nickname ? `${(m as any).nickname}: ` : ''
+						memoryMessages.push({ role: m.role, content: `${label}${m.content}` })
+					}
 				}
 			}
 
@@ -785,6 +853,7 @@ export default definePlugin({
 			reactFn: ((emoji: string) => Promise<void>) | null,
 			sourceContext: string,
 			sendImageFn?: (path: string, caption: string) => Promise<void>,
+			groupId?: string,
 		): Promise<void> {
 			const question = text.replace(/^\/ask\s*/, '').trim()
 			if (!question && !media) {
@@ -821,8 +890,17 @@ export default definePlugin({
 			const effectiveQuestion = cleanQuestion || '(no text)'
 			const now = Date.now()
 
-			// Save user message to memory
+			// Save user message to personal memory
 			await saveMemoryEntry(senderLid, { role: 'user', content: effectiveQuestion, ts: now })
+			// Save to group memory if in a group
+			if (groupId) {
+				await saveGroupMemoryEntry(groupId, {
+					role: 'user',
+					content: effectiveQuestion,
+					ts: now,
+					nickname: member.nickname,
+				})
+			}
 			// Auto-compact if memory is getting long
 			await compactMemoryIfNeeded(senderLid)
 
@@ -840,7 +918,7 @@ export default definePlugin({
 			)
 
 			try {
-				const rawAnswer = await askAi(effectiveQuestion, member, media, senderLid, sourceContext)
+				const rawAnswer = await askAi(effectiveQuestion, member, media, senderLid, sourceContext, groupId)
 				const answer = normalizeForWhatsApp(rawAnswer)
 				await reply(answer)
 
@@ -849,8 +927,12 @@ export default definePlugin({
 					await verifyAndSendImages(effectiveQuestion, sendImageFn)
 				}
 
-				// Save assistant reply to memory
+				// Save assistant reply to personal memory
 				await saveMemoryEntry(senderLid, { role: 'assistant', content: answer, ts: Date.now() })
+				// Save assistant reply to group memory
+				if (groupId) {
+					await saveGroupMemoryEntry(groupId, { role: 'assistant', content: answer, ts: Date.now() })
+				}
 				// React ✅ after successful response
 				try {
 					if (reactFn) await reactFn(doneEmoji)
@@ -915,6 +997,7 @@ export default definePlugin({
 					`group ${message.groupId}`,
 					// Send image: use group sendImageWithCaption (works with any JID)
 					(path, caption) => ctx.sendImageWithCaption(message.groupId, path, caption).then(() => {}),
+					message.groupId,
 				)
 			},
 
