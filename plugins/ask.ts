@@ -406,17 +406,26 @@ export default definePlugin({
 		}
 
 		// Check if bot is among mentioned JIDs
-		function isBotMentioned(mentionedJids: string[], text: string): boolean {
+		async function isBotMentioned(mentionedJids: string[], text: string): Promise<boolean> {
 			const ownJid = ctx.getOwnJid()
 			if (!ownJid) {
 				// Fallback: check text for bot name
 				return /@Bearcu/i.test(text)
 			}
 			const ownBare = ownJid.split('@')[0]?.split(':')[0] ?? ''
-			return mentionedJids.some((jid) => {
+			for (const jid of mentionedJids) {
 				const bare = jid.split('@')[0]?.split(':')[0] ?? ''
-				return bare === ownBare
-			})
+				if (bare === ownBare) return true
+				// LID mentions need PN resolution to compare with bot's phone-based JID
+				if (jid.endsWith('@lid')) {
+					const pn = await ctx.lookupPnByLid(jid)
+					if (pn) {
+						const pnBare = pn.split('@')[0]?.split(':')[0] ?? ''
+						if (pnBare === ownBare) return true
+					}
+				}
+			}
+			return false
 		}
 
 		// Resolve @<bare_number> mentions to member nicknames
@@ -555,10 +564,11 @@ export default definePlugin({
 					}`,
 				)
 				// Group trigger: bot is among mentioned JIDs
-				if (!isBotMentioned(message.mentionedJids, text)) return
+				if (!(await isBotMentioned(message.mentionedJids, text))) return
 
 				// Resolve all @mentions to names
 				const resolvedText = await resolveMentions(text, message.mentionedJids)
+				ctx.log.debug(`ask: resolved mentions text=${JSON.stringify(resolvedText)}`)
 				const cleanText = resolvedText.replace(/^\/ask\s*/, '').trim()
 				const strippedQuestion = stripOwnMention(cleanText)
 				if (!strippedQuestion && !message.media) return
