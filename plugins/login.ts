@@ -25,7 +25,6 @@ function formatTodayWib(now = new Date()): string {
 }
 
 type Surreal = import('surrealdb').Surreal
-const surrealdbModulePath = '../node_modules/surrealdb/dist/surrealdb.mjs'
 
 type MemberRecord = {
 	id: string
@@ -50,7 +49,7 @@ export default definePlugin({
 
 		async function getDb(): Promise<Surreal> {
 			if (db) return db
-			const { Surreal } = await import(surrealdbModulePath) as typeof import('surrealdb')
+			const { Surreal } = await import('surrealdb') as typeof import('surrealdb')
 			const instance = new Surreal()
 			await instance.connect(endpoint)
 			await instance.signin({ username, password })

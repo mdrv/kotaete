@@ -1,5 +1,4 @@
 import { resolve } from 'node:path'
-import { pathToFileURL } from 'node:url'
 import type { KotaetePluginDefinition, PluginModule } from './types.ts'
 
 /**
@@ -7,6 +6,10 @@ import type { KotaetePluginDefinition, PluginModule } from './types.ts'
  * Returns the plugin definition (default export).
  *
  * Uses cache-busting query parameter to support hot-reloading.
+ *
+ * Note: uses filesystem paths (not file:// URLs) so that bare module
+ * specifiers inside plugins (e.g. '@mdrv/id') resolve correctly via
+ * the project's node_modules.
  */
 export async function loadPlugin(
 	sourcePath: string,
@@ -15,8 +18,8 @@ export async function loadPlugin(
 	const absPath = resolve(sourcePath)
 
 	const specifier = opts?.reload
-		? `${pathToFileURL(absPath).href}?_t=${Date.now()}`
-		: pathToFileURL(absPath).href
+		? `${absPath}?_t=${Date.now()}`
+		: absPath
 
 	const mod = await import(specifier) as PluginModule
 
