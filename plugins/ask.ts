@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { definePlugin } from '../src/plugin/define-plugin.ts'
 import type { IncomingMedia } from '../src/types.ts'
+import { formatSearchResults, getSearXNGConfig, searxngSearch } from '../src/utils/searxng.ts'
 
 type Surreal = import('surrealdb').Surreal
 
@@ -174,6 +175,16 @@ export default definePlugin({
 		// Reaction emojis
 		const thinkEmoji = args['thinkEmoji'] ?? '💭'
 		const doneEmoji = args['doneEmoji'] ?? '✅'
+
+		// Web search config (SearXNG)
+		const webSearch = args['webSearch'] !== 'false'
+		const searxngConfig = getSearXNGConfig({
+			baseUrl: args['searxngUrl'],
+			authUsername: args['searxngUsername'],
+			authPassword: args['searxngPassword'],
+		})
+		const maxSearchRounds = Number(args['maxSearchRounds'] ?? 3)
+		const searchMaxResults = Number(args['searchMaxResults'] ?? 5)
 
 		// Auth helper — resolves bearer token for the active provider
 		async function getBearerToken(): Promise<string> {
@@ -389,7 +400,40 @@ export default definePlugin({
 			}
 		}
 
-		// LLM call (OpenAI-compatible, multimodal, with memory context)
+		// Tool definitions for function calling
+		const webSearchTools = webSearch
+			? [{
+				type: 'function' as const,
+				function: {
+					name: 'web_search',
+					description:
+						'Search the web for current information. Use when you need up-to-date facts, news, translations, or information you may not have in your training data. Always search when the user asks about recent events or current information.',
+					parameters: {
+						type: 'object',
+						properties: {
+							query: {
+								type: 'string',
+								description: 'The search query string',
+							},
+						},
+						required: ['query'],
+					},
+				},
+			}]
+			: []
+
+		// Execute a tool call by name
+		async function executeToolCall(name: string, argsJson: string): Promise<string> {
+			if (name === 'web_search') {
+				const { query } = JSON.parse(argsJson) as { query: string }
+				ctx.log.info(`ask: web search: "${query}"`)
+				const results = await searxngSearch(query, searxngConfig, { maxResults: searchMaxResults })
+				return formatSearchResults(results)
+			}
+			return `Unknown tool: ${name}`
+		}
+
+		// LLM call with function calling loop
 		async function askAi(
 			question: string,
 			member: MemberInfo,
@@ -412,25 +456,63 @@ export default definePlugin({
 
 			const url = apiUrl.endsWith('/') ? `${apiUrl}chat/completions` : `${apiUrl}/chat/completions`
 			const token = await getBearerToken()
-			const response = await fetch(url, {
-				method: 'POST',
-				headers: getApiHeaders(token),
-				body: JSON.stringify({
+
+			// Build initial messages
+			const messages: Array<Record<string, unknown>> = [
+				{ role: 'system', content: systemPrompt + `\n\n[CONTEXT] Message source: ${sourceContext}` },
+				...memoryMessages,
+				{ role: 'user', content: buildUserContent(question, member, media) },
+			]
+
+			// Function calling loop
+			for (let round = 0; round <= maxSearchRounds; round++) {
+				const body: Record<string, unknown> = {
 					model,
-					messages: [
-						{ role: 'system', content: systemPrompt + `\n\n[CONTEXT] Message source: ${sourceContext}` },
-						...memoryMessages,
-						{ role: 'user', content: buildUserContent(question, member, media) },
-					],
+					messages,
 					temperature: 0.7,
-				}),
-			})
-			if (!response.ok) {
-				const body = await response.text()
-				throw new Error(`API ${response.status}: ${body}`)
+				}
+				if (webSearchTools.length > 0) {
+					body.tools = webSearchTools
+				}
+
+				const response = await fetch(url, {
+					method: 'POST',
+					headers: getApiHeaders(token),
+					body: JSON.stringify(body),
+				})
+				if (!response.ok) {
+					const errBody = await response.text()
+					throw new Error(`API ${response.status}: ${errBody}`)
+				}
+				const data = (await response.json()) as any
+				const choice = data.choices?.[0]
+				if (!choice) return '(no response)'
+
+				// If no tool calls or finish_reason is 'stop', return the content
+				const toolCalls = choice.message?.tool_calls as
+					| Array<{ id: string; function: { name: string; arguments: string } }>
+					| undefined
+				if (!toolCalls || toolCalls.length === 0 || choice.finish_reason === 'stop') {
+					return choice.message?.content?.trim() ?? '(no response)'
+				}
+
+				// Process tool calls: add assistant message with tool_calls, then tool results
+				messages.push(choice.message)
+				for (const tc of toolCalls) {
+					try {
+						const result = await executeToolCall(tc.function.name, tc.function.arguments)
+						messages.push({ role: 'tool', tool_call_id: tc.id, content: result })
+					} catch (err) {
+						const errMsg = err instanceof Error ? err.message : String(err)
+						ctx.log.warn(`ask: tool call failed: ${errMsg}`)
+						messages.push({ role: 'tool', tool_call_id: tc.id, content: `Search error: ${errMsg}` })
+					}
+				}
 			}
-			const data = await response.json() as any
-			return data.choices?.[0]?.message?.content?.trim() ?? '(no response)'
+
+			// Exhausted rounds — return last content if available
+			const lastMsg = messages[messages.length - 1]
+			return typeof lastMsg?.content === 'string' ? lastMsg.content : '(no response)'
 		}
 
 		// Check if bot is among mentioned JIDs
