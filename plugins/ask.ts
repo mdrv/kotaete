@@ -239,12 +239,12 @@ export default definePlugin({
 		// Ensure memory table exists
 		async function ensureMemoryTable(): Promise<void> {
 			const conn = await getDb()
-			await conn.query('DEFINE TABLE kotaete_ask_memory SCHEMAFULL IF NOT EXISTS')
-			await conn.query('DEFINE FIELD lid ON TYPE kotaete_ask_memory TYPE string IF NOT EXISTS')
-			await conn.query('DEFINE FIELD messages ON TYPE kotaete_ask_memory TYPE array IF NOT EXISTS')
-			await conn.query('DEFINE FIELD summary ON TYPE kotaete_ask_memory TYPE option<string> IF NOT EXISTS')
-			await conn.query('DEFINE FIELD created_at ON TYPE kotaete_ask_memory TYPE datetime IF NOT EXISTS')
-			await conn.query('DEFINE FIELD updated_at ON TYPE kotaete_ask_memory TYPE datetime IF NOT EXISTS')
+			await conn.query('DEFINE TABLE IF NOT EXISTS kotaete_ask_memory SCHEMAFULL')
+			await conn.query('DEFINE FIELD IF NOT EXISTS lid ON kotaete_ask_memory TYPE string')
+			await conn.query('DEFINE FIELD IF NOT EXISTS messages ON kotaete_ask_memory TYPE array')
+			await conn.query('DEFINE FIELD IF NOT EXISTS summary ON kotaete_ask_memory TYPE option<string>')
+			await conn.query('DEFINE FIELD IF NOT EXISTS created_at ON kotaete_ask_memory TYPE datetime')
+			await conn.query('DEFINE FIELD IF NOT EXISTS updated_at ON kotaete_ask_memory TYPE datetime')
 		}
 
 		const memberCache = new Map<string, MemberInfo | null>()
@@ -294,7 +294,7 @@ export default definePlugin({
 			try {
 				const conn = await getDb()
 				const existing = await loadMemory(lid)
-				const now = new Date().toISOString()
+				const now = new Date()
 				if (existing) {
 					const updatedMessages = [...existing.messages, entry]
 					await conn.query(
@@ -342,7 +342,7 @@ export default definePlugin({
 
 				// Prune older messages, keep recent ones
 				const pruned = rec.messages.slice(-memoryKeepRecent)
-				const now = new Date().toISOString()
+				const now = new Date()
 				const conn = await getDb()
 				await conn.query(
 					'UPDATE $id SET messages = $messages, summary = $summary, updated_at = $now WHERE id = $id',
