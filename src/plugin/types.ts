@@ -31,6 +31,10 @@ export interface KotaetePluginHooks {
 	onIncomingMessage?(event: KotaetePluginIncomingEvent): MaybePromise<void>
 	onIncomingDmMessage?(event: KotaetePluginDmEvent): MaybePromise<void>
 	teardown?(reason: PluginRuntimeReason): MaybePromise<void>
+	/** Exposed tools that can be called via CLI (name → handler) */
+	tools?: Record<string, (args: string[]) => Promise<string>>
+	/** Current closed-message state, settable via CLI */
+	closedMessage?: string | undefined
 }
 
 export interface KotaetePluginContext {

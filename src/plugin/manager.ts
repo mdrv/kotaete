@@ -130,6 +130,10 @@ export class PluginManager {
 		})
 	}
 
+	getActiveEntry(name: string): ActivePluginEntry | undefined {
+		return this.activePlugins.get(name)
+	}
+
 	// ---------------------------------------------------------------------------
 	// Event emission (fire-and-forget, non-blocking to daemon pipeline)
 	// ---------------------------------------------------------------------------

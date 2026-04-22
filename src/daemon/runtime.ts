@@ -1129,6 +1129,63 @@ export class DaemonRuntime {
 								return
 							}
 
+							if (parsed.data.type === 'plugin-ask') {
+								const askEntry = this.pluginManager.list().find((p) => p.name === 'ask')
+								if (!askEntry) {
+									writeResponse(socket, { ok: false, message: 'ask plugin not loaded' })
+									return
+								}
+								const activeEntry = this.pluginManager.getActiveEntry('ask')
+								if (!activeEntry) {
+									writeResponse(socket, { ok: false, message: 'ask plugin not active' })
+									return
+								}
+								const hooks = activeEntry.hooks
+								if (parsed.data.action === 'close') {
+									const msg = parsed.data.message ?? '⚠️ Lagi dalam pengembangan!'
+									hooks.closedMessage = msg
+									writeResponse(socket, { ok: true, message: `ask plugin closed: "${msg}"` })
+									return
+								}
+								if (parsed.data.action === 'open') {
+									hooks.closedMessage = undefined
+									writeResponse(socket, { ok: true, message: 'ask plugin opened' })
+									return
+								}
+								if (parsed.data.action === 'tool') {
+									const toolName = parsed.data.tool
+									if (!toolName) {
+										writeResponse(socket, { ok: false, message: 'tool name required' })
+										return
+									}
+									const tools = hooks.tools
+									if (!tools || !(toolName in tools)) {
+										const available = tools ? Object.keys(tools).join(', ') : 'none'
+										writeResponse(socket, {
+											ok: false,
+											message: `tool "${toolName}" not found. Available: ${available}`,
+										})
+										return
+									}
+									try {
+										const toolFn = tools?.[toolName]
+										if (!toolFn) {
+											writeResponse(socket, { ok: false, message: `tool "${toolName}" not callable` })
+											return
+										}
+										const result = await toolFn(parsed.data.toolArgs ?? [])
+										writeResponse(socket, { ok: true, message: result, data: result })
+									} catch (err) {
+										writeResponse(socket, {
+											ok: false,
+											message: `tool error: ${err instanceof Error ? err.message : String(err)}`,
+										})
+									}
+									return
+								}
+								writeResponse(socket, { ok: false, message: `unknown action: ${parsed.data.action}` })
+								return
+							}
 							if (!(await this.wa.isConnected())) {
 								writeResponse(socket, {
 									ok: false,

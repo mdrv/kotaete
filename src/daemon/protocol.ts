@@ -57,6 +57,13 @@ export const relayPluginListRequestSchema = z.object({
 	type: z.literal('plugin-list'),
 })
 
+export const relayPluginAskRequestSchema = z.object({
+	type: z.literal('plugin-ask'),
+	action: z.enum(['close', 'open', 'tool']),
+	message: z.string().optional(),
+	tool: z.string().optional(),
+	toolArgs: z.array(z.string()).optional(),
+})
 export const relayRequestSchema = z.discriminatedUnion('type', [
 	relayRunRequestSchema,
 	relayStatusRequestSchema,
@@ -66,6 +73,7 @@ export const relayRequestSchema = z.discriminatedUnion('type', [
 	relayPluginEnableRequestSchema,
 	relayPluginDisableRequestSchema,
 	relayPluginListRequestSchema,
+	relayPluginAskRequestSchema,
 ])
 
 export type RelayRunRequest = z.infer<typeof relayRunRequestSchema>
@@ -76,6 +84,7 @@ export type RelayLookupRequest = z.infer<typeof relayLookupRequestSchema>
 export type RelayPluginEnableRequest = z.infer<typeof relayPluginEnableRequestSchema>
 export type RelayPluginDisableRequest = z.infer<typeof relayPluginDisableRequestSchema>
 export type RelayPluginListRequest = z.infer<typeof relayPluginListRequestSchema>
+export type RelayPluginAskRequest = z.infer<typeof relayPluginAskRequestSchema>
 export type RelayRequest = z.infer<typeof relayRequestSchema>
 
 export const pluginStatusSchema = z.object({
@@ -111,6 +120,7 @@ export const relayResponseSchema = z.object({
 	jobs: z.array(jobStatusSchema).optional(),
 	jobId: z.string().optional(),
 	plugins: z.array(pluginStatusSchema).optional(),
+	data: z.string().optional(),
 })
 
 export type RelayResponse = z.infer<typeof relayResponseSchema>

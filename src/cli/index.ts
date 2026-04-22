@@ -8,6 +8,7 @@ import { pluginCmd } from './commands/plugin.ts'
 import { quizCmd } from './commands/quiz.ts'
 import { seasonCmd } from './commands/season.ts'
 import { toolCmd } from './commands/tool.ts'
+import { xCmd } from './commands/x.ts'
 import { app } from './shared.ts'
 
 await app
@@ -19,4 +20,5 @@ await app
 	.command(seasonCmd)
 	.command(toolCmd)
 	.command(pluginCmd)
+	.command(xCmd)
 	.execute()
