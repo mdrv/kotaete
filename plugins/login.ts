@@ -1,4 +1,4 @@
-import { generateDailyTotp4 } from '@mdrv/id/src/lib/totp.ts'
+import { generateDailyTotp4 } from '@mdrv/id'
 import { definePlugin } from '../src/plugin/define-plugin.ts'
 
 /**
@@ -100,7 +100,7 @@ export default definePlugin({
 
 					await ctx.sendDmText(
 						message.senderJid,
-						`MEDRIVIA ID:\n\n👥 \`${primaryMid}\`\n🔐 \`${code}\`\n📅 ${formatTodayWib()}`,
+						`MEDRIVIA ID:\n\n🪪 \`${primaryMid}\`\n🔑 \`${code}\`\n📅 ${formatTodayWib()}`,
 					)
 
 					ctx.log.info(`login: sent code for LID=${senderLid} mid=${primaryMid}`)
