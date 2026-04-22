@@ -202,6 +202,7 @@ function makeIncoming(overrides?: Partial<IncomingGroupMessage>): IncomingGroupM
 		},
 		media: null,
 		...overrides,
+		mentionedJids: overrides?.mentionedJids ?? [],
 	}
 }
 
