@@ -447,12 +447,12 @@ export class DaemonRuntime {
 		return this.getActiveJobIdForGroup(groupId) === jobId
 	}
 
-	/** Check if a quiz is currently running for a given group. */
+	/** Check if a quiz is actively running for a given group (past intro, asking questions). */
 	private isQuizRunningForGroup(groupId: string): boolean {
 		const activeJobId = this.getActiveJobIdForGroup(groupId)
 		if (!activeJobId) return false
 		const job = this.jobs.get(activeJobId)
-		return job?.engine.isRunning() ?? false
+		return job?.engine.isActivelyRunning() ?? false
 	}
 
 	/**

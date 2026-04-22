@@ -184,6 +184,12 @@ export class QuizEngine {
 		return this.state?.active === true
 	}
 
+	/** Whether the quiz is actively asking questions (past intro, not just scheduled). */
+	isActivelyRunning(): boolean {
+		const state = this.state
+		return state?.active === true && state.index >= 0
+	}
+
 	stopCurrentQuiz(): boolean {
 		const state = this.state
 		if (!state?.active) return false
