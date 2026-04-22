@@ -70,6 +70,7 @@ export interface KotaetePluginContext {
 		warn(msg: string): void
 		error(msg: string): void
 	}
+	isQuizRunning(groupId: string): Promise<boolean>
 }
 
 type InferPluginArgs<TSchema extends z.ZodTypeAny | undefined> = TSchema extends z.ZodTypeAny ? z.infer<TSchema>

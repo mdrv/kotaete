@@ -392,6 +392,7 @@ export class DaemonRuntime {
 			isConnected: () => this.wa.isConnected(),
 			getProvider: () => this.wa.provider as WhatsAppProvider,
 			getOwnJid: () => this.wa.getOwnJid(),
+			isQuizRunning: async (groupId) => this.isQuizRunningForGroup(groupId),
 		})
 	}
 
@@ -444,6 +445,14 @@ export class DaemonRuntime {
 	/** Check whether a job is the active (first-in-queue) job for its group. */
 	private isActiveJob(jobId: string, groupId: string): boolean {
 		return this.getActiveJobIdForGroup(groupId) === jobId
+	}
+
+	/** Check if a quiz is currently running for a given group. */
+	private isQuizRunningForGroup(groupId: string): boolean {
+		const activeJobId = this.getActiveJobIdForGroup(groupId)
+		if (!activeJobId) return false
+		const job = this.jobs.get(activeJobId)
+		return job?.engine.isRunning() ?? false
 	}
 
 	/**

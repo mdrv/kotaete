@@ -37,6 +37,7 @@ function makeMockDeps(): PluginManagerDeps {
 		isConnected: mock(() => Promise.resolve(true)),
 		getProvider: mock(() => 'wwebjs' as const),
 		getOwnJid: mock(() => '6280000000@s.whatsapp.net'),
+		isQuizRunning: mock(() => Promise.resolve(false)),
 	}
 }
 

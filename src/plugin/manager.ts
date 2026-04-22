@@ -36,6 +36,7 @@ export type PluginManagerDeps = {
 	isConnected(): Promise<boolean>
 	getProvider(): WhatsAppProvider
 	getOwnJid(): string | null
+	isQuizRunning(groupId: string): Promise<boolean>
 }
 
 export type PluginListEntry = {
@@ -222,7 +223,7 @@ export class PluginManager {
 
 			isConnected: () => this.deps.isConnected(),
 			getOwnJid: () => this.deps.getOwnJid(),
-
+			isQuizRunning: (groupId) => this.deps.isQuizRunning(groupId),
 			log: {
 				debug: (msg) => pluginLog.debug(msg),
 				info: (msg) => pluginLog.info(msg),

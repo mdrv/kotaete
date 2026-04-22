@@ -152,6 +152,9 @@ export default definePlugin({
 		const defaultModel = isCopilot ? 'gpt-4o' : 'glm-5v-turbo'
 		const model = args['model'] ?? defaultModel
 
+		// Quiz busy message
+		const busyMessage = args['busyMessage'] ?? '🐻 Kuis sedang berjalan! Boleh tanya kalau sudah selesai, ya.'
+
 		// Rate limit config
 		const maxMessages = Number(args['maxMessages'] ?? 3)
 		const rateLimitResetCron = args['rateLimitResetCron'] ?? DEFAULT_RATE_LIMIT_RESET_CRON
@@ -596,6 +599,14 @@ export default definePlugin({
 				)
 				// Group trigger: bot is among mentioned JIDs
 				if (!(await isBotMentioned(message.mentionedJids, text))) return
+
+				// Check if quiz is running
+				if (await ctx.isQuizRunning(message.groupId)) {
+					await ctx.sendText(message.groupId, busyMessage)
+					return
+				}
+
+				// Resolve all @mentions to names
 
 				// Resolve all @mentions to names
 				const resolvedText = await resolveMentions(text, message.mentionedJids)
