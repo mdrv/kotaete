@@ -213,6 +213,8 @@ export default definePlugin({
 			+ '- Keep responses concise.\n'
 			+ '- No HTML tags.\n'
 		systemPrompt = systemPrompt + waFormatInstruction
+
+		ctx.log.info(`ask: provider=${provider} model=${model} apiUrl=${apiUrl}`)
 		// Rate limiting: lid → message count in current window (pooled across group + DM)
 		const rateLimits = new Map<string, number>()
 		const parsedResetCron = parseMinuteHourCron(rateLimitResetCron)
@@ -389,6 +391,7 @@ export default definePlugin({
 			member: MemberInfo,
 			media: IncomingMedia | null,
 			senderLid: string,
+			sourceContext: string,
 		): Promise<string> {
 			// Build message array with memory context
 			const memoryMessages: Array<{ role: string; content: string }> = []
@@ -411,7 +414,7 @@ export default definePlugin({
 				body: JSON.stringify({
 					model,
 					messages: [
-						{ role: 'system', content: systemPrompt },
+						{ role: 'system', content: systemPrompt + `\n\n[CONTEXT] Message source: ${sourceContext}` },
 						...memoryMessages,
 						{ role: 'user', content: buildUserContent(question, member, media) },
 					],
@@ -497,6 +500,7 @@ export default definePlugin({
 			senderLid: string | null,
 			reply: (msg: string) => Promise<void>,
 			reactFn: ((emoji: string) => Promise<void>) | null,
+			sourceContext: string,
 		): Promise<void> {
 			const question = text.replace(/^\/ask\s*/, '').trim()
 			if (!question && !media) {
@@ -543,8 +547,14 @@ export default definePlugin({
 				// Non-fatal: reaction failure must not block
 			}
 
+			ctx.log.info(
+				`ask: processing for ${member.nickname} (${sourceContext}) question=${JSON.stringify(effectiveQuestion)}${
+					media ? ' [with image]' : ''
+				})`,
+			)
+
 			try {
-				const rawAnswer = await askAi(effectiveQuestion, member, media, senderLid)
+				const rawAnswer = await askAi(effectiveQuestion, member, media, senderLid, sourceContext)
 				const answer = normalizeForWhatsApp(rawAnswer)
 				await reply(answer)
 
@@ -605,6 +615,7 @@ export default definePlugin({
 					},
 					// React takes groupId + key + emoji; wrap to only pass emoji
 					(emoji) => ctx.react(message.groupId, message.key, emoji),
+					`group ${message.groupId}`,
 				)
 			},
 
@@ -624,6 +635,7 @@ export default definePlugin({
 					},
 					// DM react: use reactDm with sender JID
 					(emoji) => ctx.reactDm(message.senderJid, message.key, emoji),
+					'personal message',
 				)
 			},
 
