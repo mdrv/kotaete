@@ -380,6 +380,7 @@ export class DaemonRuntime {
 				),
 			sendTyping: (groupId) => this.wa.sendTyping(groupId),
 			react: (groupId, key, emoji) => this.wa.react(groupId, key, emoji),
+			reactDm: (senderJid, key, emoji) => this.wa.reactDm(senderJid, key, emoji),
 			sendDmText: (senderJid, text, opts) =>
 				this.enqueueOutbound(
 					senderJid,
@@ -390,6 +391,7 @@ export class DaemonRuntime {
 			lookupLidByPn: (pn) => this.wa.lookupLidByPn(pn),
 			isConnected: () => this.wa.isConnected(),
 			getProvider: () => this.wa.provider as WhatsAppProvider,
+			getOwnJid: () => this.wa.getOwnJid(),
 		})
 	}
 

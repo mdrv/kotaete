@@ -78,4 +78,12 @@ export class WhatsAppClient implements IWhatsAppClient {
 	async react(groupId: string, key: IncomingGroupMessage['key'], emoji: string): Promise<void> {
 		await this.impl.react(groupId, key, emoji)
 	}
+
+	async reactDm(senderJid: string, key: IncomingGroupMessage['key'], emoji: string): Promise<void> {
+		await this.impl.reactDm(senderJid, key, emoji)
+	}
+
+	getOwnJid(): string | null {
+		return this.impl.getOwnJid()
+	}
 }
