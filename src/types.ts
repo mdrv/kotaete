@@ -153,6 +153,7 @@ export type IncomingGroupMessage = {
 	text: string
 	key: MessageKeyLike
 	media: IncomingMedia | null
+	mentionedJids: string[]
 }
 
 export type IncomingDmMessage = {
@@ -162,6 +163,7 @@ export type IncomingDmMessage = {
 	text: string
 	key: MessageKeyLike
 	media: IncomingMedia | null
+	mentionedJids: string[]
 }
 
 export type SeasonConfig = {

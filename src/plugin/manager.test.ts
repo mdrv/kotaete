@@ -30,11 +30,13 @@ function makeMockDeps(): PluginManagerDeps {
 		sendImageWithCaption: mock(() => Promise.resolve(null)),
 		sendTyping: mock(() => Promise.resolve()),
 		react: mock(() => Promise.resolve()),
-		lookupPnByLid: mock(() => Promise.resolve(null)),
+		reactDm: mock(() => Promise.resolve()),
 		sendDmText: mock(() => Promise.resolve(null)),
+		lookupPnByLid: mock(() => Promise.resolve(null)),
 		lookupLidByPn: mock(() => Promise.resolve(null)),
 		isConnected: mock(() => Promise.resolve(true)),
 		getProvider: mock(() => 'wwebjs' as const),
+		getOwnJid: mock(() => '6280000000@s.whatsapp.net'),
 	}
 }
 
@@ -47,6 +49,7 @@ function makeMockMessage(text: string, groupId = '120363xxx@g.us') {
 		text,
 		key: { remoteJid: groupId, participant: '6281234567@s.whatsapp.net', id: 'msg-1', fromMe: false },
 		media: null,
+		mentionedJids: [] as string[],
 	}
 }
 
@@ -495,6 +498,8 @@ describe('PluginManager', () => {
 				'    if (typeof ctx.sendImageWithCaption !== "function") throw new Error("missing sendImageWithCaption")',
 				'    if (typeof ctx.sendTyping !== "function") throw new Error("missing sendTyping")',
 				'    if (typeof ctx.react !== "function") throw new Error("missing react")',
+				'    if (typeof ctx.reactDm !== "function") throw new Error("missing reactDm")',
+				'    if (typeof ctx.getOwnJid !== "function") throw new Error("missing getOwnJid")',
 				'    if (typeof ctx.lookupPnByLid !== "function") throw new Error("missing lookupPnByLid")',
 				'    if (typeof ctx.lookupLidByPn !== "function") throw new Error("missing lookupLidByPn")',
 				'    if (typeof ctx.isConnected !== "function") throw new Error("missing isConnected")',

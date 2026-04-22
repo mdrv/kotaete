@@ -5,15 +5,10 @@ import { join } from 'node:path'
 import qrcode from 'qrcode-terminal'
 import { Client, type ClientOptions, LocalAuth, type Message, MessageMedia, type WAState } from 'whatsapp-web.js'
 import { getLogger } from '../logger.ts'
+import type { IncomingMedia } from '../types.ts'
 import { normalizeJidNumber } from '../utils/normalize.ts'
 import { LidPnStore } from './lid-pn-store.ts'
-import type { IncomingMedia } from '../types.ts'
-import type {
-	BaseWhatsAppClientOptions,
-	IWhatsAppClient,
-	OutgoingMessageKey,
-	SendTextOptions,
-} from './types.ts'
+import type { BaseWhatsAppClientOptions, IWhatsAppClient, OutgoingMessageKey, SendTextOptions } from './types.ts'
 
 const log = getLogger(['kotaete', 'wa', 'wwebjs'])
 
@@ -25,9 +20,10 @@ type WWebJsClientLike = EventEmitter & {
 	sendMessage(chatId: string, content: unknown, options?: unknown): Promise<{ id?: { _serialized?: string } } | unknown>
 	getMessageById(messageId: string): Promise<{ react: (emoji: string) => Promise<void> }>
 	getContactLidAndPhone?: (userIds: string[]) => Promise<Array<{ lid?: string; pn?: string }>>
+	info?: { wid?: { _serialized?: string } }
 }
 
-type WWebJsMessageLike = Pick<Message, 'from' | 'author' | 'body' | 'fromMe' | 'hasMedia' | 'type'> & {
+type WWebJsMessageLike = Pick<Message, 'from' | 'author' | 'body' | 'fromMe' | 'hasMedia' | 'type' | 'mentionedIds'> & {
 	id: { _serialized: string }
 	timestamp?: number
 	downloadMedia(): Promise<MessageMedia>
@@ -248,6 +244,15 @@ export class WWebJsWhatsAppClient implements IWhatsAppClient {
 		await msg.react(emoji)
 	}
 
+	async reactDm(_: string, key: { id?: string | null }, emoji: string): Promise<void> {
+		// WWebJS react is JID-agnostic — just needs message ID
+		await this.react('', key, emoji)
+	}
+
+	getOwnJid(): string | null {
+		return this.client?.info?.wid?._serialized ?? null
+	}
+
 	private requireClient(): WWebJsClientLike {
 		if (!this.client) throw new Error('[wa:wwebjs] client is not initialized')
 		return this.client
@@ -442,6 +447,8 @@ export class WWebJsWhatsAppClient implements IWhatsAppClient {
 				} source=${resolution.source} len=${text.length}`,
 			)
 
+			const mentionedJids = message.mentionedIds ?? []
+
 			await this.options.onIncoming({
 				groupId: message.from,
 				senderRawJid,
@@ -449,6 +456,7 @@ export class WWebJsWhatsAppClient implements IWhatsAppClient {
 				senderLid: senderRawJid.endsWith(LID_SUFFIX) ? senderRawJid : null,
 				text,
 				media,
+				mentionedJids,
 				key: {
 					remoteJid: message.from,
 					participant: senderRawJid,
@@ -468,12 +476,15 @@ export class WWebJsWhatsAppClient implements IWhatsAppClient {
 				} source=${resolution.source} len=${text.length}`,
 			)
 
+			const mentionedJids = message.mentionedIds ?? []
+
 			await this.options.onIncomingDm({
 				senderJid: senderRawJid,
 				senderNumber: resolution.number,
 				senderLid: senderRawJid.endsWith(LID_SUFFIX) ? senderRawJid : null,
 				text,
 				media,
+				mentionedJids,
 				key: {
 					remoteJid: senderRawJid,
 					participant: null,

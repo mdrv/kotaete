@@ -28,6 +28,7 @@ type BaileysSocketLike = {
 			getLIDsForPNs?: (pns: string[]) => Promise<Array<{ lid?: string; pn?: string }> | null | undefined>
 		}
 	}
+	user?: { id?: string }
 }
 
 type SenderResolution = {
@@ -81,6 +82,34 @@ export function extractInboundText(message: unknown): string {
 	}
 
 	return ''
+}
+
+/** Extract mentioned JIDs from message contextInfo. */
+export function extractMentionedJids(message: unknown): string[] {
+	if (!message || typeof message !== 'object') return []
+	const msg = message as Record<string, unknown>
+
+	// Check extendedTextMessage.contextInfo.mentionedJid
+	const ext = msg.extendedTextMessage as Record<string, unknown> | undefined
+	const contextInfo = ext?.contextInfo as Record<string, unknown> | undefined
+	const mentioned = contextInfo?.mentionedJid
+	if (Array.isArray(mentioned)) {
+		return mentioned.filter((j): j is string => typeof j === 'string')
+	}
+
+	// Unwrap container types
+	for (const wrapperKey of WRAPPED_MESSAGE_KEYS) {
+		const wrapped = msg[wrapperKey]
+		if (wrapped && typeof wrapped === 'object') {
+			const inner = (wrapped as Record<string, unknown>).message
+			if (inner && typeof inner === 'object') {
+				const innerMentions = extractMentionedJids(inner)
+				if (innerMentions.length > 0) return innerMentions
+			}
+		}
+	}
+
+	return []
 }
 
 /**
@@ -377,6 +406,8 @@ export class BaileysWhatsAppClient implements IWhatsAppClient {
 						} senderLid=${senderLid ?? 'null'} source=${resolution.source} len=${text.length}`,
 					)
 
+					const mentionedJids = extractMentionedJids(message.message)
+
 					await this.options.onIncoming({
 						groupId: remoteJid,
 						senderRawJid,
@@ -384,6 +415,7 @@ export class BaileysWhatsAppClient implements IWhatsAppClient {
 						senderLid,
 						text,
 						media,
+						mentionedJids,
 						key: {
 							remoteJid: message.key.remoteJid ?? null,
 							participant: senderRawJid || keyParticipant || null,
@@ -412,12 +444,15 @@ export class BaileysWhatsAppClient implements IWhatsAppClient {
 						} source=${resolution.source} len=${text.length}`,
 					)
 
+					const mentionedJids = extractMentionedJids(message.message)
+
 					await this.options.onIncomingDm({
 						senderJid: senderRawJid,
 						senderNumber: resolution.number,
 						senderLid,
 						text,
 						media,
+						mentionedJids,
 						key: {
 							remoteJid: message.key.remoteJid ?? null,
 							participant: senderRawJid || null,
@@ -741,5 +776,18 @@ export class BaileysWhatsAppClient implements IWhatsAppClient {
 				log.warning(`react failed: ${error instanceof Error ? error.message : String(error)}`)
 			}
 		}
+	}
+
+	async reactDm(
+		senderJid: string,
+		key: { remoteJid?: string | null; participant?: string | null; id?: string | null },
+		emoji: string,
+	): Promise<void> {
+		// react() works with any JID, not just groups
+		await this.react(senderJid, key, emoji)
+	}
+
+	getOwnJid(): string | null {
+		return this.sock?.user?.id ?? null
 	}
 }

@@ -26,6 +26,7 @@ export interface IWhatsAppClient {
 	sendText(groupId: string, text: string, opts?: SendTextOptions): Promise<OutgoingMessageKey | null>
 	sendImageWithCaption(groupId: string, imagePath: string, caption: string): Promise<OutgoingMessageKey | null>
 	react(groupId: string, key: IncomingGroupMessage['key'], emoji: string): Promise<void>
+	getOwnJid(): string | null
 }
 
 export function parseWhatsAppProvider(input: string | undefined): WhatsAppProvider {

@@ -55,6 +55,9 @@ export interface KotaetePluginContext {
 		opts?: SendTextOptions,
 	): Promise<OutgoingMessageKey | null>
 	react(groupId: string, key: IncomingGroupMessage['key'], emoji: string): Promise<void>
+	reactDm(senderJid: string, key: IncomingDmMessage['key'], emoji: string): Promise<void>
+
+	getOwnJid(): string | null
 
 	lookupPnByLid(lid: string): Promise<string | null>
 	lookupLidByPn(pn: string): Promise<string | null>

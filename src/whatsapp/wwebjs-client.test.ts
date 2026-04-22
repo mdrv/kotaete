@@ -230,6 +230,7 @@ describe('WWebJsWhatsAppClient behavior', () => {
 			senderLid: null,
 			text: 'jawaban benar',
 			media: null,
+			mentionedJids: [],
 			key: {
 				remoteJid: '120363195640146772@g.us',
 				participant: '628123456789@s.whatsapp.net',

@@ -29,11 +29,13 @@ export type PluginManagerDeps = {
 	): Promise<OutgoingMessageKey | null>
 	sendTyping(groupId: string): Promise<void>
 	react(groupId: string, key: IncomingGroupMessage['key'], emoji: string): Promise<void>
+	reactDm(senderJid: string, key: IncomingDmMessage['key'], emoji: string): Promise<void>
 	sendDmText(senderJid: string, text: string, opts?: SendTextOptions): Promise<OutgoingMessageKey | null>
 	lookupPnByLid(lid: string): Promise<string | null>
 	lookupLidByPn(pn: string): Promise<string | null>
 	isConnected(): Promise<boolean>
 	getProvider(): WhatsAppProvider
+	getOwnJid(): string | null
 }
 
 export type PluginListEntry = {
@@ -213,11 +215,13 @@ export class PluginManager {
 			sendTyping: (groupId) => this.deps.sendTyping(groupId),
 			sendDmText: (senderJid, text, opts) => this.deps.sendDmText(senderJid, text, opts),
 			react: (groupId, key, emoji) => this.deps.react(groupId, key, emoji),
+			reactDm: (senderJid, key, emoji) => this.deps.reactDm(senderJid, key, emoji),
 
 			lookupPnByLid: (lid) => this.deps.lookupPnByLid(lid),
 			lookupLidByPn: (pn) => this.deps.lookupLidByPn(pn),
 
 			isConnected: () => this.deps.isConnected(),
+			getOwnJid: () => this.deps.getOwnJid(),
 
 			log: {
 				debug: (msg) => pluginLog.debug(msg),

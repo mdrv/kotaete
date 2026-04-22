@@ -405,19 +405,59 @@ export default definePlugin({
 			return data.choices?.[0]?.message?.content?.trim() ?? '(no response)'
 		}
 
-		// Check if text triggers the bot in group (mention-based)
-		function isGroupTrigger(text: string): boolean {
-			const mentionPatterns = [
-				/@Bearcu/i,
-				/@\d+@s\.whatsapp\.net/i,
-				/@\w+@lid/i,
-			]
-			return mentionPatterns.some((re) => re.test(text))
+		// Check if bot is among mentioned JIDs
+		function isBotMentioned(mentionedJids: string[], text: string): boolean {
+			const ownJid = ctx.getOwnJid()
+			if (!ownJid) {
+				// Fallback: check text for bot name
+				return /@Bearcu/i.test(text)
+			}
+			const ownBare = ownJid.split('@')[0]?.split(':')[0] ?? ''
+			return mentionedJids.some((jid) => {
+				const bare = jid.split('@')[0]?.split(':')[0] ?? ''
+				return bare === ownBare
+			})
 		}
 
-		// Strip mention text from the question
-		function stripMention(text: string): string {
-			return text.replace(/@Bearcu\s*/gi, '').replace(/@\S+\s*/g, '').trim()
+		// Resolve @<bare_number> mentions to member nicknames
+		async function resolveMentions(text: string, mentionedJids: string[]): Promise<string> {
+			if (mentionedJids.length === 0) return text
+			let resolved = text
+			for (const jid of mentionedJids) {
+				const bare = jid.split('@')[0]?.split(':')[0] ?? ''
+				if (!bare) continue
+
+				// Try to resolve to a member name via LID lookup
+				let member = await resolveMember(jid)
+				// Fallback: if jid is a PN (s.whatsapp.net), try PN→LID lookup then resolveMember
+				if (!member && jid.includes('@s.whatsapp.net')) {
+					const lid = await ctx.lookupLidByPn(bare)
+					if (lid) member = await resolveMember(lid)
+				}
+				// Fallback: if jid is LID-based, try LID→PN to get member by phone
+				if (!member && jid.includes('@lid')) {
+					const pn = await ctx.lookupPnByLid(jid)
+					if (pn) member = await resolveMember(`${pn}@s.whatsapp.net`)
+				}
+				const displayName = member?.nickname ?? bare
+
+				// Replace @<bare> with @<displayName>
+				resolved = resolved.replace(new RegExp(`@${escapeRegExp(bare)}`, 'g'), `@${displayName}`)
+			}
+			return resolved
+		}
+
+		// Strip the bot's own mention from text
+		function stripOwnMention(text: string): string {
+			const ownJid = ctx.getOwnJid()
+			if (!ownJid) return text.replace(/@Bearcu\s*/gi, '')
+			const ownBare = ownJid.split('@')[0]?.split(':')[0] ?? ''
+			if (!ownBare) return text
+			return text.replace(new RegExp(`@${escapeRegExp(ownBare)}\\s*`, 'g'), '').replace(/@Bearcu\s*/gi, '').trim()
+		}
+
+		function escapeRegExp(str: string): string {
+			return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 		}
 
 		// --- Core handler shared by group + DM ---
@@ -457,7 +497,7 @@ export default definePlugin({
 			rateLimits.set(senderLid, count + 1)
 
 			const actualQuestion = media ? (question || '(describe this image)') : question
-			const cleanQuestion = stripMention(actualQuestion) || actualQuestion
+			const cleanQuestion = stripOwnMention(actualQuestion) || actualQuestion
 			const effectiveQuestion = cleanQuestion || '(no text)'
 			const now = Date.now()
 
@@ -507,15 +547,17 @@ export default definePlugin({
 		return {
 			async onIncomingMessage({ message }) {
 				const text = message.text?.trim() ?? ''
-				// Group trigger: mention bot identity, not /ask prefix
-				if (!isGroupTrigger(text)) return
+				// Group trigger: bot is among mentioned JIDs
+				if (!isBotMentioned(message.mentionedJids, text)) return
 
-				const cleanText = text.replace(/^\/ask\s*/, '').trim()
-				const strippedQuestion = stripMention(cleanText)
+				// Resolve all @mentions to names
+				const resolvedText = await resolveMentions(text, message.mentionedJids)
+				const cleanText = resolvedText.replace(/^\/ask\s*/, '').trim()
+				const strippedQuestion = stripOwnMention(cleanText)
 				if (!strippedQuestion && !message.media) return
 
 				await handleAsk(
-					text,
+					resolvedText,
 					message.media,
 					message.senderLid,
 					// Type-safe: discard return value (OutgoingMessageKey | null)
@@ -542,7 +584,8 @@ export default definePlugin({
 						void ctx.sendDmText(message.senderJid, msg)
 						return Promise.resolve()
 					},
-					null, // no react in DM
+					// DM react: use reactDm with sender JID
+					(emoji) => ctx.reactDm(message.senderJid, message.key, emoji),
 				)
 			},
 
