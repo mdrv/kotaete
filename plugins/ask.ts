@@ -165,16 +165,6 @@ export default definePlugin({
 		const memoryKeepRecent = Number(args['memoryKeepRecent'] ?? 6)
 
 		// SurrealDB config
-		// Memory config
-		const maxMessages = Number(args['maxMessages'] ?? 3)
-		const rateLimitResetCron = args['rateLimitResetCron'] ?? DEFAULT_RATE_LIMIT_RESET_CRON
-
-		// Memory config
-		const memoryMaxChars = Number(args['memoryMaxChars'] ?? 4000)
-		const memoryMaxChars = Number(args['memoryMaxChars'] ?? 4000)
-		const memoryKeepRecent = Number(args['memoryKeepRecent'] ?? 6)
-
-		// SurrealDB config
 		const dbEndpoint = args['endpoint'] ?? 'http://localhost:596/rpc'
 		const dbUsername = args['username'] ?? 'ua'
 		const dbPassword = args['password'] ?? 'japan8'
