@@ -530,16 +530,16 @@ export default definePlugin({
 			function: {
 				name: 'get_member_info',
 				description:
-					'Look up detailed information about a group member by their name, kananame, or mention. Returns their full name (kananame), class/group, and other available details. Use when you need to know more about who you are talking to or who they are referring to.',
+					'Look up detailed information about a group member by their mid (member ID, e.g. "pb25vanya"). The mid is included in the message prefix like [nickname (mid)]. Returns their kananame, class/group, and other available details. Use when you need to know more about who you are talking to or who someone mentioned.',
 				parameters: {
 					type: 'object',
 					properties: {
-						identifier: {
+						mid: {
 							type: 'string',
-							description: 'Name, kananame, or @mention of the member to look up',
+							description: 'The member ID (mid) to look up, e.g. "pb25vanya"',
 						},
 					},
-					required: ['identifier'],
+					required: ['mid'],
 				},
 			},
 		}
@@ -622,29 +622,28 @@ export default definePlugin({
 				}
 			}
 			if (name === 'get_member_info') {
-				const { identifier } = JSON.parse(argsJson) as { identifier: string }
-				const cleanId = identifier.replace(/^@/, '').trim()
-				ctx.log.info(`ask: get_member_info: "${cleanId}"`)
+				const { mid } = JSON.parse(argsJson) as { mid: string }
+				const cleanMid = mid.trim().toLowerCase()
+				ctx.log.info(`ask: get_member_info: "${cleanMid}"`)
 				try {
 					const conn = await getDb()
-					// Try matching by nickname or kananame (case-insensitive)
+					// Match by mid value in the mids array
 					const rows = await conn.query(
-						'SELECT nickname, meta FROM member WHERE nickname = $id OR meta.kananame = $id OR string::lowercase(nickname) = string::lowercase($id) OR string::lowercase(meta.kananame) = string::lowercase($id) LIMIT 5',
-						{ id: cleanId },
+						'SELECT nickname, mids, meta FROM member WHERE mids.*.value = $mid LIMIT 1',
+						{ mid: cleanMid },
 					)
-					const results = (rows as any)?.[0] as Array<any> ?? []
-					if (results.length === 0) {
-						return `No member found matching "${cleanId}".`
+					const rec = ((rows as any)?.[0]?.[0]) as
+						| { nickname?: string; mids?: Array<{ value: string }>; meta?: Record<string, string> }
+						| undefined
+					if (!rec) {
+						return `No member found with mid "${cleanMid}".`
 					}
-					const formatted = results.map((r: any) => {
-						const meta = r.meta ?? {}
-						return [
-							`Name: ${r.nickname ?? 'unknown'}`,
-							meta.kananame ? `Kananame: ${meta.kananame}` : null,
-							meta.classgroup ? `Class: ${meta.classgroup}` : null,
-						].filter(Boolean).join(', ')
-					}).join('\n')
-					return formatted
+					const meta = rec.meta ?? {}
+					return [
+						`Name: ${rec.nickname ?? 'unknown'}`,
+						meta.kananame ? `Kananame: ${meta.kananame}` : null,
+						meta.classgroup ? `Class: ${meta.classgroup}` : null,
+					].filter(Boolean).join(', ')
 				} catch (err) {
 					return `Error looking up member: ${err instanceof Error ? err.message : String(err)}`
 				}
