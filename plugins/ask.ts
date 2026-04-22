@@ -13,6 +13,8 @@ type MemberInfo = { primaryMid: string; nickname: string }
 function normalizeForWhatsApp(text: string): string {
 	// Strip markdown tables (lines starting with |)
 	let out = text.replace(/(^|\n)\|.*\|\s*\n/g, '$1')
+	// Strip markdown image syntax: ![alt](url) → remove entirely (images sent separately)
+	out = out.replace(/!\[([^\]]*)\]\([^)]*\)/g, '')
 	// Strip markdown link syntax but keep visible text: [caption](url) → caption
 	out = out.replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
 	// Convert ##/### style headings to bold
@@ -427,7 +429,7 @@ export default definePlugin({
 				function: {
 					name: 'image_search',
 					description:
-						'Search for images on the web. Use when the user asks to see, show, or find a picture, photo, or visual content. Returns a downloaded image that will be sent to the user.',
+						'Search for images on the web. Use when the user asks to see, show, or find a picture, photo, or visual content. The image will be sent to the user automatically as a separate message. Do NOT include image markdown or image URLs in your text response - just describe the image in your answer.',
 					parameters: {
 						type: 'object',
 						properties: {
