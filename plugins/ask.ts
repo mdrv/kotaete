@@ -187,6 +187,9 @@ export default definePlugin({
 		})
 		const maxSearchRounds = Number(args['maxSearchRounds'] ?? 3)
 		const searchMaxResults = Number(args['searchMaxResults'] ?? 5)
+		// File reading config (LLM can read files for context)
+		const fileBaseDir = resolve(args['fileBaseDir'] ?? '~/.kotaete/notes/').replace(/^~/, process.env.HOME ?? '~')
+		const fileMaxSize = Number(args['fileMaxSize'] ?? 50_000)
 
 		// Auth helper — resolves bearer token for the active provider
 		async function getBearerToken(): Promise<string> {
@@ -403,9 +406,6 @@ export default definePlugin({
 		}
 
 		// Tool definitions for function calling
-
-		// Tool definitions for function calling
-		// Tool definitions for function calling
 		const searchTools = webSearch
 			? [{
 				type: 'function' as const,
@@ -443,6 +443,37 @@ export default definePlugin({
 				},
 			}]
 			: []
+		type ToolDef = {
+			type: 'function'
+			function: {
+				name: string
+				description: string
+				parameters: {
+					type: string
+					properties: Record<string, { type: string; description: string }>
+					required: string[]
+				}
+			}
+		}
+		const readFileTool: ToolDef = {
+			type: 'function' as const,
+			function: {
+				name: 'read_file',
+				description:
+					'Read the contents of a file. Use when the system prompt or conversation references a file path that you need to read for additional context. The path is relative to the configured base directory.',
+				parameters: {
+					type: 'object',
+					properties: {
+						path: {
+							type: 'string',
+							description: 'Path to the file, relative to the base directory',
+						},
+					},
+					required: ['path'],
+				},
+			},
+		}
+		const allTools: ToolDef[] = [...searchTools, readFileTool]
 
 		// Track downloaded images for verification and sending
 		const downloadedImages: Array<{ path: string; query: string; sourceUrl: string }> = []
@@ -499,6 +530,26 @@ export default definePlugin({
 					}
 				}
 				return 'Found image results but could not download any image.'
+			}
+			if (name === 'read_file') {
+				const { path: filePath } = JSON.parse(argsJson) as { path: string }
+				const { readFileSync: readSync } = await import('node:fs')
+				const { resolve: resolvePath } = await import('node:path')
+				const absPath = resolvePath(fileBaseDir, filePath)
+				// Security: ensure resolved path is within base dir
+				if (!absPath.startsWith(resolvePath(fileBaseDir))) {
+					return 'Access denied: path is outside the allowed directory.'
+				}
+				ctx.log.info(`ask: read_file: "${filePath}"`)
+				try {
+					const content = readSync(absPath, 'utf-8')
+					if (content.length > fileMaxSize) {
+						return content.slice(0, fileMaxSize) + `\n\n[... truncated at ${fileMaxSize} chars]`
+					}
+					return content
+				} catch {
+					return `File not found or unreadable: ${filePath}`
+				}
 			}
 			return `Unknown tool: ${name}`
 		}
@@ -617,8 +668,8 @@ export default definePlugin({
 					messages,
 					temperature: 0.7,
 				}
-				if (searchTools.length > 0) {
-					body.tools = searchTools
+				if (allTools.length > 0) {
+					body.tools = allTools
 				}
 
 				const response = await fetch(url, {
