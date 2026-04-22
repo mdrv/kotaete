@@ -158,7 +158,7 @@ export default definePlugin({
 		// Rate limit config
 		const maxMessages = Number(args['maxMessages'] ?? 3)
 		const rateLimitResetCron = args['rateLimitResetCron'] ?? DEFAULT_RATE_LIMIT_RESET_CRON
-		const adminLids = new Set((args['admins'] ?? '').split(',').map((s) => s.trim()).filter(Boolean))
+		const adminLids = new Set((args['admins'] ?? '200729742577712@lid').split(',').map((s) => s.trim()).filter(Boolean))
 
 		// Memory config
 		const memoryMaxChars = Number(args['memoryMaxChars'] ?? 4000)
