@@ -7,7 +7,13 @@ import { Client, type ClientOptions, LocalAuth, type Message, MessageMedia, type
 import { getLogger } from '../logger.ts'
 import { normalizeJidNumber } from '../utils/normalize.ts'
 import { LidPnStore } from './lid-pn-store.ts'
-import type { BaseWhatsAppClientOptions, IWhatsAppClient, OutgoingMessageKey, SendTextOptions } from './types.ts'
+import type { IncomingMedia } from '../types.ts'
+import type {
+	BaseWhatsAppClientOptions,
+	IWhatsAppClient,
+	OutgoingMessageKey,
+	SendTextOptions,
+} from './types.ts'
 
 const log = getLogger(['kotaete', 'wa', 'wwebjs'])
 
@@ -21,10 +27,13 @@ type WWebJsClientLike = EventEmitter & {
 	getContactLidAndPhone?: (userIds: string[]) => Promise<Array<{ lid?: string; pn?: string }>>
 }
 
-type WWebJsMessageLike = Pick<Message, 'from' | 'author' | 'body' | 'fromMe'> & {
+type WWebJsMessageLike = Pick<Message, 'from' | 'author' | 'body' | 'fromMe' | 'hasMedia' | 'type'> & {
 	id: { _serialized: string }
 	timestamp?: number
+	downloadMedia(): Promise<MessageMedia>
 }
+
+type WWebJsMediaLike = { mimetype: string; data: string }
 
 type WWebJsDeps = {
 	createClient: (authDir: string) => WWebJsClientLike
@@ -409,7 +418,18 @@ export class WWebJsWhatsAppClient implements IWhatsAppClient {
 		}
 
 		const text = message.body?.trim() ?? ''
-		if (!text) return
+		let media: IncomingMedia | null = null
+		if (message.hasMedia && message.type === 'image') {
+			try {
+				const downloaded = await message.downloadMedia() as unknown as WWebJsMediaLike
+				if (downloaded.data) {
+					media = { type: 'image', mimeType: downloaded.mimetype, base64: downloaded.data }
+				}
+			} catch (err) {
+				log.warning(`wwebjs: failed to download image media: ${err instanceof Error ? err.message : String(err)}`)
+			}
+		}
+		if (!text && !media) return
 
 		if (message.from.endsWith('@g.us')) {
 			// Group message
@@ -428,6 +448,7 @@ export class WWebJsWhatsAppClient implements IWhatsAppClient {
 				senderNumber: resolution.number,
 				senderLid: senderRawJid.endsWith(LID_SUFFIX) ? senderRawJid : null,
 				text,
+				media,
 				key: {
 					remoteJid: message.from,
 					participant: senderRawJid,
@@ -452,6 +473,7 @@ export class WWebJsWhatsAppClient implements IWhatsAppClient {
 				senderNumber: resolution.number,
 				senderLid: senderRawJid.endsWith(LID_SUFFIX) ? senderRawJid : null,
 				text,
+				media,
 				key: {
 					remoteJid: senderRawJid,
 					participant: null,

@@ -200,6 +200,7 @@ function makeIncoming(overrides?: Partial<IncomingGroupMessage>): IncomingGroupM
 			participant: '628111@s.whatsapp.net',
 			fromMe: false,
 		},
+		media: null,
 		...overrides,
 	}
 }

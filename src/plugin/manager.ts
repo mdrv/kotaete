@@ -20,9 +20,6 @@ const log = getLogger(['kotaete', 'plugin'])
 /** Max consecutive hook failures before auto-disabling a plugin */
 const MAX_CONSECUTIVE_ERRORS = 5
 
-/** Timeout for individual hook invocations (ms) */
-const HOOK_TIMEOUT_MS = 5_000
-
 export type PluginManagerDeps = {
 	sendText(groupId: string, text: string, opts?: SendTextOptions): Promise<OutgoingMessageKey | null>
 	sendImageWithCaption(
@@ -84,6 +81,7 @@ export class PluginManager {
 			hooks,
 			enabledAt: new Date(),
 			consecutiveErrors: 0,
+			hookTimeoutMs: getValidTimeoutMs(definition.hookTimeoutMs),
 		}
 		this.activePlugins.set(name, entry)
 
@@ -267,7 +265,7 @@ export class PluginManager {
 		try {
 			await withTimeout(
 				(hook as (...a: unknown[]) => unknown)(...args),
-				HOOK_TIMEOUT_MS,
+				entry.hookTimeoutMs,
 				`plugin "${entry.name}" hook ${hookName} timed out`,
 			)
 			entry.consecutiveErrors = 0
@@ -291,7 +289,7 @@ export class PluginManager {
 		try {
 			await withTimeout(
 				entry.hooks.teardown(reason),
-				HOOK_TIMEOUT_MS,
+				entry.hookTimeoutMs,
 				`plugin "${entry.name}" teardown timed out`,
 			)
 		} catch (error) {
@@ -302,6 +300,12 @@ export class PluginManager {
 	}
 }
 
+const DEFAULT_HOOK_TIMEOUT_MS = 5_000
+
+function getValidTimeoutMs(value: number | undefined): number {
+	if (typeof value === 'number' && Number.isFinite(value) && value > 0) return value
+	return DEFAULT_HOOK_TIMEOUT_MS
+}
 function withTimeout(promise: unknown, ms: number, message: string): Promise<void> {
 	return new Promise<void>((resolve, reject) => {
 		const timer = setTimeout(() => reject(new Error(message)), ms)

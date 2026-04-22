@@ -46,6 +46,7 @@ function makeMockMessage(text: string, groupId = '120363xxx@g.us') {
 		senderLid: 'abc123@lid',
 		text,
 		key: { remoteJid: groupId, participant: '6281234567@s.whatsapp.net', id: 'msg-1', fromMe: false },
+		media: null,
 	}
 }
 

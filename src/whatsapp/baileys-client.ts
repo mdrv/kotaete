@@ -2,7 +2,7 @@ import { Boom } from '@hapi/boom'
 import pino from 'pino'
 import qrcode from 'qrcode-terminal'
 import { getLogger } from '../logger.ts'
-import type { MessageKeyLike } from '../types.ts'
+import type { IncomingMedia, MessageKeyLike } from '../types.ts'
 import { normalizeJidNumber } from '../utils/normalize.ts'
 import { LidPnStore } from './lid-pn-store.ts'
 import type { BaseWhatsAppClientOptions, IWhatsAppClient, SendTextOptions } from './types.ts'
@@ -60,6 +60,12 @@ export function extractInboundText(message: unknown): string {
 	if (msg.extendedTextMessage && typeof msg.extendedTextMessage === 'object') {
 		const ext = msg.extendedTextMessage as Record<string, unknown>
 		if (typeof ext.text === 'string' && ext.text.trim()) return ext.text
+	}
+
+	// Image caption
+	if (msg.imageMessage && typeof msg.imageMessage === 'object') {
+		const img = msg.imageMessage as Record<string, unknown>
+		if (typeof img.caption === 'string' && img.caption.trim()) return img.caption
 	}
 
 	// Unwrap known container message types
@@ -156,6 +162,7 @@ export class BaileysWhatsAppClient implements IWhatsAppClient {
 			loggedOut: number
 			connectionReplaced?: number
 		}
+		downloadMediaMessage: (msg: unknown, type: string, options?: Record<string, unknown>) => Promise<unknown>
 	} | null = null
 
 	constructor(
@@ -186,6 +193,7 @@ export class BaileysWhatsAppClient implements IWhatsAppClient {
 				loggedOut: number
 				connectionReplaced?: number
 			}
+			downloadMediaMessage: (msg: unknown, type: string, options?: Record<string, unknown>) => Promise<unknown>
 		}
 
 		this.baileysRuntime = {
@@ -198,9 +206,47 @@ export class BaileysWhatsAppClient implements IWhatsAppClient {
 			makeCacheableSignalKeyStore: runtime.makeCacheableSignalKeyStore,
 			useMultiFileAuthState: runtime.useMultiFileAuthState,
 			DisconnectReason: runtime.DisconnectReason,
+			downloadMediaMessage: runtime.downloadMediaMessage as (
+				msg: unknown,
+				type: string,
+				options?: Record<string, unknown>,
+			) => Promise<unknown>,
 		}
 
 		return this.baileysRuntime
+	}
+
+	private async extractMedia(message: Record<string, unknown>): Promise<IncomingMedia | null> {
+		const content = message.message as Record<string, unknown> | undefined
+
+		// Check for image in direct content and wrapper types
+		let img: Record<string, unknown> | undefined = content?.imageMessage as Record<string, unknown> | undefined
+		if (!img) {
+			for (const wrapperKey of WRAPPED_MESSAGE_KEYS) {
+				const wrapped = content?.[wrapperKey] as Record<string, unknown> | undefined
+				const inner = wrapped?.message as Record<string, unknown> | undefined
+				if (inner?.imageMessage) {
+					img = inner.imageMessage as Record<string, unknown>
+					break
+				}
+			}
+		}
+
+		if (!img) return null
+
+		try {
+			const runtime = await this.getRuntime()
+			const result = await runtime.downloadMediaMessage(message, 'buffer', {})
+			const base64 = Buffer.from(result as Uint8Array).toString('base64')
+			return {
+				type: 'image',
+				mimeType: (img.mimetype as string) ?? 'image/jpeg',
+				base64,
+			}
+		} catch (err) {
+			log.warning(`baileys: failed to download image media: ${err instanceof Error ? err.message : String(err)}`)
+			return null
+		}
 	}
 
 	async start(): Promise<void> {
@@ -307,8 +353,9 @@ export class BaileysWhatsAppClient implements IWhatsAppClient {
 				if (runtime.isJidGroup(remoteJid)) {
 					// Group message
 					const text = extractInboundText(message.message)
+					const media = await this.extractMedia(message)
 					const senderRawJid = extractSenderJid(message.key)
-					if (!text.trim() || !senderRawJid) {
+					if ((!text.trim() && !media) || !senderRawJid) {
 						log.debug(
 							`baileys drop empty text/sender id=${message.key.id ?? 'null'} textLen=${text.length} sender=${
 								senderRawJid || 'null'
@@ -336,6 +383,7 @@ export class BaileysWhatsAppClient implements IWhatsAppClient {
 						senderNumber: resolution.number,
 						senderLid,
 						text,
+						media,
 						key: {
 							remoteJid: message.key.remoteJid ?? null,
 							participant: senderRawJid || keyParticipant || null,
@@ -347,8 +395,9 @@ export class BaileysWhatsAppClient implements IWhatsAppClient {
 					// DM message
 					if (!this.options.onIncomingDm) continue
 					const text = extractInboundText(message.message)
+					const media = await this.extractMedia(message)
 					const senderRawJid = extractSenderJid(message.key)
-					if (!text.trim() || !senderRawJid) continue
+					if ((!text.trim() && !media) || !senderRawJid) continue
 
 					const senderAltJid = message.key.participantAlt ?? message.key.remoteJidAlt ?? null
 					await this.maybePersistLidPnMapping(runtime, senderRawJid, senderAltJid)
@@ -368,6 +417,7 @@ export class BaileysWhatsAppClient implements IWhatsAppClient {
 						senderNumber: resolution.number,
 						senderLid,
 						text,
+						media,
 						key: {
 							remoteJid: message.key.remoteJid ?? null,
 							participant: senderRawJid || null,

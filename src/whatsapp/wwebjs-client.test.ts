@@ -229,6 +229,7 @@ describe('WWebJsWhatsAppClient behavior', () => {
 			senderNumber: '628123456789',
 			senderLid: null,
 			text: 'jawaban benar',
+			media: null,
 			key: {
 				remoteJid: '120363195640146772@g.us',
 				participant: '628123456789@s.whatsapp.net',

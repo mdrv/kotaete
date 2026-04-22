@@ -77,6 +77,7 @@ export interface KotaetePluginDefinition<TSchema extends z.ZodTypeAny | undefine
 	version?: string
 	description?: string
 	argsSchema?: TSchema
+	hookTimeoutMs?: number
 	setup(
 		ctx: KotaetePluginContext,
 		args: InferPluginArgs<TSchema>,
@@ -96,4 +97,5 @@ export type ActivePluginEntry = {
 	hooks: KotaetePluginHooks
 	enabledAt: Date
 	consecutiveErrors: number
+	hookTimeoutMs: number
 }

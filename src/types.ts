@@ -139,6 +139,12 @@ export type MessageKeyLike = {
 	fromMe?: boolean | null
 }
 
+export type IncomingMedia = {
+	type: 'image'
+	mimeType: string
+	base64: string
+}
+
 export type IncomingGroupMessage = {
 	groupId: string
 	senderRawJid: string
@@ -146,6 +152,7 @@ export type IncomingGroupMessage = {
 	senderLid: string | null
 	text: string
 	key: MessageKeyLike
+	media: IncomingMedia | null
 }
 
 export type IncomingDmMessage = {
@@ -154,6 +161,7 @@ export type IncomingDmMessage = {
 	senderLid: string | null
 	text: string
 	key: MessageKeyLike
+	media: IncomingMedia | null
 }
 
 export type SeasonConfig = {
