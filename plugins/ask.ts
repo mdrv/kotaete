@@ -158,8 +158,19 @@ export default definePlugin({
 		// Rate limit config
 		const maxMessages = Number(args['maxMessages'] ?? 3)
 		const rateLimitResetCron = args['rateLimitResetCron'] ?? DEFAULT_RATE_LIMIT_RESET_CRON
+		const adminLids = new Set((args['admins'] ?? '').split(',').map((s) => s.trim()).filter(Boolean))
 
 		// Memory config
+		const memoryMaxChars = Number(args['memoryMaxChars'] ?? 4000)
+		const memoryKeepRecent = Number(args['memoryKeepRecent'] ?? 6)
+
+		// SurrealDB config
+		// Memory config
+		const maxMessages = Number(args['maxMessages'] ?? 3)
+		const rateLimitResetCron = args['rateLimitResetCron'] ?? DEFAULT_RATE_LIMIT_RESET_CRON
+
+		// Memory config
+		const memoryMaxChars = Number(args['memoryMaxChars'] ?? 4000)
 		const memoryMaxChars = Number(args['memoryMaxChars'] ?? 4000)
 		const memoryKeepRecent = Number(args['memoryKeepRecent'] ?? 6)
 
@@ -522,7 +533,19 @@ export default definePlugin({
 				return
 			}
 
-			// Rate limit (pooled across group + DM by LID)
+			// Rate limit (pooled across group + DM by LID) — admins bypass
+			const isAdmin = senderLid && adminLids.has(senderLid)
+			if (!isAdmin) {
+				const count = rateLimits.get(senderLid) ?? 0
+				if (count >= maxMessages) {
+					const nextResetWib = formatWibHourMinute(getNextResetAt())
+					await reply(
+						`🐻 Hai, ${member.nickname}. Tunggu pukul ${nextResetWib} WIB biar Bearcu bisa jawab, ya!`,
+					)
+					return
+				}
+				rateLimits.set(senderLid, count + 1)
+			}
 			const count = rateLimits.get(senderLid) ?? 0
 			if (count >= maxMessages) {
 				const nextResetWib = formatWibHourMinute(getNextResetAt())
