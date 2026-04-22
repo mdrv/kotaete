@@ -298,85 +298,85 @@ export class BaileysWhatsAppClient implements IWhatsAppClient {
 						continue
 					}
 				}
-			const remoteJid = message.key.remoteJid
-			if (!remoteJid) {
-				log.debug(`baileys drop no remoteJid id=${message.key.id ?? 'null'}`)
-				continue
-			}
-
-			if (runtime.isJidGroup(remoteJid)) {
-				// Group message
-				const text = extractInboundText(message.message)
-				const senderRawJid = extractSenderJid(message.key)
-				if (!text.trim() || !senderRawJid) {
-					log.debug(
-						`baileys drop empty text/sender id=${message.key.id ?? 'null'} textLen=${text.length} sender=${
-							senderRawJid || 'null'
-						}`,
-					)
+				const remoteJid = message.key.remoteJid
+				if (!remoteJid) {
+					log.debug(`baileys drop no remoteJid id=${message.key.id ?? 'null'}`)
 					continue
 				}
-				const senderAltJid = message.key.participantAlt ?? message.key.remoteJidAlt ?? null
-				await this.maybePersistLidPnMapping(runtime, senderRawJid, senderAltJid)
-				const resolution = await this.resolveSenderNumber(senderRawJid, senderAltJid)
-				const keyParticipant = normalizeOptionalJid(message.key.participant)
-				// Extract LID from senderRawJid if it's a LID user
-				const runtime2 = await this.getRuntime()
-				const normalizedSenderJid = runtime2.jidNormalizedUser(senderRawJid)
-				const senderLid = runtime2.isLidUser(normalizedSenderJid) ? normalizeLidJid(normalizedSenderJid) : null
-				log.debug(
-					`baileys inbound message group=${remoteJid} sender=${senderRawJid} senderNumber=${
-						resolution.number ?? 'null'
-					} senderLid=${senderLid ?? 'null'} source=${resolution.source} len=${text.length}`,
-				)
 
-				await this.options.onIncoming({
-					groupId: remoteJid,
-					senderRawJid,
-					senderNumber: resolution.number,
-					senderLid,
-					text,
-					key: {
-						remoteJid: message.key.remoteJid ?? null,
-						participant: senderRawJid || keyParticipant || null,
-						id: message.key.id ?? null,
-						fromMe: message.key.fromMe ?? null,
-					},
-				})
-			} else {
-				// DM message
-				if (!this.options.onIncomingDm) continue
-				const text = extractInboundText(message.message)
-				const senderRawJid = extractSenderJid(message.key)
-				if (!text.trim() || !senderRawJid) continue
+				if (runtime.isJidGroup(remoteJid)) {
+					// Group message
+					const text = extractInboundText(message.message)
+					const senderRawJid = extractSenderJid(message.key)
+					if (!text.trim() || !senderRawJid) {
+						log.debug(
+							`baileys drop empty text/sender id=${message.key.id ?? 'null'} textLen=${text.length} sender=${
+								senderRawJid || 'null'
+							}`,
+						)
+						continue
+					}
+					const senderAltJid = message.key.participantAlt ?? message.key.remoteJidAlt ?? null
+					await this.maybePersistLidPnMapping(runtime, senderRawJid, senderAltJid)
+					const resolution = await this.resolveSenderNumber(senderRawJid, senderAltJid)
+					const keyParticipant = normalizeOptionalJid(message.key.participant)
+					// Extract LID from senderRawJid if it's a LID user
+					const runtime2 = await this.getRuntime()
+					const normalizedSenderJid = runtime2.jidNormalizedUser(senderRawJid)
+					const senderLid = runtime2.isLidUser(normalizedSenderJid) ? normalizeLidJid(normalizedSenderJid) : null
+					log.debug(
+						`baileys inbound message group=${remoteJid} sender=${senderRawJid} senderNumber=${
+							resolution.number ?? 'null'
+						} senderLid=${senderLid ?? 'null'} source=${resolution.source} len=${text.length}`,
+					)
 
-				const senderAltJid = message.key.participantAlt ?? message.key.remoteJidAlt ?? null
-				await this.maybePersistLidPnMapping(runtime, senderRawJid, senderAltJid)
-				const resolution = await this.resolveSenderNumber(senderRawJid, senderAltJid)
-				const runtime2 = await this.getRuntime()
-				const normalizedSenderJid = runtime2.jidNormalizedUser(senderRawJid)
-				const senderLid = runtime2.isLidUser(normalizedSenderJid) ? normalizeLidJid(normalizedSenderJid) : null
+					await this.options.onIncoming({
+						groupId: remoteJid,
+						senderRawJid,
+						senderNumber: resolution.number,
+						senderLid,
+						text,
+						key: {
+							remoteJid: message.key.remoteJid ?? null,
+							participant: senderRawJid || keyParticipant || null,
+							id: message.key.id ?? null,
+							fromMe: message.key.fromMe ?? null,
+						},
+					})
+				} else {
+					// DM message
+					if (!this.options.onIncomingDm) continue
+					const text = extractInboundText(message.message)
+					const senderRawJid = extractSenderJid(message.key)
+					if (!text.trim() || !senderRawJid) continue
 
-				log.debug(
-					`baileys inbound DM sender=${senderRawJid} senderNumber=${
-						resolution.number ?? 'null'
-					} senderLid=${senderLid ?? 'null'} source=${resolution.source} len=${text.length}`,
-				)
+					const senderAltJid = message.key.participantAlt ?? message.key.remoteJidAlt ?? null
+					await this.maybePersistLidPnMapping(runtime, senderRawJid, senderAltJid)
+					const resolution = await this.resolveSenderNumber(senderRawJid, senderAltJid)
+					const runtime2 = await this.getRuntime()
+					const normalizedSenderJid = runtime2.jidNormalizedUser(senderRawJid)
+					const senderLid = runtime2.isLidUser(normalizedSenderJid) ? normalizeLidJid(normalizedSenderJid) : null
 
-				await this.options.onIncomingDm({
-					senderJid: senderRawJid,
-					senderNumber: resolution.number,
-					senderLid,
-					text,
-					key: {
-						remoteJid: message.key.remoteJid ?? null,
-						participant: senderRawJid || null,
-						id: message.key.id ?? null,
-						fromMe: message.key.fromMe ?? null,
-					},
-				})
-				continue
-			}
+					log.debug(
+						`baileys inbound DM sender=${senderRawJid} senderNumber=${resolution.number ?? 'null'} senderLid=${
+							senderLid ?? 'null'
+						} source=${resolution.source} len=${text.length}`,
+					)
+
+					await this.options.onIncomingDm({
+						senderJid: senderRawJid,
+						senderNumber: resolution.number,
+						senderLid,
+						text,
+						key: {
+							remoteJid: message.key.remoteJid ?? null,
+							participant: senderRawJid || null,
+							id: message.key.id ?? null,
+							fromMe: message.key.fromMe ?? null,
+						},
+					})
+					continue
+				}
 			}
 		})
 

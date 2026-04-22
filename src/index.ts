@@ -3,9 +3,9 @@ export type {
 	KotaetePluginConnectedEvent,
 	KotaetePluginContext,
 	KotaetePluginDefinition,
+	KotaetePluginDmEvent,
 	KotaetePluginHooks,
 	KotaetePluginIncomingEvent,
-	KotaetePluginDmEvent,
 	PluginRuntimeReason,
 	RawPluginArgs,
 } from './plugin/index.ts'

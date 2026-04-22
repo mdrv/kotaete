@@ -1,15 +1,27 @@
+import { generateDailyTotp4 } from '@mdrv/id/src/lib/totp.ts'
 import { definePlugin } from '../src/plugin/define-plugin.ts'
-import { generateDailyTotp4, msUntilNextTotp } from '../src/utils/totp.ts'
 
 /**
- * Format milliseconds as "Xh Ym" human-readable string.
+ * Format a date as Indonesian-style string: "17 Mei 2026"
  */
-function formatTimeRemaining(ms: number): string {
-	const totalMinutes = Math.floor(ms / 60_000)
-	const hours = Math.floor(totalMinutes / 60)
-	const minutes = totalMinutes % 60
-	if (hours > 0) return `${hours}h ${minutes}m`
-	return `${minutes}m`
+function formatTodayWib(now = new Date()): string {
+	const months = [
+		'Januari',
+		'Februari',
+		'Maret',
+		'April',
+		'Mei',
+		'Juni',
+		'Juli',
+		'Agustus',
+		'September',
+		'Oktober',
+		'November',
+		'Desember',
+	]
+	// WIB = UTC+7
+	const wib = new Date(now.getTime() + 7 * 60 * 60 * 1000)
+	return `${wib.getUTCDate()} ${months[wib.getUTCMonth()]} ${wib.getUTCFullYear()}`
 }
 
 type Surreal = import('surrealdb').Surreal
@@ -85,11 +97,10 @@ export default definePlugin({
 						?? '???'
 
 					const code = generateDailyTotp4(String(rec.totp_secret))
-					const remaining = formatTimeRemaining(msUntilNextTotp())
 
 					await ctx.sendDmText(
 						message.senderJid,
-						`MEDRIVIA ID:\n\n👥 \`${primaryMid}\`\n🔐 \`${code}\` (${remaining} left)`,
+						`MEDRIVIA ID:\n\n👥 \`${primaryMid}\`\n🔐 \`${code}\`\n📅 ${formatTodayWib()}`,
 					)
 
 					ctx.log.info(`login: sent code for LID=${senderLid} mid=${primaryMid}`)

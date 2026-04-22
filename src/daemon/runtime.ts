@@ -144,9 +144,14 @@ export const __runtimeTestInternals = {
 	 * queue ordering, advancement, and clearing behavior.
 	 */
 	createQueueTestContext,
-	computeStopSilenceFromStatus(firstRoundAt: Date | null, nowMs: number, isRunning: boolean, requestedSilent?: boolean): boolean {
+	computeStopSilenceFromStatus(
+		firstRoundAt: Date | null,
+		nowMs: number,
+		isRunning: boolean,
+		requestedSilent?: boolean,
+	): boolean {
 		const roundElapsed = firstRoundAt ? nowMs - firstRoundAt.getTime() : 0
-		const effectiveRunning = (roundElapsed >= 0 && isRunning)
+		const effectiveRunning = roundElapsed >= 0 && isRunning
 		return (requestedSilent ?? false) || !effectiveRunning
 	},
 }
@@ -990,7 +995,7 @@ export class DaemonRuntime {
 												...(sampleBundle?.season?.scoreboardTemplate
 													? { templatePath: sampleBundle.season.scoreboardTemplate }
 													: {}),
-											outputStem: `scoreboard-${groupIdStem}`,
+												outputStem: `scoreboard-${groupIdStem}`,
 											})
 
 											const { formatSeasonTopMessage, formatSeasonOthersMessage } = await import('../quiz/messages.ts')
