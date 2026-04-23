@@ -351,129 +351,136 @@
 		</div>
 	</header>
 
-	<!-- ── Main Card ── -->
-	<div class='main-card'>
-		{#if displayMode === 'question'}
-			<div class='question-card'>
-				<div class='question-header'>
-					<span class='question-label'>Q{session?.current_question}</span>
-					<span
-						class='timer'
-						class:timer-warning={timeRemaining < 30 && timeRemaining > 0}
-					>
-						{countdownText}
-					</span>
-				</div>
-				{#if questionImageUrl && !imageError}
-					<img
-						src={questionImageUrl}
-						alt='Question {session?.current_question}'
-						class='question-image'
-						onerror={() => (imageError = true)}
-					/>
-				{:else if imageError}
-					<div class='image-placeholder'>🖼️ Image unavailable</div>
+	<!-- ── Content Grid ── -->
+	<div class='content-grid'>
+		<div class='column-left'>
+			<!-- ── Main Card ── -->
+			<div class='main-card'>
+				{#if displayMode === 'question'}
+					<div class='question-card'>
+						<div class='question-header'>
+							<span class='question-label'>Q{session?.current_question}</span>
+							<span
+								class='timer'
+								class:timer-warning={timeRemaining < 30 && timeRemaining > 0}
+							>
+								{countdownText}
+							</span>
+						</div>
+						{#if questionImageUrl && !imageError}
+							<img
+								src={questionImageUrl}
+								alt='Question {session?.current_question}'
+								class='question-image'
+								onerror={() => (imageError = true)}
+							/>
+						{:else if imageError}
+							<div class='image-placeholder'>🖼️ Image unavailable</div>
+						{/if}
+					</div>
+				{:else if displayMode === 'winner'}
+					<div class='result-card winner-card'>
+						<div class='result-emoji'>🎉</div>
+						<div class='result-name'>{winnerInfo?.displayName}</div>
+						<div class='result-points'>+{winnerInfo?.points}pts</div>
+						{#if winnerInfo?.answer}
+							<div class='result-answer'>{winnerInfo.answer}</div>
+						{/if}
+					</div>
+				{:else if displayMode === 'timeout'}
+					<div class='result-card timeout-card'>
+						<div class='result-emoji'>⏰</div>
+						<div class='result-title'>Time's up!</div>
+						{#if timeoutInfo?.answers}
+							<div class='timeout-answers'>
+								{#each Object.entries(timeoutInfo.answers) as [type, answer] (type)}
+									<span class='answer-tag'>{answer}</span>
+								{/each}
+							</div>
+						{/if}
+					</div>
+				{:else}
+					<div class='result-card idle-card'>
+						{#if session}
+							<div class='result-emoji'>⏳</div>
+							<p>Waiting for next question...</p>
+						{:else}
+							<div class='result-emoji'>🎬</div>
+							<p>No active quiz</p>
+						{/if}
+					</div>
 				{/if}
 			</div>
-		{:else if displayMode === 'winner'}
-			<div class='result-card winner-card'>
-				<div class='result-emoji'>🎉</div>
-				<div class='result-name'>{winnerInfo?.displayName}</div>
-				<div class='result-points'>+{winnerInfo?.points}pts</div>
-				{#if winnerInfo?.answer}
-					<div class='result-answer'>{winnerInfo.answer}</div>
-				{/if}
-			</div>
-		{:else if displayMode === 'timeout'}
-			<div class='result-card timeout-card'>
-				<div class='result-emoji'>⏰</div>
-				<div class='result-title'>Time's up!</div>
-				{#if timeoutInfo?.answers}
-					<div class='timeout-answers'>
-						{#each Object.entries(timeoutInfo.answers) as [type, answer] (type)}
-							<span class='answer-tag'>{answer}</span>
+
+			<!-- ── Live Scores ── -->
+			{#if sortedScores.length > 0}
+				<div class='card'>
+					<h2 class='card-title'>📊 Live Scores</h2>
+					<div class='scores-list'>
+						{#each sortedScores.slice(0, 10) as score, i (score.id)}
+							<div class='score-row'>
+								<span class='rank'>{i + 1}</span>
+								<span class='member-name'>{
+									memberDisplay(score.member_name, score.member_classgroup)
+								}</span>
+								<span class='points'>{score.points}pts</span>
+							</div>
 						{/each}
 					</div>
-				{/if}
-			</div>
-		{:else}
-			<div class='result-card idle-card'>
-				{#if session}
-					<div class='result-emoji'>⏳</div>
-					<p>Waiting for next question...</p>
-				{:else}
-					<div class='result-emoji'>🎬</div>
-					<p>No active quiz</p>
-				{/if}
-			</div>
-		{/if}
-	</div>
-
-	<!-- ── Live Scores ── -->
-	{#if sortedScores.length > 0}
-		<div class='card'>
-			<h2 class='card-title'>📊 Live Scores</h2>
-			<div class='scores-list'>
-				{#each sortedScores.slice(0, 10) as score, i (score.id)}
-					<div class='score-row'>
-						<span class='rank'>{i + 1}</span>
-						<span class='member-name'>{
-							memberDisplay(score.member_name, score.member_classgroup)
-						}</span>
-						<span class='points'>{score.points}pts</span>
-					</div>
-				{/each}
-			</div>
+				</div>
+			{/if}
 		</div>
-	{/if}
 
-	<!-- ── Event History ── -->
-	<div class='card'>
-		<h2 class='card-title'>📜 Event History</h2>
-		<div class='events-list'>
-			{#if events.length === 0}
-				<div class='empty-state'>No events yet</div>
-			{:else}
-				{#each events as event (event.id)}
-					{@const formatted = formatEvent(event)}
-					<div class='event-row' style='color: {formatted.color}'>
-						{formatted.text}
+		<div class='column-right'>
+			<!-- ── Event History ── -->
+			<div class='card'>
+				<h2 class='card-title'>📜 Event History</h2>
+				<div class='events-list'>
+					{#if events.length === 0}
+						<div class='empty-state'>No events yet</div>
+					{:else}
+						{#each events as event (event.id)}
+							{@const formatted = formatEvent(event)}
+							<div class='event-row' style='color: {formatted.color}'>
+								{formatted.text}
+							</div>
+						{/each}
+					{/if}
+				</div>
+			</div>
+
+			<!-- ── Season Scoreboard ── -->
+			{#if topSeasonScores.length > 0}
+				<div class='card'>
+					<div class='card-header'>
+						<h2 class='card-title'>🏅 Season Scoreboard</h2>
+						<div class='header-right-group'>
+							{#if seasonInfo?.caption}
+								<span class='badge small'>{seasonInfo.caption}</span>
+							{/if}
+							<button
+								class='toggle-btn'
+								onclick={() => (showZeroPts = !showZeroPts)}
+							>
+								{showZeroPts ? 'Hide' : 'Show'} 0pts
+							</button>
+						</div>
 					</div>
-				{/each}
+					<div class='scores-list'>
+						{#each topSeasonScores as score, i (score.id)}
+							<div class='score-row'>
+								<span class='rank'>{i + 1}</span>
+								<span class='member-name'>{
+									memberDisplay(score.member_name, score.member_classgroup)
+								}</span>
+								<span class='points'>{score.points}pts</span>
+							</div>
+						{/each}
+					</div>
+				</div>
 			{/if}
 		</div>
 	</div>
-
-	<!-- ── Season Scoreboard ── -->
-	{#if topSeasonScores.length > 0}
-		<div class='card'>
-			<div class='card-header'>
-				<h2 class='card-title'>🏅 Season Scoreboard</h2>
-				<div class='header-right-group'>
-					{#if seasonInfo?.caption}
-						<span class='badge small'>{seasonInfo.caption}</span>
-					{/if}
-					<button
-						class='toggle-btn'
-						onclick={() => (showZeroPts = !showZeroPts)}
-					>
-						{showZeroPts ? 'Hide' : 'Show'} 0pts
-					</button>
-				</div>
-			</div>
-			<div class='scores-list'>
-				{#each topSeasonScores as score, i (score.id)}
-					<div class='score-row'>
-						<span class='rank'>{i + 1}</span>
-						<span class='member-name'>{
-							memberDisplay(score.member_name, score.member_classgroup)
-						}</span>
-						<span class='points'>{score.points}pts</span>
-					</div>
-				{/each}
-			</div>
-		</div>
-	{/if}
 </div>
 
 <style>
@@ -502,6 +509,51 @@
 		flex-direction: column;
 		gap: 1rem;
 	}
+
+	/* ── Content Grid (mobile: single column, desktop: two columns) ── */
+
+	.content-grid {
+		display: flex;
+		flex-direction: column;
+		gap: 1rem;
+	}
+
+	.column-left,
+	.column-right {
+		display: flex;
+		flex-direction: column;
+		gap: 1rem;
+	}
+
+	@media (min-width: 768px) {
+		.dashboard {
+			max-width: 960px;
+		}
+
+		.content-grid {
+			flex-direction: row;
+			align-items: flex-start;
+		}
+
+		.column-left {
+			flex: 1.3;
+			position: sticky;
+			top: 1rem;
+		}
+
+		.column-right {
+			flex: 1;
+			position: sticky;
+			top: 1rem;
+			max-height: calc(100vh - 2rem);
+			overflow-y: auto;
+		}
+
+		.events-list {
+			max-height: none;
+			flex: 1;
+		}
+		}
 
 	/* ── Header ── */
 
@@ -836,4 +888,3 @@
 		color: var(--text-primary);
 		border-color: rgba(255, 255, 255, 0.2);
 	}
-</style>
