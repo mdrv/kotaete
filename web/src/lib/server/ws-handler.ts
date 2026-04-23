@@ -1,8 +1,8 @@
-import { getLogger } from './logger'
-import { getDb } from './surreal'
 import type { IncomingMessage } from 'node:http'
 import { type LiveSubscription, RecordId, Table } from 'surrealdb'
 import { type WebSocket, WebSocketServer } from 'ws'
+import { getLogger } from './logger'
+import { getDb } from './surreal'
 
 const TABLES = ['quiz_event', 'live_score', 'live_member_state', 'quiz_session', 'season_score'] as const
 const WS_PATH = '/api/ws'
@@ -23,10 +23,11 @@ function normalizeRecordIds(value: unknown): unknown {
 }
 
 export interface WsOutMessage {
-	type: 'live'
-	table: string
-	action: string
-	record: unknown
+	type: 'live' | 'viewers' | 'error'
+	table?: string
+	action?: string
+	record?: unknown
+	count?: number
 }
 
 export interface WsInMessage {
@@ -65,6 +66,9 @@ export class KotaeteWsServer {
 		// Start shared SurrealDB subscriptions on first client
 		this.ensureSubscriptions()
 
+		// Send viewer count to the new client, broadcast to all
+		this.broadcastViewers()
+
 		// Heartbeat per client
 		let alive = true
 		const ping = setInterval(() => {
@@ -83,13 +87,14 @@ export class KotaeteWsServer {
 				const msg: WsInMessage = JSON.parse(raw.toString())
 				this.handleClientMessage(ws, msg)
 			} catch {
-				ws.send(JSON.stringify({ type: 'error', payload: 'invalid json' }))
+				ws.send(JSON.stringify({ type: 'error' }))
 			}
 		})
 
 		ws.on('close', (code, _reason) => {
 			clearInterval(ping)
 			log.info('client disconnected', { ip, code, clients: this.wss.clients.size })
+			this.broadcastViewers()
 		})
 	}
 
@@ -105,6 +110,10 @@ export class KotaeteWsServer {
 				client.send(data)
 			}
 		}
+	}
+
+	private broadcastViewers() {
+		this.broadcast({ type: 'viewers', count: this.wss.clients.size })
 	}
 
 	private async ensureSubscriptions() {
@@ -140,7 +149,7 @@ export class KotaeteWsServer {
 								type: 'live',
 								table: tableName,
 								action: message.action,
-									record: normalizeRecordIds(message.value) as Record<string, unknown>,
+								record: normalizeRecordIds(message.value) as Record<string, unknown>,
 							})
 						}
 						log.warning('live iterator ended unexpectedly', { table: tableName })

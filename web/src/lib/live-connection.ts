@@ -1,7 +1,10 @@
-export function connectLive(
-	onEvent: (table: string, action: string, record: Record<string, unknown>) => void,
-	onOpen?: () => void,
-): () => void {
+export interface LiveConnectionCallbacks {
+	onEvent: (table: string, action: string, record: Record<string, unknown>) => void
+	onViewers?: (count: number) => void
+	onOpen?: () => void
+}
+
+export function connectLive(callbacks: LiveConnectionCallbacks): () => void {
 	let reconnectDelay = 1000
 	let ws: WebSocket | null = null
 	let alive = true
@@ -13,14 +16,16 @@ export function connectLive(
 
 		ws.onopen = () => {
 			reconnectDelay = 1000
-			onOpen?.()
+			callbacks.onOpen?.()
 		}
 
 		ws.onmessage = (event) => {
 			try {
 				const msg = JSON.parse(event.data as string)
 				if (msg.type === 'live') {
-					onEvent(msg.table, msg.action, msg.record)
+					callbacks.onEvent(msg.table, msg.action, msg.record)
+				} else if (msg.type === 'viewers') {
+					callbacks.onViewers?.(msg.count)
 				}
 			} catch {
 				// ignore non-JSON or malformed messages

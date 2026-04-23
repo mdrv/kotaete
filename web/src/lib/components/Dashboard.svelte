@@ -20,6 +20,7 @@
 	let seasonInfo = $state<{ id: string; caption: string | null } | null>(null)
 	let seasons = $state<{ season_id: string; caption: string | null }[]>([])
 	let connected = $state(false)
+	let viewers = $state(0)
 	let timeRemaining = $state(0)
 	let imageError = $state(false)
 	let showZeroPts = $state(false)
@@ -523,15 +524,18 @@
 			console.error('Failed to load initial data:', e)
 		}
 
-		disconnectFn = connectLive(
-			(table, action, record) => {
+		disconnectFn = connectLive({
+			onEvent(table, action, record) {
 				connected = true
 				handleLiveEvent(table, action, record)
 			},
-			() => {
+			onViewers(count) {
+				viewers = count
+			},
+			onOpen() {
 				connected = true
 			},
-		)
+		})
 	})
 
 	onDestroy(() => {
@@ -567,6 +571,10 @@
 		</div>
 		<div class='header-right'>
 			<span class='live-dot' class:connected></span>
+			<span class='status-text'>{connected ? 'LIVE' : 'Connecting...'}</span>
+			{#if connected && viewers > 0}
+				<span class='viewer-count' title={`${viewers} online`}>👥 {viewers}</span>
+			{/if}
 			<span class='status-text'>{connected ? 'LIVE' : 'Connecting...'}</span>
 			<button class='theme-toggle' onclick={toggleTheme} title='Toggle theme'>
 				{#if theme === 'dark'}
@@ -939,6 +947,15 @@
 		font-size: 0.75rem;
 		font-weight: 600;
 		color: var(--text-secondary);
+	}
+
+	.viewer-count {
+		font-size: 0.7rem;
+		color: var(--text-secondary);
+		background: var(--surface-2);
+		padding: 0.15rem 0.45rem;
+		border-radius: 9999px;
+		margin-left: 0.4rem;
 	}
 
 	.theme-toggle {
