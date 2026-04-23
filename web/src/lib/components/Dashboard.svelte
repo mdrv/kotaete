@@ -163,9 +163,7 @@
 			case 'answer_wrong': {
 				const remaining = (evt.data.remainingChances as number) ?? 0
 				const emojis = ['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣']
-				const emoji = remaining > 0
-					? emojis[remaining] ?? `${remaining}.`
-					: '0️⃣'
+				const emoji = emojis[remaining] ?? `${remaining}.`
 				const answerText = evt.data.answerText as string | undefined
 				const suffix = answerText ? `${answerText} (sisa ${remaining + 1} kali jawab)` : 'wrong'
 				return {
