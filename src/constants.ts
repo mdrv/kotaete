@@ -66,7 +66,7 @@ export const POINTS_NORMAL_CAP = QUIZ_TUNABLES.points.normalCap
 export const REACTION_CORRECT = '✅'
 export const REACTION_CORRECT_KANJI = '🌸'
 export const REACTION_COOLDOWN = '⏰'
-export const REACTION_NO_MORE_CHANCE = '🙊'
+export const REACTION_NO_MORE_CHANCE = '🙈'
 export const REACTION_WRONG_STREAK = QUIZ_TUNABLES.wrongAttempts.emojiStreak
 
 export const POINTS_KANJI_BONUS = QUIZ_TUNABLES.points.kanjiBonus

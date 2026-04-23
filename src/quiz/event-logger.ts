@@ -45,7 +45,7 @@ const SCHEMA_QUERIES = [
 	`DEFINE FIELD OVERWRITE member_mid ON quiz_event TYPE option<string>`,
 	`DEFINE FIELD OVERWRITE member_name ON quiz_event TYPE option<string>`,
 	`DEFINE FIELD OVERWRITE member_classgroup ON quiz_event TYPE option<string>`,
-	`DEFINE FIELD OVERWRITE data ON quiz_event TYPE object FLEXIBLE`,
+	`DEFINE FIELD OVERWRITE data ON quiz_event TYPE option<object> FLEXIBLE`,
 	`DEFINE FIELD OVERWRITE created_at ON quiz_event TYPE datetime DEFAULT time::now()`,
 	`DEFINE INDEX OVERWRITE idx_quiz_event_session ON quiz_event COLUMNS session_id`,
 	`DEFINE INDEX OVERWRITE idx_quiz_event_session_type ON quiz_event COLUMNS session_id, event_type`,

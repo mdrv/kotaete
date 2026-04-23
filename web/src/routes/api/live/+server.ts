@@ -45,13 +45,16 @@ export const GET: RequestHandler = async ({ request }) => {
 			const subs: LiveSubscription[] = []
 
 			try {
-				// Subscribe to all tables
-				for (const tableName of TABLES) {
-					log.debug('calling db.live()', { table: tableName })
-					const live = await db.live(new Table(tableName))
-					log.info('live subscription created', { table: tableName })
-					subs.push(live)
-				}
+				// Subscribe to all tables in parallel
+				const liveResults = await Promise.all(
+					TABLES.map(async (tableName) => {
+						log.debug('calling db.live()', { table: tableName })
+						const live = await db.live(new Table(tableName))
+						log.info('live subscription created', { table: tableName })
+						return live
+					}),
+				)
+				subs.push(...liveResults)
 
 				log.info('all subscriptions active, entering event loop')
 
