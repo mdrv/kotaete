@@ -27,6 +27,7 @@
 	let theme = $state<'dark' | 'light'>('dark')
 	let memberStates = $state<Map<string, LiveMemberStateType>>(new Map())
 	let now = $state(Date.now())
+	let clockOffset = $state(0) // server time - local time (ms)
 
 	// ── Derived ────────────────────────────────────────────
 	let displayMode = $derived.by(() => {
@@ -103,6 +104,12 @@
 	})
 
 	// ── Helpers ────────────────────────────────────────────
+
+	// ── Clock ──────────────────────────────────────────────
+	/** Server-adjusted current time in ms */
+	function serverNow(): number {
+		return Date.now() + clockOffset
+	}
 
 	// ── Theme ──────────────────────────────────────────────
 	function applyTheme(t: 'dark' | 'light') {
@@ -412,7 +419,7 @@
 		}
 
 		const update = () => {
-			const remaining = new Date(deadline).getTime() - Date.now()
+			const remaining = new Date(deadline).getTime() - serverNow()
 			timeRemaining = Math.max(0, Math.floor(remaining / 1000))
 		}
 		update()
@@ -423,7 +430,7 @@
 	// ── Now Ticker (drives cooldown countdowns) ──
 	$effect(() => {
 		const tick = () => {
-			now = Date.now()
+			now = serverNow()
 		}
 		tick()
 		const interval = setInterval(tick, 1000)
@@ -479,6 +486,12 @@
 			])
 			const activeData = await activeRes.json()
 			const seasonsData = await seasonsRes.json()
+
+			// Compute clock offset from server Date header for accurate countdowns
+			const serverDate = activeRes.headers.get('Date')
+			if (serverDate) {
+				clockOffset = new Date(serverDate).getTime() - Date.now()
+			}
 
 			session = activeData.session ?? null
 			scores = activeData.scores ?? []
