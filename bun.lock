@@ -5,24 +5,24 @@
     "": {
       "name": "nipbang-kotaete",
       "dependencies": {
-        "@crustjs/core": "^0.0.16",
-        "@crustjs/plugins": "^0.0.21",
-        "@logtape/file": "^2.0.5",
-        "@logtape/logtape": "^2.0.5",
-        "@logtape/pretty": "^2.0.5",
+        "@crustjs/core": "latest",
+        "@crustjs/plugins": "latest",
+        "@logtape/file": "latest",
+        "@logtape/logtape": "latest",
+        "@logtape/pretty": "latest",
         "@mdrv/id": "link:@mdrv/id",
         "@whiskeysockets/baileys": "github:WhiskeySockets/Baileys#d077902",
-        "pino": "^10.3.1",
-        "qrcode-terminal": "^0.12.0",
-        "surrealdb": "^2.0.3",
-        "whatsapp-web.js": "^1.34.6",
-        "zod": "^4.3.6",
+        "pino": "latest",
+        "qrcode-terminal": "latest",
+        "surrealdb": "latest",
+        "whatsapp-web.js": "latest",
+        "zod": "latest",
       },
       "devDependencies": {
-        "@types/bun": "^1.3.12",
-        "@types/qrcode-terminal": "^0.12.2",
-        "dprint": "^0.54.0",
-        "typescript": "^6.0.3",
+        "@types/bun": "latest",
+        "@types/qrcode-terminal": "latest",
+        "dprint": "latest",
+        "typescript": "latest",
       },
     },
   },
@@ -48,9 +48,9 @@
 
     "@crustjs/core": ["@crustjs/core@0.0.16", "", { "peerDependencies": { "typescript": "^6.0.2" } }, "sha512-2yybZnmBjdNH9XisCtDAWUVuBQSobcrdvhVcW8O4GumCF1oM6FHsBVq+gsxOM5PemEqtdpEo78h0rzI7clVcAA=="],
 
-    "@crustjs/plugins": ["@crustjs/plugins@0.0.21", "", { "dependencies": { "@crustjs/style": "0.0.6" }, "peerDependencies": { "@crustjs/core": "0.0.16", "typescript": "^6.0.2" } }, "sha512-8XAB3UU0ztUxeTsxGuXhOpsDRFXZ1N3/g5fS8QR3GPD/qV940GMp0wsjjAlAyqrY9b7mudYFs0PQmyTTYTTXpw=="],
+    "@crustjs/plugins": ["@crustjs/plugins@0.0.22", "", { "dependencies": { "@crustjs/style": "0.1.0" }, "peerDependencies": { "@crustjs/core": "0.0.16", "typescript": "^6.0.3" } }, "sha512-aWgC1cvS9DeCT7Ynv/oahUZFdB7mQwVGVl37GMHU76zENjI8lVj9d92jsHgBY+fdltAa9OWEte5vyLD13SlmEg=="],
 
-    "@crustjs/style": ["@crustjs/style@0.0.6", "", { "peerDependencies": { "typescript": "^5" } }, "sha512-GB15j1g/IeOa+ZhacHOzEj9D7TKDFJ2axdwvTCyyfl3U1c+tbi+gBs+2HWmExDjEDhuN3ABwuUlLMljTUlxI4w=="],
+    "@crustjs/style": ["@crustjs/style@0.1.0", "", { "peerDependencies": { "typescript": "^6.0.3" } }, "sha512-nIg+YWiwnpNE8Va/B6LnuJcbsisBr/EpEcP/xaxtn/PsuMTHkKUkalR/OocLAwqzKl2IM2Y0m26lIwGoFJNaTg=="],
 
     "@dprint/darwin-arm64": ["@dprint/darwin-arm64@0.54.0", "", { "os": "darwin", "cpu": "arm64" }, "sha512-yqRI4enH+BDp+4+ZsPVdZM5h873JK1lN7li9l9A5u4C4cvh1oEsiBWAzEPccRkJ2ctF8LgaizBSxO38sqEVYbw=="],
 
@@ -176,7 +176,7 @@
 
     "@tootallnate/quickjs-emscripten": ["@tootallnate/quickjs-emscripten@0.23.0", "", {}, "sha512-C5Mc6rdnsaJDjO3UpGW/CQTHtCKaYlScZTly4JIu97Jxo/odCiH0ITnDXSJPTOrEKk/ycSZ0AOgTmkDtkOsvIA=="],
 
-    "@types/bun": ["@types/bun@1.3.12", "", { "dependencies": { "bun-types": "1.3.12" } }, "sha512-DBv81elK+/VSwXHDlnH3Qduw+KxkTIWi7TXkAeh24zpi5l0B2kUg9Ga3tb4nJaPcOFswflgi/yAvMVBPrxMB+A=="],
+    "@types/bun": ["@types/bun@1.3.13", "", { "dependencies": { "bun-types": "1.3.13" } }, "sha512-9fqXWk5YIHGGnUau9TEi+qdlTYDAnOj+xLCmSTwXfAIqXr2x4tytJb43E9uCvt09zJURKXwAtkoH4nLQfzeTXw=="],
 
     "@types/long": ["@types/long@4.0.2", "", {}, "sha512-MqTGEo5bj5t157U6fA/BiDynNkn0YknVdh48CMPkTSpFTVmvao5UQmm7uEF6xBEo7qIMAlY/JSleYaE6VOdpaA=="],
 
@@ -246,7 +246,7 @@
 
     "buffers": ["buffers@0.1.1", "", {}, "sha512-9q/rDEGSb/Qsvv2qvzIzdluL5k7AaJOTrw23z9reQthrbF7is4CtlT0DXyO1oei2DCp4uojjzQ7igaSHp1kAEQ=="],
 
-    "bun-types": ["bun-types@1.3.12", "", { "dependencies": { "@types/node": "*" } }, "sha512-HqOLj5PoFajAQciOMRiIZGNoKxDJSr6qigAttOX40vJuSp6DN/CxWp9s3C1Xwm4oH7ybueITwiaOcWXoYVoRkA=="],
+    "bun-types": ["bun-types@1.3.13", "", { "dependencies": { "@types/node": "*" } }, "sha512-QXKeHLlOLqQX9LgYaHJfzdBaV21T63HhFJnvuRCcjZiaUDpbs5ED1MgxbMra71CsryN/1dAoXuJJJwIv/2drVA=="],
 
     "cacheable": ["cacheable@2.3.4", "", { "dependencies": { "@cacheable/memory": "^2.0.8", "@cacheable/utils": "^2.4.0", "hookified": "^1.15.0", "keyv": "^5.6.0", "qified": "^0.9.0" } }, "sha512-djgxybDbw9fL/ZWMI3+CE8ZilNxcwFkVtDc1gJ+IlOSSWkSMPQabhV/XCHTQ6pwwN6aivXPZ43omTooZiX06Ew=="],
 
