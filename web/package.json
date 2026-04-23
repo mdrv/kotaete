@@ -6,12 +6,15 @@
 		"dev": "vite dev --host",
 		"build": "vite build",
 		"preview": "vite preview --host",
+		"start": "bun run server.ts",
 		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json"
 	},
 	"devDependencies": {
 		"@sveltejs/adapter-auto": "^7.0.1",
+		"@sveltejs/adapter-node": "^5.5.4",
 		"@sveltejs/kit": "^2.57.1",
 		"@sveltejs/vite-plugin-svelte": "^7.0.0",
+		"@types/ws": "^8.18.1",
 		"svelte": "^5.55.4",
 		"svelte-check": "^4.4.6",
 		"typescript": "^6.0.3",
@@ -20,7 +23,8 @@
 	"dependencies": {
 		"@logtape/logtape": "^2.0.5",
 		"@logtape/pretty": "^2.0.5",
-		"surrealdb": "^2.0.3"
+		"surrealdb": "^2.0.3",
+		"ws": "^8.20.0"
 	},
 	"type": "module"
 }

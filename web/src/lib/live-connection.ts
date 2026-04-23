@@ -3,51 +3,52 @@ export function connectLive(
 	onOpen?: () => void,
 ): () => void {
 	let reconnectDelay = 1000
-	let es: EventSource | null = null
+	let ws: WebSocket | null = null
+	let alive = true
 
 	function connect() {
-		es = new EventSource('/api/live')
+		const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:'
+		const url = `${protocol}//${location.host}/api/ws`
+		ws = new WebSocket(url)
 
-		es.addEventListener('quiz_event', (e) => {
-			const data = JSON.parse(e.data)
-			onEvent('quiz_event', data.action, data.record)
-		})
-
-		es.addEventListener('live_score', (e) => {
-			const data = JSON.parse(e.data)
-			onEvent('live_score', data.action, data.record)
-		})
-
-		es.addEventListener('live_member_state', (e) => {
-			const data = JSON.parse(e.data)
-			onEvent('live_member_state', data.action, data.record)
-		})
-
-		es.addEventListener('quiz_session', (e) => {
-			const data = JSON.parse(e.data)
-			onEvent('quiz_session', data.action, data.record)
-		})
-
-		es.addEventListener('season_score', (e) => {
-			const data = JSON.parse(e.data)
-			onEvent('season_score', data.action, data.record)
-		})
-
-		es.onopen = () => {
+		ws.onopen = () => {
 			reconnectDelay = 1000
 			onOpen?.()
 		}
 
-		es.onerror = () => {
-			es?.close()
+		ws.onmessage = (event) => {
+			try {
+				const msg = JSON.parse(event.data as string)
+				if (msg.type === 'live') {
+					onEvent(msg.table, msg.action, msg.record)
+				}
+			} catch {
+				// ignore non-JSON or malformed messages
+			}
+		}
+
+		ws.onclose = () => {
+			if (!alive) return
 			setTimeout(connect, reconnectDelay)
 			reconnectDelay = Math.min(reconnectDelay * 2, 30_000)
+		}
+
+		ws.onerror = () => {
+			ws?.close()
 		}
 	}
 
 	connect()
 
 	return () => {
-		es?.close()
+		alive = false
+		ws?.close()
+	}
+}
+
+/** Send a message to the WebSocket server (for future chat etc.) */
+export function sendWsMessage(ws: WebSocket | null, type: string, payload: unknown) {
+	if (ws && ws.readyState === ws.OPEN) {
+		ws.send(JSON.stringify({ type, payload }))
 	}
 }
