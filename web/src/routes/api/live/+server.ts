@@ -1,6 +1,6 @@
-import { getDb } from '$lib/server/surreal'
 import { getLogger } from '$lib/server/logger'
-import { Table, type LiveSubscription } from 'surrealdb'
+import { getDb } from '$lib/server/surreal'
+import { type LiveSubscription, Table } from 'surrealdb'
 import type { RequestHandler } from './$types'
 
 const TABLES = ['quiz_event', 'live_score', 'live_member_state', 'quiz_session'] as const
@@ -31,7 +31,10 @@ export const GET: RequestHandler = async ({ request }) => {
 			}
 
 			const heartbeat = setInterval(() => {
-				if (closed) { clearInterval(heartbeat); return }
+				if (closed) {
+					clearInterval(heartbeat)
+					return
+				}
 				try {
 					controller.enqueue(encoder.encode(': heartbeat\n\n'))
 				} catch {
@@ -61,7 +64,11 @@ export const GET: RequestHandler = async ({ request }) => {
 						try {
 							for await (const message of sub) {
 								if (signal.aborted) break
-								log.debug('live event', { table: tableName, action: message.action, recordId: String(message.recordId) })
+								log.debug('live event', {
+									table: tableName,
+									action: message.action,
+									recordId: String(message.recordId),
+								})
 								send(tableName, {
 									action: message.action,
 									record: message.value,
@@ -72,7 +79,10 @@ export const GET: RequestHandler = async ({ request }) => {
 							}
 						} catch (err) {
 							console.error(`[SSE] LIVE ERROR (${tableName}):`, err)
-							log.error('live query error ({table}): {error}', { table: tableName, error: err instanceof Error ? err.stack ?? err.message : JSON.stringify(err) })
+							log.error('live query error ({table}): {error}', {
+								table: tableName,
+								error: err instanceof Error ? err.stack ?? err.message : JSON.stringify(err),
+							})
 						}
 					})()
 				})
@@ -86,15 +96,21 @@ export const GET: RequestHandler = async ({ request }) => {
 				])
 			} catch (err) {
 				console.error('[SSE] SETUP ERROR:', err)
-				log.error('SSE setup error: {error}', { error: err instanceof Error ? err.stack ?? err.message : JSON.stringify(err) })
+				log.error('SSE setup error: {error}', {
+					error: err instanceof Error ? err.stack ?? err.message : JSON.stringify(err),
+				})
 			} finally {
 				closed = true
 				clearInterval(heartbeat)
 				log.info('cleaning up SSE', { subs: subs.length })
 				for (const sub of subs) {
-					try { await sub.kill() } catch { /* ignore */ }
+					try {
+						await sub.kill()
+					} catch { /* ignore */ }
 				}
-				try { controller.close() } catch { /* already closed */ }
+				try {
+					controller.close()
+				} catch { /* already closed */ }
 				log.info('SSE closed')
 			}
 		},
