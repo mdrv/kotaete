@@ -154,7 +154,7 @@
 					?? (evt.data.gained as number) ?? 0
 				const answer = (evt.data.matchedAnswer as string)
 					?? (evt.data.matched_answer as string) ?? null
-				const suffix = answer ? ` (+${pts}pts, ${answer})` : ` (+${pts}pts)`
+				const suffix = answer ? ` +${pts}pts (${answer})` : ` +${pts}pts`
 				return {
 					text: `✅ ${name}${suffix}`,
 					color: 'var(--accent-green)',
@@ -167,7 +167,7 @@
 					? emojis[remaining - 1] ?? `${remaining}.`
 					: '0️⃣'
 				const answerText = evt.data.answerText as string | undefined
-				const suffix = answerText ? `${answerText} is incorrect` : 'wrong'
+				const suffix = answerText ? `${answerText} (sisa ${remaining} kali jawab)` : 'wrong'
 				return {
 					text: `${emoji} ${name} — ${suffix}`,
 					color: 'var(--accent-orange)',
