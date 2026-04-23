@@ -14,6 +14,7 @@ import { getLogger } from '../logger.ts'
 import { loadMembers } from '../members/loader.ts'
 import { PluginManager } from '../plugin/manager.ts'
 import { QuizEngine } from '../quiz/engine.ts'
+import type { QuizEventLogger } from '../quiz/event-logger.ts'
 import { loadQuizBundle } from '../quiz/loader.ts'
 import { SeasonStore } from '../quiz/season-store.ts'
 import type { NMember, QuizBundle } from '../types.ts'
@@ -316,6 +317,7 @@ export class DaemonRuntime {
 	private lockAcquired = false
 	private stateSaveChain = Promise.resolve()
 	private readonly seasonStore = new SeasonStore()
+	private eventLogger: QuizEventLogger | null = null
 
 	constructor(options: DaemonRuntimeOptions = {}) {
 		this.socketPath = expandHome(options.socketPath ?? DEFAULT_SOCKET_PATH)
@@ -425,6 +427,7 @@ export class DaemonRuntime {
 			onFinished: () => {
 				this.finishJob(jobId)
 			},
+			...(this.eventLogger ? { eventLogger: this.eventLogger } : {}),
 		})
 	}
 
@@ -461,9 +464,9 @@ export class DaemonRuntime {
 	): Promise<
 		Array<{ mid: string; nickname: string; kananame: string; classgroup: string; score: number; rank: number }>
 	> {
-		const points = this.seasonStore.getPoints(groupId)
-		const members = this.seasonStore.getMembers(groupId)
-		const reachedAt = this.seasonStore.getReachedAt(groupId)
+		const points = await this.seasonStore.getPointsAsync(groupId)
+		const members = await this.seasonStore.getMembersAsync(groupId)
+		const reachedAt = await this.seasonStore.getReachedAtAsync(groupId)
 		if (points.size === 0) return []
 
 		// Build member lookup
@@ -888,6 +891,15 @@ export class DaemonRuntime {
 			// Load season points store
 			await this.seasonStore.load()
 
+			// Initialize event logger for live spectator view
+			try {
+				const { QuizEventLogger } = await import('../quiz/event-logger.ts')
+				this.eventLogger = new QuizEventLogger()
+				await this.eventLogger.init()
+			} catch (err) {
+				log.warning('failed to initialize event logger, continuing without live logging', { error: err })
+			}
+
 			// Initialize plugin manager and restore persisted plugins
 			await this.pluginManager.init()
 			if (!this.fresh) {
@@ -1011,10 +1023,11 @@ export class DaemonRuntime {
 									this.finishJob(job.id)
 								}
 								this.groupQueues.delete(groupId)
+								const seasonId = sampleBundle?.season?.id as string | undefined
 
 								if (!parsed.data.noScoreboard) {
-									const seasonPoints = this.seasonStore.getPoints(groupId)
-									const seasonMembers = this.seasonStore.getMembers(groupId)
+									const seasonPoints = await this.seasonStore.getPointsAsync(groupId, seasonId)
+									const seasonMembers = await this.seasonStore.getMembersAsync(groupId, seasonId)
 									if (seasonPoints.size > 0) {
 										const seasonRows = [...seasonPoints.entries()]
 											.map(([mid, points]) => ({
@@ -1074,7 +1087,7 @@ export class DaemonRuntime {
 									}
 								}
 
-								await this.seasonStore.resetGroup(groupId)
+								await this.seasonStore.resetGroup(groupId, seasonId)
 
 								writeResponse(socket, {
 									ok: true,

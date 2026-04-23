@@ -5,6 +5,7 @@ const seasonConfigSchema = z.object({
 	end: z.boolean().optional(),
 	caption: z.string().optional(),
 	scoreboardTemplate: z.string().optional(),
+	id: z.string().optional(),
 }).optional()
 
 export const relayRunRequestSchema = z.object({

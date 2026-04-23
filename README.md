@@ -13,8 +13,18 @@ WhatsApp-based Japanese quiz bot that runs as a persistent daemon, sends quiz qu
 - **Multi-platform WhatsApp**: Supports both whatsapp-web.js (default) and Baileys (experimental) providers
 - **Rich Media**: SVG-based question images with customizable templates
 - **Extensible**: Override message templates, scoring rules, and more via configuration
+- **Web Spectator (upcoming)**: Live web dashboard for real-time quiz viewing via SurrealDB event stream
 
 ## Quick Start
+
+0. **Set up SurrealDB** (required for season tracking and event logging):
+   ```bash
+   # Using Docker
+   docker run -d --name surrealdb -p 596:8000 surrealdb/surrealdb:latest start --user ua --pass japan8 memory
+
+   # Or install directly
+   surreal start --bind 0.0.0.0:596 --user ua --pass japan8 memory
+   ```
 
 1. **Install dependencies**:
    ```bash
@@ -85,12 +95,14 @@ src/
 ├── cli/                 # CLI entry point and commands
 ├── daemon/              # Daemon runtime and Unix socket protocol
 ├── quiz/                # Quiz engine, scoring, and message formatting
+├── event-logger.ts       # Quiz event logging to SurrealDB
 ├── whatsapp/            # WhatsApp client abstractions (wwebjs, baileys)
 ├── members/             # Member list loading and validation
 ├── utils/               # Helper functions (normalization, paths)
 ├── constants.ts         # App constants and quiz tunables
 ├── logger.ts            # Structured logging
 └── types.ts             # Shared TypeScript types
+web/                    # Web spectator frontend (SvelteKit, upcoming)
 ```
 
 ## Quiz Tunables
@@ -139,12 +151,28 @@ bun test              # Run all tests
 bun test src/quiz/    # Run quiz-specific tests
 ```
 
+## State Storage
+
+Quiz state is persisted in SurrealDB:
+
+| Path/Table                | Purpose                                             |
+| ------------------------- | --------------------------------------------------- |
+| `season` table            | Season metadata (id, group, status)                 |
+| `season_score` table      | Cumulative season scores per member                 |
+| `quiz_session` table      | Active quiz session state                           |
+| `quiz_event` table        | Append-only quiz event log                          |
+| `live_score` table        | Per-member score projection for live viewing        |
+| `live_member_state` table | Per-member cooldown and chances                     |
+| `~/.kotaete/auth/`        | WhatsApp auth sessions (Baileys, WWebJS)            |
+| `~/.kotaete/state/`       | Daemon runtime state, plugin manifest, LID↔PN cache |
+
 ## Development
 
 - **Formatter**: dprint (config in `dprint.jsonc` — tabs, single quotes, no semicolons)
 - **TypeScript**: Strict mode enabled
 - **Runtime**: Bun (>=1.3) — not Node.js
 - **CLI Framework**: Crust.js
+- **Database**: SurrealDB (>=2.0) for season scores and quiz event logging
 
 ## License
 

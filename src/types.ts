@@ -171,6 +171,7 @@ export type SeasonConfig = {
 	end?: boolean
 	caption?: string
 	scoreboardTemplate?: string
+	id?: string
 }
 
 export type QuizRunPayload = {

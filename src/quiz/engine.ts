@@ -33,8 +33,9 @@ import {
 	formatWinnerPerfect,
 } from './messages.ts'
 import { awardCorrectPoints, awardWrongPoints } from './scoring.ts'
-import { SeasonStore } from './season-store.ts'
+import type { SeasonStoreLike } from './season-store.ts'
 
+import type { QuizEventLogger } from './event-logger.ts'
 const log = getLogger(['kotaete', 'quiz'])
 
 type SenderPort = {
@@ -72,6 +73,7 @@ type RunnerState = {
 	timeoutToken: Timer | null
 	warningToken: Timer | null
 	questionMessageKey: IncomingGroupMessage['key'] | null
+	loggerSessionId: string | null
 	roundIndex: number
 	roundQuestionIndex: number
 	roundQuestionTotal: number
@@ -158,16 +160,18 @@ export class QuizEngine {
 	private state: RunnerState | null = null
 
 	private readonly sleep: SleepFn
-	private readonly seasonStore: SeasonStore | null
+	private readonly seasonStore: SeasonStoreLike | null
 	private readonly onFinished: (() => void) | null
+	private readonly eventLogger: QuizEventLogger | null
 
 	constructor(
 		private readonly sender: SenderPort,
-		opts?: { sleep?: SleepFn; seasonStore?: SeasonStore; onFinished?: () => void },
+		opts?: { sleep?: SleepFn; seasonStore?: SeasonStoreLike; onFinished?: () => void; eventLogger?: QuizEventLogger },
 	) {
 		this.sleep = opts?.sleep ?? ((ms) => Bun.sleep(ms))
 		this.seasonStore = opts?.seasonStore ?? null
 		this.onFinished = opts?.onFinished ?? null
+		this.eventLogger = opts?.eventLogger ?? null
 	}
 
 	private notifyFinished(state: RunnerState): void {
@@ -195,6 +199,9 @@ export class QuizEngine {
 		if (!state?.active) return false
 		state.active = false
 		state.acceptingAnswers = false
+		if (state.loggerSessionId) {
+			this.eventLogger?.finishSession(state.loggerSessionId, 'stopped')
+		}
 		this.clearAllTimers(state)
 		this.notifyFinished(state)
 		return true
@@ -205,6 +212,9 @@ export class QuizEngine {
 		if (!state?.active) return false
 		state.active = false
 		state.acceptingAnswers = false
+		if (state.loggerSessionId) {
+			this.eventLogger?.finishSession(state.loggerSessionId, 'stopped')
+		}
 		this.clearAllTimers(state)
 		await this.finishQuiz()
 		return true
@@ -249,6 +259,18 @@ export class QuizEngine {
 			byCanonicalLid.set(canonicalLid, member)
 		}
 
+		const loggerSessionId = this.eventLogger
+			? await this.eventLogger.createSession({
+				groupId,
+				...(bundle.season?.id ? { seasonId: bundle.season.id } : {}),
+				jobId: 'engine',
+				totalQuestions: bundle.questions.length,
+			}).catch((err) => {
+				log.warning('failed to create event logger session', { error: err })
+				return null
+			}) ?? null
+			: null
+
 		this.state = {
 			bundle,
 			groupId,
@@ -270,6 +292,7 @@ export class QuizEngine {
 			timeoutToken: null,
 			warningToken: null,
 			questionMessageKey: null,
+			loggerSessionId,
 			roundIndex: 0,
 			roundQuestionIndex: -1,
 			roundQuestionTotal: 0,
@@ -287,9 +310,9 @@ export class QuizEngine {
 
 		if (this.seasonStore && bundle.season) {
 			if (bundle.season.start) {
-				await this.seasonStore.resetGroup(groupId)
+				await this.seasonStore.resetGroup(groupId, bundle.season.id)
 			}
-			await this.seasonStore.setGroupMembers(groupId, members)
+			await this.seasonStore.setGroupMembers(groupId, members, bundle.season.id)
 		}
 
 		const introDelay = Math.max(0, bundle.introAt.getTime() - Date.now())
@@ -411,6 +434,19 @@ export class QuizEngine {
 						},
 					)
 				}
+
+				if (state.loggerSessionId) {
+					this.eventLogger?.logEvent(state.loggerSessionId, {
+						groupId: state.groupId,
+						...(state.bundle.season?.id ? { seasonId: state.bundle.season.id } : {}),
+						eventType: 'cooldown',
+						questionNo: question.number,
+						memberMid: member.mid,
+						memberName: member.kananame,
+						memberClassgroup: member.classgroup,
+						data: { cooldownUntilMs: cooldownUntil },
+					})
+				}
 				return
 			}
 		}
@@ -522,6 +558,15 @@ export class QuizEngine {
 				}),
 				{ linkPreview: false },
 			)
+
+			if (this.sid) {
+				this.el?.logEvent(this.sid, {
+					groupId: state.groupId,
+					...(state.bundle.season?.id ? { seasonId: state.bundle.season.id } : {}),
+					eventType: 'round_break',
+					questionNo: state.index,
+				})
+			}
 			const nextRoundDelay = Math.max(0, nextRound.startAt.getTime() - Date.now())
 			if (nextRoundDelay <= 1_000) {
 				if (nextRoundDelay > 0) await this.sleep(nextRoundDelay)
@@ -560,6 +605,18 @@ export class QuizEngine {
 					linkPreview: false,
 				},
 			)
+
+			if (this.sid) {
+				this.el?.logEvent(this.sid, {
+					groupId: state.groupId,
+					...(state.bundle.season?.id ? { seasonId: state.bundle.season.id } : {}),
+					eventType: 'god_stage_announced',
+					data: {
+						points: QUIZ_TUNABLES.points.special,
+						timeoutMinutes: GOD_STAGE_TIMEOUT_MS / 60_000,
+					},
+				})
+			}
 			await this.sleep(GOD_STAGE_ANNOUNCE_DELAY_MS)
 		}
 
@@ -585,6 +642,26 @@ export class QuizEngine {
 		state.questionToken += 1
 		const currentToken = state.questionToken
 		state.acceptingAnswers = true
+
+		if (this.sid) {
+			this.el?.updateSessionState(this.sid, {
+				currentQuestion: question.number,
+				currentRound: state.roundIndex,
+				acceptingAnswers: true,
+				deadlineAt: new Date(state.deadlineAtMs),
+			})
+			this.el?.logEvent(this.sid, {
+				groupId: state.groupId,
+				...(state.bundle.season?.id ? { seasonId: state.bundle.season.id } : {}),
+				eventType: question.isSpecialStage ? 'god_stage_asked' : 'question_asked',
+				questionNo: question.number,
+				data: {
+					hint: question.text,
+					hasImage: !!question.imagePath,
+					timeoutMs: question.isSpecialStage ? GOD_STAGE_TIMEOUT_MS : QUESTION_TIMEOUT_MS,
+				},
+			})
+		}
 		if (state.warningToken) {
 			clearTimeout(state.warningToken)
 			state.warningToken = null
@@ -652,6 +729,16 @@ export class QuizEngine {
 			...(quotedKey ? { quotedKey } : {}),
 		})
 		state.warningToken = null
+
+		if (this.state?.loggerSessionId) {
+			this.eventLogger?.logEvent(this.state.loggerSessionId, {
+				groupId: this.state.groupId,
+				...(this.state.bundle.season?.id ? { seasonId: this.state.bundle.season.id } : {}),
+				eventType: 'warning',
+				...(this.currentQuestion()?.number ? { questionNo: this.currentQuestion()!.number } : {}),
+				data: { extraHint: question?.extraHint },
+			})
+		}
 	}
 
 	private async handleCorrect(
@@ -679,9 +766,39 @@ export class QuizEngine {
 		if (gained !== 0) {
 			state.pointsByMid.set(member.mid, (state.pointsByMid.get(member.mid) ?? 0) + gained)
 			state.scoreReachedAtByMid.set(member.mid, Date.now())
+
+			if (this.sid) {
+				const totalPts = state.pointsByMid.get(member.mid) ?? 0
+				this.el?.upsertLiveScore(this.sid, member, totalPts)
+				this.el?.upsertMemberState(this.sid, member, {
+					cooldownUntil: !question.isSpecialStage ? new Date(Date.now() + COOLDOWN_MS) : null,
+				})
+				this.el?.logEvent(this.sid, {
+					groupId: state.groupId,
+					...(state.bundle.season?.id ? { seasonId: state.bundle.season.id } : {}),
+					eventType: 'answer_correct',
+					questionNo: question.number,
+					memberMid: member.mid,
+					memberName: member.kananame,
+					memberClassgroup: member.classgroup,
+					data: {
+						matchedAnswer,
+						gained,
+						totalPoints: totalPts,
+						hasExtraPts,
+						isSpecialStage: question.isSpecialStage,
+					},
+				})
+				this.el?.updateSessionState(this.sid, { acceptingAnswers: false, deadlineAt: null })
+			}
 			state.questionPointsByMid.set(member.mid, currentQuestionPoints + gained)
 			if (this.seasonStore && state.bundle.season) {
-				await this.seasonStore.addPoints(state.groupId, [...state.byLid.values()], new Map([[member.mid, gained]]))
+				await this.seasonStore.addPoints(
+					state.groupId,
+					[...state.byLid.values()],
+					new Map([[member.mid, gained]]),
+					state.bundle.season.id,
+				)
 			}
 		}
 
@@ -727,6 +844,18 @@ export class QuizEngine {
 		if (question.isSpecialStage) {
 			state.attemptedSpecial.add(member.mid)
 			await this.sender.react(state.groupId, incoming.key, REACTION_NO_MORE_CHANCE)
+
+			if (this.state?.loggerSessionId) {
+				this.eventLogger?.logEvent(this.state.loggerSessionId, {
+					groupId: this.state.groupId,
+					...(this.state.bundle.season?.id ? { seasonId: this.state.bundle.season.id } : {}),
+					eventType: 'special_duplicate',
+					questionNo: question.number,
+					memberMid: member.mid,
+					memberName: member.kananame,
+					memberClassgroup: member.classgroup,
+				})
+			}
 			return
 		}
 
@@ -744,7 +873,12 @@ export class QuizEngine {
 				(state.questionPointsByMid.get(member.mid) ?? 0) + gained,
 			)
 			if (this.seasonStore && state.bundle.season) {
-				await this.seasonStore.addPoints(state.groupId, [...state.byLid.values()], new Map([[member.mid, gained]]))
+				await this.seasonStore.addPoints(
+					state.groupId,
+					[...state.byLid.values()],
+					new Map([[member.mid, gained]]),
+					state.bundle.season.id,
+				)
 			}
 		}
 
@@ -752,6 +886,28 @@ export class QuizEngine {
 		const reaction = emojiStreak[emojiStreak.length - 1 - remain] ?? REACTION_NO_MORE_CHANCE
 		await this.sender.react(state.groupId, incoming.key, reaction)
 		state.wrongStreak.set(key, remain - 1)
+
+		if (this.sid) {
+			const totalPts = state.pointsByMid.get(member.mid) ?? 0
+			this.el?.upsertLiveScore(this.sid, member, totalPts)
+			this.el?.upsertMemberState(this.sid, member, {
+				wrongRemaining: remain - 1,
+			})
+			this.el?.logEvent(this.sid, {
+				groupId: state.groupId,
+				...(state.bundle.season?.id ? { seasonId: state.bundle.season.id } : {}),
+				eventType: 'answer_wrong',
+				questionNo: question.number,
+				memberMid: member.mid,
+				memberName: member.kananame,
+				memberClassgroup: member.classgroup,
+				data: {
+					gained,
+					totalPoints: totalPts,
+					remainingChances: remain - 1,
+				},
+			})
+		}
 	}
 
 	private async handleTimeout(token: number): Promise<void> {
@@ -767,6 +923,16 @@ export class QuizEngine {
 		}
 		state.timeoutToken = null
 
+		if (this.sid) {
+			this.el?.logEvent(this.sid, {
+				groupId: state.groupId,
+				...(state.bundle.season?.id ? { seasonId: state.bundle.season.id } : {}),
+				eventType: 'timeout',
+				questionNo: question.number,
+				data: { answers: [...question.answers] },
+			})
+			this.el?.updateSessionState(this.sid, { acceptingAnswers: false, deadlineAt: null })
+		}
 		await this.sender.sendText(
 			state.groupId,
 			formatTimeout(question.answers, state.bundle.messageTemplates),
@@ -790,6 +956,19 @@ export class QuizEngine {
 		this.clearAllTimers(state)
 		this.notifyFinished(state)
 
+		if (this.sid) {
+			this.el?.finishSession(this.sid)
+			this.el?.logEvent(this.sid, {
+				groupId: state.groupId,
+				...(state.bundle.season?.id ? { seasonId: state.bundle.season.id } : {}),
+				eventType: 'quiz_finished',
+				data: {
+					totalParticipants: state.pointsByMid.size,
+					finalScores: Object.fromEntries(state.pointsByMid),
+				},
+			})
+		}
+
 		const rows = this.currentScoreRows(state)
 
 		await this.sender.sendText(
@@ -810,9 +989,9 @@ export class QuizEngine {
 
 		// Season end: send special congratulation messages
 		if (season.end) {
-			const seasonPoints = this.seasonStore.getPoints(state.groupId)
-			const seasonMembers = this.seasonStore.getMembers(state.groupId)
-			const seasonReachedAt = this.seasonStore.getReachedAt(state.groupId)
+			const seasonPoints = await this.seasonStore.getPointsAsync(state.groupId, season.id)
+			const seasonMembers = await this.seasonStore.getMembersAsync(state.groupId, season.id)
+			const seasonReachedAt = await this.seasonStore.getReachedAtAsync(state.groupId, season.id)
 
 			const seasonByMid = new Map<string, NMember>()
 			for (const m of state.byLid.values()) {
@@ -892,5 +1071,13 @@ export class QuizEngine {
 		state.roundQuestionIndex = -1
 		state.roundQuestionTotal = round.questions.length
 		await this.moveToNextQuestion()
+	}
+
+	private get sid(): string | null {
+		return this.state?.loggerSessionId ?? null
+	}
+
+	private get el(): QuizEventLogger | null {
+		return this.eventLogger
 	}
 }

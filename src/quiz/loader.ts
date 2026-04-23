@@ -284,8 +284,9 @@ function normalizeTemplateConfig(input: unknown): { default?: string; god?: stri
 
 function normalizeSeason(input: unknown): SeasonConfig | null {
 	if (!input || typeof input !== 'object') return null
-	const raw = input as { start?: unknown; end?: unknown; caption?: unknown; scoreboardTemplate?: unknown }
+	const raw = input as { id?: unknown; start?: unknown; end?: unknown; caption?: unknown; scoreboardTemplate?: unknown }
 	const season: SeasonConfig = {}
+	if (typeof raw.id === 'string' && raw.id.trim().length > 0) season.id = raw.id.trim()
 	if (raw.start === true) season.start = true
 	if (raw.end === true) season.end = true
 	if (typeof raw.caption === 'string' && raw.caption.trim().length > 0) {

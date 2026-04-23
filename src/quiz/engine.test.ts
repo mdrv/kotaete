@@ -1,12 +1,8 @@
-import { afterEach, describe, expect, mock, test } from 'bun:test'
-import { rm } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { describe, expect, mock, test } from 'bun:test'
 import type { IncomingGroupMessage, NMember, QuizBundle } from '../types.ts'
 import type { SendTextOptions } from '../whatsapp/types.ts'
 import { QuizEngine } from './engine.ts'
-import { SeasonStore } from './season-store.ts'
-
+import { InMemorySeasonStore } from './season-store.ts'
 function makeBundle(): QuizBundle {
 	const now = Date.now()
 	const questions = [
@@ -206,7 +202,7 @@ function makeIncoming(overrides?: Partial<IncomingGroupMessage>): IncomingGroupM
 	}
 }
 
-function createEngine(opts?: { seasonStore?: SeasonStore; onFinished?: () => void }) {
+function createEngine(opts?: { seasonStore?: InMemorySeasonStore; onFinished?: () => void }) {
 	const sleep = mock(async (_ms: number) => undefined)
 	const sendText = mock(
 		async (_groupId: string, _text: string, _opts?: SendTextOptions) => ({
@@ -929,20 +925,8 @@ describe('QuizEngine behavior', () => {
 // Season-related tests
 // ---------------------------------------------------------------------------
 
-const seasonTestDirs: string[] = []
-
-afterEach(async () => {
-	while (seasonTestDirs.length > 0) {
-		const dir = seasonTestDirs.pop()
-		if (!dir) continue
-		await rm(dir, { recursive: true, force: true })
-	}
-})
-
-function makeSeasonStore(): SeasonStore {
-	const dir = join(tmpdir(), `kotaete-season-test-${Date.now()}-${Math.random().toString(36).slice(2)}`)
-	seasonTestDirs.push(dir)
-	return new SeasonStore(join(dir, 'season-points.json'))
+function makeSeasonStore(): InMemorySeasonStore {
+	return new InMemorySeasonStore()
 }
 
 function makeBundleWithSeason(
