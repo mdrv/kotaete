@@ -66,17 +66,53 @@
 	})
 
 	let sortedScores = $derived.by(() =>
-		[...scores].sort((a, b) => b.points - a.points)
+		[...scores].sort((a, b) => {
+			if (b.points !== a.points) return b.points - a.points
+			if (a.reached_at && b.reached_at) {
+				return a.reached_at.localeCompare(b.reached_at)
+			}
+			const cgDiff = classgroupRank(a.member_classgroup)
+				- classgroupRank(b.member_classgroup)
+			if (cgDiff !== 0) return cgDiff
+			return (a.member_name ?? '').localeCompare(b.member_name ?? '', 'ja')
+		})
 	)
 
 	let topSeasonScores = $derived.by(() => {
-		const sorted = [...seasonScores].sort((a, b) => b.points - a.points)
+		const sorted = [...seasonScores].sort((a, b) => {
+			if (b.points !== a.points) return b.points - a.points
+			const aRa = a.reached_at
+			const bRa = b.reached_at
+			const cgDiff = classgroupRank(a.member_classgroup)
+				- classgroupRank(b.member_classgroup)
+			if (cgDiff !== 0) return cgDiff
+			return (a.member_name ?? '').localeCompare(b.member_name ?? '', 'ja')
+		})
 		return showZeroPts
 			? sorted.slice(0, 30)
 			: sorted.filter((s) => s.points > 0).slice(0, 30)
 	})
 
 	// ── Helpers ────────────────────────────────────────────
+
+	const CLASSGROUP_ORDER = [
+		'7A',
+		'7B',
+		'8A',
+		'8B',
+		'10A',
+		'10B',
+		'10C',
+		'10D',
+		'11C',
+	]
+
+	function classgroupRank(cg: string | null | undefined): number {
+		if (!cg) return CLASSGROUP_ORDER.length
+		const idx = CLASSGROUP_ORDER.indexOf(cg)
+		return idx >= 0 ? idx : CLASSGROUP_ORDER.length
+	}
+
 	function memberDisplay(
 		name: string | null | undefined,
 		cg: string | null | undefined,

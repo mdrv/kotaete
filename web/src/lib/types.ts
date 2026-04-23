@@ -40,6 +40,7 @@ export interface SeasonScore {
 	member_name: string
 	member_classgroup: string
 	points: number
+	reached_at: string | null
 }
 
 export interface LiveUpdate {

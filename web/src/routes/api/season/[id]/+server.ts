@@ -14,8 +14,10 @@ export async function GET({ params }) {
 				season_id,
 				mid as member_mid,
 				kananame as member_name,
+				kananame as member_name,
 				classgroup as member_classgroup,
-				points
+				points,
+				reached_at
 			FROM season_score WHERE season_id = $sid ORDER BY points DESC`,
 			{ sid: id as string },
 		).collect<[SeasonScore[]]>()
