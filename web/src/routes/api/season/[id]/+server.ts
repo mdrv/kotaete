@@ -12,9 +12,9 @@ export async function GET({ params }) {
 			`SELECT
 				id,
 				season_id,
-				member_mid: mid,
-				member_name: kananame,
-				member_classgroup: classgroup,
+				mid as member_mid,
+				kananame as member_name,
+				classgroup as member_classgroup,
 				points
 			FROM season_score WHERE season_id = $sid ORDER BY points DESC`,
 			{ sid: id as string },
