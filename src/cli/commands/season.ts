@@ -49,11 +49,11 @@ export const seasonCmd = app
 			.run(async ({ args, flags }) => {
 				const store = new SeasonStore()
 				await store.load()
-				const groups = store.listGroups()
+				const groups = await store.listGroupsAsync()
 
 				if (args.groupId) {
-					const points = store.getPoints(args.groupId)
-					const members = store.getMembers(args.groupId)
+					const points = await store.getPointsAsync(args.groupId)
+					const members = await store.getMembersAsync(args.groupId)
 					if (points.size === 0) {
 						if (flags.json) {
 							console.log(JSON.stringify({ ok: true, groupId: args.groupId, entries: [] }, null, 2))
@@ -63,7 +63,7 @@ export const seasonCmd = app
 						return
 					}
 
-					const reachedAt = store.getReachedAt(args.groupId)
+					const reachedAt = await store.getReachedAtAsync(args.groupId)
 					const entries = [...points.entries()]
 						.map(([mid, pts]) => {
 							const member = members.find((m) => m.mid === mid)
@@ -101,26 +101,28 @@ export const seasonCmd = app
 					return
 				}
 
-				const result = groups.map((groupId) => {
-					const points = store.getPoints(groupId)
-					const members = store.getMembers(groupId)
-					const reachedAt = store.getReachedAt(groupId)
-					const entries = [...points.entries()]
-						.map(([mid, pts]) => {
-							const member = members.find((m) => m.mid === mid)
-							return {
-								mid,
-								name: member?.kananame ?? member?.nickname ?? mid,
-								points: pts,
-								reachedAt: reachedAt.get(mid) ?? Infinity,
-							}
-						})
-						.sort((a, b) => {
-							if (b.points !== a.points) return b.points - a.points
-							return a.reachedAt - b.reachedAt
-						})
-					return { groupId, entries }
-				})
+				const result = await Promise.all(
+					groups.map(async (groupId) => {
+						const points = await store.getPointsAsync(groupId)
+						const members = await store.getMembersAsync(groupId)
+						const reachedAt = await store.getReachedAtAsync(groupId)
+						const entries = [...points.entries()]
+							.map(([mid, pts]) => {
+								const member = members.find((m) => m.mid === mid)
+								return {
+									mid,
+									name: member?.kananame ?? member?.nickname ?? mid,
+									points: pts,
+									reachedAt: reachedAt.get(mid) ?? Infinity,
+								}
+							})
+							.sort((a, b) => {
+								if (b.points !== a.points) return b.points - a.points
+								return a.reachedAt - b.reachedAt
+							})
+						return { groupId, entries }
+					}),
+				)
 
 				if (flags.json) {
 					console.log(JSON.stringify({ ok: true, groups: result }, null, 2))

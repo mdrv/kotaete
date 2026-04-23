@@ -227,6 +227,7 @@
 		action: string,
 		record: Record<string, unknown>,
 	) {
+		console.debug('[SSE] handleLiveEvent', { table, action, id: String(record.id) })
 		switch (table) {
 			case 'quiz_session':
 				if (action === 'UPDATE' || action === 'CREATE') {
@@ -256,7 +257,8 @@
 				break
 			case 'live_score':
 				if (action === 'CREATE' || action === 'UPDATE') {
-					if (!matchesSession(record)) break
+				if (!matchesSession(record)) break
+					console.debug('[SSE] live_score matched, adding', { mid: record.member_mid, points: record.points })
 					const normScore = {
 						...record,
 						id: normalizeRecordId(record.id),
@@ -294,21 +296,25 @@
 				break
 			case 'season_score':
 				if (action === 'CREATE' || action === 'UPDATE') {
-					if (!matchesSeason(record)) break
-					const normSeasonScore = {
-						...record,
-						id: normalizeRecordId(record.id),
-					} as unknown as SeasonScore
-					// Only update if this matches the currently viewed season
-					if (seasonInfo && normSeasonScore.season_id === seasonInfo.id) {
-						const idx = seasonScores.findIndex((s) => s.id === normSeasonScore.id)
-						if (idx >= 0) {
-							seasonScores = seasonScores.map((s, i) => (i === idx ? normSeasonScore : s))
-						} else {
-							seasonScores = [...seasonScores, normSeasonScore]
-						}
+				if (!matchesSeason(record)) break
+				console.debug('[SSE] season_score matched', { season_id: record.season_id, mid: record.mid, points: record.points })
+				const normSeasonScore = {
+					...record,
+					id: normalizeRecordId(record.id),
+					member_mid: record.mid,
+					member_name: record.nickname || record.kananame,
+					member_classgroup: record.classgroup,
+				} as unknown as SeasonScore
+				// Only update if this matches the currently viewed season
+				if (seasonInfo && normSeasonScore.season_id === seasonInfo.id) {
+					const idx = seasonScores.findIndex((s) => s.id === normSeasonScore.id)
+					if (idx >= 0) {
+						seasonScores = seasonScores.map((s, i) => (i === idx ? normSeasonScore : s))
+					} else {
+						seasonScores = [...seasonScores, normSeasonScore]
 					}
 				}
+			}
 				break
 		}
 	}
@@ -558,9 +564,9 @@
 			</div>
 
 			<!-- ── Live Scores ── -->
-			{#if sortedScores.length > 0}
-				<div class='card'>
-					<h2 class='card-title'>📊 Live Scores</h2>
+			<div class='card'>
+				<h2 class='card-title'>📊 Live Scores</h2>
+				{#if sortedScores.length > 0}
 					<div class='scores-list'>
 						{#each sortedScores.slice(0, 10) as score, i (score.id)}
 							{@const ms = memberStates.get(score.member_mid)}
@@ -580,8 +586,10 @@
 							</div>
 						{/each}
 					</div>
-				</div>
-			{/if}
+				{:else}
+					<div class='empty-state'>Waiting for answers...</div>
+				{/if}
+			</div>
 		</div>
 
 		<div class='column-right'>
@@ -1057,10 +1065,10 @@
 	}
 
 	.empty-state {
-		color: var(--text-secondary);
-		font-size: 0.85rem;
 		text-align: center;
-		padding: 1rem 0;
+		padding: 1rem;
+		color: var(--text-secondary);
+		font-style: italic;
 	}
 
 	/* ── Toggle Button ── */
