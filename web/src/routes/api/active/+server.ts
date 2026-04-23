@@ -1,5 +1,5 @@
 import { getDb } from '$lib/server/surreal'
-import type { LiveScore, QuizSession } from '$lib/server/types'
+import type { LiveMemberState as LiveMemberStateType, LiveScore, QuizSession } from '$lib/server/types'
 import { json } from '@sveltejs/kit'
 import { RecordId } from 'surrealdb'
 
@@ -44,6 +44,7 @@ export async function GET({ url }: { url: URL }) {
 
 		const session = sessions[0] ? normalizeSession(sessions[0] as any) as QuizSession : null
 		let scores: LiveScore[] = []
+		let memberStateList: LiveMemberStateType[] = []
 
 		console.log(`[active] prefix=${prefix} sessions_found=${sessions.length}`, session ? `session_id=${session.id} status=${(sessions[0] as any)?.status} season_id=${(sessions[0] as any)?.season_id}` : 'null')
 
@@ -54,11 +55,17 @@ export async function GET({ url }: { url: URL }) {
 				'SELECT * FROM live_score WHERE session_id = $sid ORDER BY points DESC',
 				{ sid },
 			).collect<[LiveScore[]]>()
-			console.log(`[active] live_score count=${scoreResults.length}`, scoreResults.length > 0 ? `first_id=${normalizeId((scoreResults[0] as any)?.id)}` : '')
 			scores = scoreResults.map((s) => normalizeSession(s as any) as LiveScore)
+
+			// Also fetch member states for cooldown display
+			const [msResults] = await db.query(
+				'SELECT * FROM live_member_state WHERE session_id = $sid',
+				{ sid },
+			).collect<[LiveMemberStateType[]]>()
+			memberStateList = msResults.map((s) => normalizeSession(s as any) as LiveMemberStateType)
 		}
 
-		return json({ session, scores })
+		return json({ session, scores, memberStates: memberStateList })
 	} catch (e) {
 		console.error('Failed to fetch active session:', e)
 		return json({ session: null, scores: [] }, { status: 500 })

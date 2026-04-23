@@ -1,12 +1,26 @@
 import { getLogger } from './logger'
 import { getDb } from './surreal'
 import type { IncomingMessage } from 'node:http'
-import { type LiveSubscription, Table } from 'surrealdb'
+import { type LiveSubscription, RecordId, Table } from 'surrealdb'
 import { type WebSocket, WebSocketServer } from 'ws'
 
 const TABLES = ['quiz_event', 'live_score', 'live_member_state', 'quiz_session', 'season_score'] as const
 const WS_PATH = '/api/ws'
 const log = getLogger(['kotaete', 'web', 'ws'])
+
+/** Recursively convert RecordId objects to 'table:id' strings for JSON serialization */
+function normalizeRecordIds(value: unknown): unknown {
+	if (value instanceof RecordId) return String(value)
+	if (Array.isArray(value)) return value.map(normalizeRecordIds)
+	if (value !== null && typeof value === 'object') {
+		const out: Record<string, unknown> = {}
+		for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+			out[k] = normalizeRecordIds(v)
+		}
+		return out
+	}
+	return value
+}
 
 export interface WsOutMessage {
 	type: 'live'
@@ -126,7 +140,7 @@ export class KotaeteWsServer {
 								type: 'live',
 								table: tableName,
 								action: message.action,
-								record: message.value,
+									record: normalizeRecordIds(message.value) as Record<string, unknown>,
 							})
 						}
 						log.warning('live iterator ended unexpectedly', { table: tableName })

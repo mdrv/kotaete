@@ -295,14 +295,26 @@
 							imageError = false
 						}, 60_000) // Clear after 1 minute
 					} else {
-						// New session or running update — merge/create
-						session = { ...(session ?? {}), ...norm } as unknown as QuizSession
-						imageError = false
-						// Fetch events for this session if it's new to us
+						// New session or running update
 						if (!existingSession || !isSameSession) {
+							// Brand new session — clear stale data immediately
 							console.debug('[SSE] new session detected, fetching events/scores', { id: norm.id, status: newStatus })
+							session = { ...norm } as unknown as QuizSession
+							scores = []
+							events = []
+							memberStates = new Map()
+							imageError = false
+							// Cancel any pending cleanup timer from previous session
+							if (scoreRefreshTimer) {
+								clearTimeout(scoreRefreshTimer)
+								scoreRefreshTimer = null
+							}
 							scheduleScoreRefresh()
 							tryFetchEvents(normalizeRecordId(norm.id))
+						} else {
+							// Same session update — merge fields
+							session = { ...session!, ...norm } as unknown as QuizSession
+							imageError = false
 						}
 					}
 				}
@@ -470,6 +482,14 @@
 
 			session = activeData.session ?? null
 			scores = activeData.scores ?? []
+			// Hydrate member states from REST for immediate cooldown display
+			if (activeData.memberStates?.length) {
+				const msMap = new Map<string, LiveMemberStateType>()
+				for (const ms of activeData.memberStates as LiveMemberStateType[]) {
+					if (ms.member_mid) msMap.set(ms.member_mid, ms)
+				}
+				memberStates = msMap
+			}
 			seasons = seasonsData
 
 			if (seasonsData.length > 0) {
