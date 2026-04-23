@@ -1,7 +1,7 @@
 import { Surreal } from 'surrealdb'
 
 const {
-	SURREAL_ENDPOINT = 'http://localhost:596/rpc',
+	SURREAL_ENDPOINT = 'ws://localhost:596',
 	SURREAL_USERNAME = 'ua',
 	SURREAL_PASSWORD = 'japan8',
 	SURREAL_NAMESPACE = 'medrivia',
