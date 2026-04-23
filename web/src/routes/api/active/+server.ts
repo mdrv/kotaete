@@ -25,10 +25,22 @@ export async function GET({ url }: { url: URL }) {
 	try {
 		const db = await getDb()
 
-		const [sessions] = await db.query(
+		// First try running sessions, then fallback to any recent session
+		const [running] = await db.query(
 			`SELECT * FROM quiz_session WHERE status = 'running' AND (season_id = NONE OR string::starts_with(season_id, $prefix)) ORDER BY started_at DESC LIMIT 1`,
 			{ prefix },
 		).collect<[QuizSession[]]>()
+
+		let sessions = running
+		if (sessions.length === 0) {
+			// Fallback: return most recent session regardless of status
+			const [recent] = await db.query(
+				`SELECT * FROM quiz_session WHERE (season_id = NONE OR string::starts_with(season_id, $prefix)) ORDER BY started_at DESC LIMIT 1`,
+				{ prefix },
+			).collect<[QuizSession[]]>()
+			sessions = recent
+			console.log(`[active] no running sessions, fallback to recent:`, recent.length > 0 ? `id=${normalizeId((recent[0] as any)?.id)} status=${(recent[0] as any)?.status}` : 'none')
+		}
 
 		const session = sessions[0] ? normalizeSession(sessions[0] as any) as QuizSession : null
 		let scores: LiveScore[] = []

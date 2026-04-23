@@ -238,6 +238,19 @@
 		}, 500)
 	}
 
+	async function tryFetchEvents(sessionId: string) {
+		try {
+			const eventsRes = await fetch(`/api/events/${encodeURIComponent(sessionId)}`)
+			const eventsData = await eventsRes.json()
+			if (eventsData.events?.length) {
+				events = eventsData.events.slice(0, 20)
+				console.debug('[SSE] fetched events for session', sessionId, events.length)
+			}
+		} catch (e) {
+			console.error('[SSE] failed to fetch events:', e)
+		}
+	}
+
 	function matchesSession(record: Record<string, unknown>): boolean {
 		if (!session) {
 			console.debug('[SSE] matchesSession: no session loaded, dropping', { table: record._table })
@@ -263,15 +276,34 @@
 					if (!matchesSeason(record)) break
 					const norm = { ...record, id: normalizeRecordId(record.id) } as Record<string, unknown>
 					const newStatus = norm.status as string | undefined
-					if (newStatus && newStatus !== 'running' && session) {
-						// Session ended (stopped/finished/crashed) — clear like DELETE
-						console.debug('[SSE] quiz session ended:', newStatus)
-						session = null
-						scores = []
-						events = []
+					const existingSession = session
+					const isSameSession = existingSession && normalizeRecordId(norm.id) === String(existingSession.id)
+
+					if (newStatus && newStatus !== 'running' && isSameSession) {
+						// Session we were tracking transitioned to non-running — keep showing final state
+						console.debug('[SSE] quiz session ended:', newStatus, '(keeping final state)')
+						session = { ...existingSession, ...norm } as unknown as QuizSession
+						// Don't clear scores/events — show final results
+						// Schedule cleanup after a delay so user can see results
+						if (scoreRefreshTimer) clearTimeout(scoreRefreshTimer)
+						scoreRefreshTimer = setTimeout(() => {
+							console.debug('[SSE] clearing ended session after delay')
+							session = null
+							scores = []
+							events = []
+							memberStates = new Map()
+							imageError = false
+						}, 60_000) // Clear after 1 minute
 					} else {
-						session = norm as unknown as QuizSession
+						// New session or running update — merge/create
+						session = { ...(session ?? {}), ...norm } as unknown as QuizSession
 						imageError = false
+						// Fetch events for this session if it's new to us
+						if (!existingSession || !isSameSession) {
+							console.debug('[SSE] new session detected, fetching events/scores', { id: norm.id, status: newStatus })
+							scheduleScoreRefresh()
+							tryFetchEvents(normalizeRecordId(norm.id))
+						}
 					}
 				}
 				if (action === 'DELETE') {
@@ -279,7 +311,7 @@
 					session = null
 						scores = []
 						events = []
-				}
+					}
 				break
 			case 'quiz_event':
 				if (action === 'CREATE') {
