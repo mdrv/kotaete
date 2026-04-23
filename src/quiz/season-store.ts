@@ -265,7 +265,7 @@ export class SeasonStore {
 					// Use SurrealQL for atomic upsert
 					await db.query(
 						`LET $existing = (SELECT points FROM season_score WHERE season_id = $sid AND mid = $mid LIMIT 1);
-						LET $current = math::max($existing[0].points ?? 0, 0);
+						LET $current = $existing[0].points ?? 0;
 						IF $existing = [] {
 							CREATE season_score SET season_id = $sid, mid = $mid, points = $delta, reached_at = $now, nickname = $nickname, kananame = $kananame, classgroup = $classgroup;
 						} ELSE {
@@ -357,7 +357,7 @@ export class SeasonStore {
 
 			await db.query(
 				`LET $existing = (SELECT points FROM season_score WHERE season_id = $sid AND mid = $mid LIMIT 1);
-				LET $current = math::max($existing[0].points ?? 0, 0);
+				LET $current = $existing[0].points ?? 0;
 				LET $new = ($current + $delta);
 				IF $new <= 0 {
 					DELETE FROM season_score WHERE season_id = $sid AND mid = $mid;
