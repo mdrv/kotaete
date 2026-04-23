@@ -18,6 +18,8 @@
 		"vite": "^8.0.10"
 	},
 	"dependencies": {
+		"@logtape/logtape": "^2.0.5",
+		"@logtape/pretty": "^2.0.5",
 		"surrealdb": "^2.0.3"
 	},
 	"type": "module"

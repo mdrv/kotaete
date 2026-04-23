@@ -1,6 +1,7 @@
 <script lang='ts'>
 	import { connectLive } from '$lib/live-connection'
 	import type {
+		LiveMemberState as LiveMemberStateType,
 		LiveScore,
 		QuizEvent,
 		QuizSession,
@@ -24,6 +25,8 @@
 	let showZeroPts = $state(false)
 	let selectedSeasonId = $state<string | null>(null)
 	let theme = $state<'dark' | 'light'>('dark')
+	let memberStates = $state<Map<string, LiveMemberStateType>>(new Map())
+	let now = $state(Date.now())
 
 	// ── Derived ────────────────────────────────────────────
 	let displayMode = $derived.by(() => {
@@ -251,6 +254,24 @@
 					}
 				}
 				break
+			case 'live_member_state':
+				if (action === 'CREATE' || action === 'UPDATE') {
+					if (!matchesSession(record)) break
+					const mid = record.member_mid as string
+					const normState = { ...record, id: normalizeRecordId(record.id), session_id: normalizeRecordId(record.session_id) } as unknown as LiveMemberStateType
+					const next = new Map(memberStates)
+					next.set(mid, normState)
+					memberStates = next
+				}
+				if (action === 'DELETE') {
+					const mid = record.member_mid as string
+					if (mid) {
+						const next = new Map(memberStates)
+						next.delete(mid)
+						memberStates = next
+					}
+				}
+				break
 		}
 	}
 
@@ -268,6 +289,14 @@
 		}
 		update()
 		const interval = setInterval(update, 1000)
+		return () => clearInterval(interval)
+	})
+
+	// ── Now Ticker (drives cooldown countdowns) ──
+	$effect(() => {
+		const tick = () => { now = Date.now() }
+		tick()
+		const interval = setInterval(tick, 1000)
 		return () => clearInterval(interval)
 	})
 
@@ -458,15 +487,20 @@
 				<div class='card'>
 					<h2 class='card-title'>📊 Live Scores</h2>
 					<div class='scores-list'>
-						{#each sortedScores.slice(0, 10) as score, i (score.id)}
-							<div class='score-row'>
-								<span class='rank'>{i + 1}</span>
-								<span class='member-name'>{
-									memberDisplay(score.member_name, score.member_classgroup)
-								}</span>
-								<span class='points'>{score.points}pts</span>
-							</div>
-						{/each}
+							{#each sortedScores.slice(0, 10) as score, i (score.id)}
+								{@const ms = memberStates.get(score.member_mid)}
+								{@const cooldownSec = ms?.cooldown_until ? Math.max(0, Math.ceil((new Date(ms.cooldown_until).getTime() - now) / 1000)) : 0}
+								<div class='score-row'>
+									<span class='rank'>{i + 1}</span>
+									<span class='member-name'>
+										{memberDisplay(score.member_name, score.member_classgroup)}
+									</span>
+									{#if cooldownSec > 0}
+										<span class='cooldown-badge' title='Cooldown'>⏳ {cooldownSec}s</span>
+									{/if}
+									<span class='points'>{score.points}pts</span>
+								</div>
+							{/each}
 					</div>
 				</div>
 			{/if}
@@ -906,6 +940,16 @@
 	.points {
 		font-weight: 700;
 		color: var(--accent-green);
+		flex-shrink: 0;
+	}
+
+	.cooldown-badge {
+		font-size: 0.7rem;
+		padding: 2px 6px;
+		border-radius: 9999px;
+		background: var(--accent-orange);
+		color: #fff;
+		font-weight: 600;
 		flex-shrink: 0;
 	}
 

@@ -33,6 +33,15 @@ export interface LiveScore {
 	reached_at: string | null
 }
 
+export interface LiveMemberState {
+	id: string
+	session_id: string
+	member_mid: string
+	member_name: string
+	cooldown_until: string | null
+	wrong_remaining: number | null
+}
+
 export interface SeasonScore {
 	id: string
 	season_id: string
