@@ -265,6 +265,7 @@ export class QuizEngine {
 				...(bundle.season?.id ? { seasonId: bundle.season.id } : {}),
 				jobId: 'engine',
 				totalQuestions: bundle.questions.length,
+				quizDir: bundle.directory,
 			}).catch((err) => {
 				log.warning('failed to create event logger session', { error: err })
 				return null
@@ -658,6 +659,7 @@ export class QuizEngine {
 				data: {
 					hint: question.text,
 					hasImage: !!question.imagePath,
+					imagePath: question.imagePath ?? undefined,
 					timeoutMs: question.isSpecialStage ? GOD_STAGE_TIMEOUT_MS : QUESTION_TIMEOUT_MS,
 				},
 			})

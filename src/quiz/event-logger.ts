@@ -31,6 +31,7 @@ const SCHEMA_QUERIES = [
 	`DEFINE FIELD OVERWRITE current_round ON quiz_session TYPE option<number>`,
 	`DEFINE FIELD OVERWRITE accepting_answers ON quiz_session TYPE bool DEFAULT false`,
 	`DEFINE FIELD OVERWRITE deadline_at ON quiz_session TYPE option<datetime>`,
+	`DEFINE FIELD OVERWRITE quiz_dir ON quiz_session TYPE option<string>`,
 	`DEFINE INDEX OVERWRITE idx_quiz_session_group ON quiz_session COLUMNS group_id`,
 	`DEFINE INDEX OVERWRITE idx_quiz_session_active ON quiz_session COLUMNS group_id, status`,
 
@@ -137,11 +138,18 @@ export class QuizEventLogger {
 		seasonId?: string
 		jobId: string
 		totalQuestions: number
+		quizDir?: string
 	}): Promise<string> {
 		const db = this.ensureDb()
 		const result = await db.query<[{ id: string }[]]>(
-			`CREATE quiz_session SET group_id = $gid, season_id = $sid, job_id = $jid, total_questions = $tq, started_at = time::now(), status = 'running'`,
-			{ gid: opts.groupId, sid: opts.seasonId ?? undefined, jid: opts.jobId, tq: opts.totalQuestions },
+			`CREATE quiz_session SET group_id = $gid, season_id = $sid, job_id = $jid, total_questions = $tq, quiz_dir = $qdir ?? NONE, started_at = time::now(), status = 'running'`,
+			{
+				gid: opts.groupId,
+				sid: opts.seasonId ?? undefined,
+				jid: opts.jobId,
+				tq: opts.totalQuestions,
+				qdir: opts.quizDir ?? undefined,
+			},
 		)
 		const id = result[0]?.[0]?.id
 		if (!id) throw new Error('Failed to create quiz_session — no ID returned')

@@ -1,0 +1,680 @@
+<script lang='ts'>
+	import { connectLive } from '$lib/live-connection'
+	import type {
+		LiveScore,
+		QuizEvent,
+		QuizSession,
+		SeasonScore,
+	} from '$lib/types'
+	import { onDestroy, onMount } from 'svelte'
+
+	// ── State ──────────────────────────────────────────────
+	let session = $state<QuizSession | null>(null)
+	let scores = $state<LiveScore[]>([])
+	let events = $state<QuizEvent[]>([])
+	let seasonScores = $state<SeasonScore[]>([])
+	let seasonInfo = $state<{ id: string; caption: string | null } | null>(null)
+	let connected = $state(false)
+	let timeRemaining = $state(0)
+	let imageError = $state(false)
+
+	// ── Derived ────────────────────────────────────────────
+	let displayMode = $derived.by(() => {
+		if (!session) return 'idle'
+		const latest = events[0]
+		if (latest) {
+			if (latest.event_type === 'answer_correct') return 'winner'
+			if (latest.event_type === 'timeout') return 'timeout'
+		}
+		if (session.accepting_answers && session.current_question !== null) {
+			return 'question'
+		}
+		return 'idle'
+	})
+
+	let winnerInfo = $derived.by(() => {
+		const e = events[0]
+		if (!e || e.event_type !== 'answer_correct') return null
+		const name = e.member_name ?? '???'
+		const cg = e.member_classgroup
+		const displayName = cg ? `${name} (${cg})` : name
+		const pts = (e.data.points as number) ?? 0
+		const answer = (e.data.matched_answer as string)
+			?? (e.data.answer as string) ?? null
+		return { displayName, points: pts, answer, questionNo: e.question_no }
+	})
+
+	let timeoutInfo = $derived.by(() => {
+		const e = events[0]
+		if (!e || e.event_type !== 'timeout') return null
+		const answers = e.data.answers as Record<string, string> | undefined
+		return { questionNo: e.question_no, answers }
+	})
+
+	let countdownText = $derived.by(() => {
+		const mins = Math.floor(timeRemaining / 60)
+		const secs = timeRemaining % 60
+		return `${mins}:${secs.toString().padStart(2, '0')}`
+	})
+
+	let questionImageUrl = $derived.by(() => {
+		if (!session?.id || session.current_question == null) return ''
+		return `/api/image/${
+			encodeURIComponent(session.id)
+		}/${session.current_question}`
+	})
+
+	let sortedScores = $derived.by(() =>
+		[...scores].sort((a, b) => b.points - a.points)
+	)
+
+	let topSeasonScores = $derived.by(() =>
+		[...seasonScores].sort((a, b) => b.points - a.points).slice(0, 20)
+	)
+
+	// ── Helpers ────────────────────────────────────────────
+	function memberDisplay(
+		name: string | null | undefined,
+		cg: string | null | undefined,
+	): string {
+		if (!name) return '???'
+		return cg ? `${name} (${cg})` : name
+	}
+
+	function formatEvent(evt: QuizEvent): { text: string; color: string } {
+		const name = memberDisplay(evt.member_name, evt.member_classgroup)
+		const qNo = evt.question_no
+
+		switch (evt.event_type) {
+			case 'answer_correct': {
+				const pts = (evt.data.points as number) ?? 0
+				return {
+					text: `✅ ${name} — +${pts}pts`,
+					color: 'var(--accent-green)',
+				}
+			}
+			case 'answer_wrong': {
+				const attempt = (evt.data.attempt as number) ?? 1
+				const emojis = ['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣']
+				const emoji = emojis[attempt - 1] ?? `${attempt}.`
+				return {
+					text: `${emoji} ${name} — wrong`,
+					color: 'var(--accent-orange)',
+				}
+			}
+			case 'timeout':
+				return {
+					text: qNo ? `⏰ Q${qNo} timed out` : '⏰ Timed out',
+					color: 'var(--text-secondary)',
+				}
+			case 'question_asked':
+				return {
+					text: qNo ? `📝 Q${qNo} asked` : '📝 New question',
+					color: 'var(--accent-blue)',
+				}
+			case 'god_stage_announced':
+				return {
+					text: '⚡ GOD STAGE incoming!',
+					color: 'var(--accent-red)',
+				}
+			case 'warning':
+				return {
+					text: '⚠️ 10 min warning',
+					color: 'var(--accent-yellow)',
+				}
+			default:
+				return {
+					text: `📌 ${evt.event_type}`,
+					color: 'var(--text-secondary)',
+				}
+		}
+	}
+
+	// ── SSE Handler ────────────────────────────────────────
+	function handleLiveEvent(
+		table: string,
+		action: string,
+		record: Record<string, unknown>,
+	) {
+		switch (table) {
+			case 'quiz_session':
+				if (action === 'UPDATE' || action === 'CREATE') {
+					session = record as unknown as QuizSession
+					imageError = false
+				}
+				if (action === 'DELETE') {
+					session = null
+					scores = []
+					events = []
+				}
+				break
+			case 'quiz_event':
+				if (action === 'CREATE') {
+					events = [record as unknown as QuizEvent, ...events].slice(0, 20)
+				}
+				break
+			case 'live_score':
+				if (action === 'CREATE' || action === 'UPDATE') {
+					const score = record as unknown as LiveScore
+					const idx = scores.findIndex((s) => s.id === score.id)
+					if (idx >= 0) {
+						scores = scores.map((s, i) => (i === idx ? score : s))
+					} else {
+						scores = [...scores, score]
+					}
+				}
+				break
+		}
+	}
+
+	// ── Timer Effect ───────────────────────────────────────
+	$effect(() => {
+		const deadline = session?.deadline_at
+		if (!deadline) {
+			timeRemaining = 0
+			return () => {}
+		}
+
+		const update = () => {
+			const remaining = new Date(deadline).getTime() - Date.now()
+			timeRemaining = Math.max(0, Math.floor(remaining / 1000))
+		}
+		update()
+		const interval = setInterval(update, 1000)
+		return () => clearInterval(interval)
+	})
+
+	// ── Data Loading ───────────────────────────────────────
+	let disconnectFn: (() => void) | null = null
+
+	onMount(async () => {
+		try {
+			const [activeRes, seasonsRes] = await Promise.all([
+				fetch('/api/active'),
+				fetch('/api/seasons'),
+			])
+			const activeData = await activeRes.json()
+			const seasonsData = await seasonsRes.json()
+
+			session = activeData.session ?? null
+			scores = activeData.scores ?? []
+
+			if (seasonsData.length > 0) {
+				const latest = seasonsData[0]
+				seasonInfo = { id: latest.season_id, caption: latest.caption }
+				const seasonRes = await fetch(
+					`/api/season/${encodeURIComponent(latest.season_id)}`,
+				)
+				const seasonData = await seasonRes.json()
+				seasonScores = seasonData.scores ?? []
+			}
+
+			if (session) {
+				const eventsRes = await fetch(
+					`/api/events/${encodeURIComponent(session.id)}`,
+				)
+				const eventsData = await eventsRes.json()
+				events = (eventsData.events ?? []).slice(0, 20)
+			}
+		} catch (e) {
+			console.error('Failed to load initial data:', e)
+		}
+
+		disconnectFn = connectLive(
+			(table, action, record) => {
+				connected = true
+				handleLiveEvent(table, action, record)
+			},
+			() => {
+				connected = true
+			},
+		)
+	})
+
+	onDestroy(() => {
+		disconnectFn?.()
+	})
+</script>
+
+<div class='dashboard'>
+	<!-- ── Header ── -->
+	<header class='header'>
+		<div class='header-left'>
+			<h1 class='title'>🏆 Kotaete Live</h1>
+			{#if seasonInfo}
+				<span class='badge'>{seasonInfo.caption ?? seasonInfo.id}</span>
+			{/if}
+		</div>
+		<div class='header-right'>
+			<span class='live-dot' class:connected></span>
+			<span class='status-text'>{connected ? 'LIVE' : 'Connecting...'}</span>
+		</div>
+	</header>
+
+	<!-- ── Main Card ── -->
+	<div class='main-card'>
+		{#if displayMode === 'question'}
+			<div class='question-card'>
+				<div class='question-header'>
+					<span class='question-label'>Q{session?.current_question}</span>
+					<span
+						class='timer'
+						class:timer-warning={timeRemaining < 30 && timeRemaining > 0}
+					>
+						{countdownText}
+					</span>
+				</div>
+				{#if questionImageUrl && !imageError}
+					<img
+						src={questionImageUrl}
+						alt='Question {session?.current_question}'
+						class='question-image'
+						onerror={() => (imageError = true)}
+					/>
+				{:else if imageError}
+					<div class='image-placeholder'>🖼️ Image unavailable</div>
+				{/if}
+			</div>
+		{:else if displayMode === 'winner'}
+			<div class='result-card winner-card'>
+				<div class='result-emoji'>🎉</div>
+				<div class='result-name'>{winnerInfo?.displayName}</div>
+				<div class='result-points'>+{winnerInfo?.points}pts</div>
+				{#if winnerInfo?.answer}
+					<div class='result-answer'>{winnerInfo.answer}</div>
+				{/if}
+			</div>
+		{:else if displayMode === 'timeout'}
+			<div class='result-card timeout-card'>
+				<div class='result-emoji'>⏰</div>
+				<div class='result-title'>Time's up!</div>
+				{#if timeoutInfo?.answers}
+					<div class='timeout-answers'>
+						{#each Object.entries(timeoutInfo.answers) as [type, answer] (type)}
+							<span class='answer-tag'>{answer}</span>
+						{/each}
+					</div>
+				{/if}
+			</div>
+		{:else}
+			<div class='result-card idle-card'>
+				{#if session}
+					<div class='result-emoji'>⏳</div>
+					<p>Waiting for next question...</p>
+				{:else}
+					<div class='result-emoji'>🎬</div>
+					<p>No active quiz</p>
+				{/if}
+			</div>
+		{/if}
+	</div>
+
+	<!-- ── Live Scores ── -->
+	{#if sortedScores.length > 0}
+		<div class='card'>
+			<h2 class='card-title'>📊 Live Scores</h2>
+			<div class='scores-list'>
+				{#each sortedScores.slice(0, 10) as score, i (score.id)}
+					<div class='score-row'>
+						<span class='rank'>{i + 1}</span>
+						<span class='member-name'>{
+							memberDisplay(score.member_name, score.member_classgroup)
+						}</span>
+						<span class='points'>{score.points}pts</span>
+					</div>
+				{/each}
+			</div>
+		</div>
+	{/if}
+
+	<!-- ── Event History ── -->
+	<div class='card'>
+		<h2 class='card-title'>📜 Event History</h2>
+		<div class='events-list'>
+			{#if events.length === 0}
+				<div class='empty-state'>No events yet</div>
+			{:else}
+				{#each events as event (event.id)}
+					{@const formatted = formatEvent(event)}
+					<div class='event-row' style='color: {formatted.color}'>
+						{formatted.text}
+					</div>
+				{/each}
+			{/if}
+		</div>
+	</div>
+
+	<!-- ── Season Scoreboard ── -->
+	{#if topSeasonScores.length > 0}
+		<div class='card'>
+			<div class='card-header'>
+				<h2 class='card-title'>🏅 Season Scoreboard</h2>
+				{#if seasonInfo?.caption}
+					<span class='badge small'>{seasonInfo.caption}</span>
+				{/if}
+			</div>
+			<div class='scores-list'>
+				{#each topSeasonScores as score, i (score.id)}
+					<div class='score-row'>
+						<span class='rank'>{i + 1}</span>
+						<span class='member-name'>{
+							memberDisplay(score.member_name, score.member_classgroup)
+						}</span>
+						<span class='points'>{score.points}pts</span>
+					</div>
+				{/each}
+			</div>
+		</div>
+	{/if}
+</div>
+
+<style>
+	:global(:root) {
+		--bg-primary: #0f0f1a;
+		--bg-card: #1a1a2e;
+		--bg-card-hover: #252540;
+		--text-primary: #e2e8f0;
+		--text-secondary: #94a3b8;
+		--accent-green: #4ade80;
+		--accent-orange: #fb923c;
+		--accent-red: #ef4444;
+		--accent-blue: #60a5fa;
+		--accent-yellow: #fbbf24;
+		--accent-purple: #a78bfa;
+	}
+
+	.dashboard {
+		max-width: 480px;
+		margin: 0 auto;
+		padding: 1rem;
+		font-family: system-ui, 'Hiragino Sans', 'Noto Sans JP', sans-serif;
+		color: var(--text-primary);
+		min-height: 100vh;
+		display: flex;
+		flex-direction: column;
+		gap: 1rem;
+	}
+
+	/* ── Header ── */
+
+	.header {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		padding: 0.5rem 0;
+	}
+
+	.header-left {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+	}
+
+	.title {
+		font-size: 1.25rem;
+		margin: 0;
+		font-weight: 700;
+	}
+
+	.badge {
+		background: var(--accent-purple);
+		color: white;
+		padding: 0.15rem 0.5rem;
+		border-radius: 9999px;
+		font-size: 0.75rem;
+		font-weight: 600;
+		white-space: nowrap;
+	}
+
+	.badge.small {
+		font-size: 0.65rem;
+	}
+
+	.header-right {
+		display: flex;
+		align-items: center;
+		gap: 0.4rem;
+	}
+
+	.live-dot {
+		width: 8px;
+		height: 8px;
+		border-radius: 50%;
+		background: var(--text-secondary);
+		display: inline-block;
+		flex-shrink: 0;
+	}
+
+	.live-dot.connected {
+		background: var(--accent-green);
+		animation: pulse 2s ease-in-out infinite;
+	}
+
+	@keyframes pulse {
+		0%,
+		100% {
+			opacity: 1;
+		}
+		50% {
+			opacity: 0.4;
+		}
+	}
+
+	.status-text {
+		font-size: 0.75rem;
+		font-weight: 600;
+		color: var(--text-secondary);
+	}
+
+	/* ── Cards ── */
+
+	.card,
+	.main-card {
+		background: var(--bg-card);
+		border-radius: 12px;
+		padding: 1rem;
+		box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+	}
+
+	.main-card {
+		min-height: 200px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+	}
+
+	.card-title {
+		font-size: 0.9rem;
+		margin: 0 0 0.75rem;
+		font-weight: 600;
+		color: var(--text-secondary);
+	}
+
+	.card-header {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		margin-bottom: 0.75rem;
+	}
+
+	.card-header .card-title {
+		margin: 0;
+	}
+
+	/* ── Question Card ── */
+
+	.question-card {
+		width: 100%;
+	}
+
+	.question-header {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		margin-bottom: 0.75rem;
+	}
+
+	.question-label {
+		font-size: 1rem;
+		font-weight: 700;
+		color: var(--accent-blue);
+	}
+
+	.timer {
+		font-size: 1.1rem;
+		font-weight: 700;
+		font-variant-numeric: tabular-nums;
+		color: var(--accent-green);
+	}
+
+	.timer-warning {
+		color: var(--accent-red);
+		animation: pulse 1s ease-in-out infinite;
+	}
+
+	.question-image {
+		width: 100%;
+		border-radius: 8px;
+		display: block;
+	}
+
+	.image-placeholder {
+		width: 100%;
+		aspect-ratio: 16 / 10;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		background: var(--bg-card-hover);
+		border-radius: 8px;
+		color: var(--text-secondary);
+		font-size: 1.25rem;
+	}
+
+	/* ── Result Cards (Winner / Timeout / Idle) ── */
+
+	.result-card {
+		text-align: center;
+		padding: 1rem 0;
+		width: 100%;
+	}
+
+	.result-emoji {
+		font-size: 3rem;
+		margin-bottom: 0.5rem;
+	}
+
+	.result-name {
+		font-size: 1.5rem;
+		font-weight: 700;
+		color: var(--accent-green);
+		margin-bottom: 0.25rem;
+	}
+
+	.result-points {
+		font-size: 2rem;
+		font-weight: 800;
+		color: var(--accent-green);
+	}
+
+	.result-answer {
+		margin-top: 0.5rem;
+		font-size: 1.1rem;
+		color: var(--text-secondary);
+	}
+
+	.result-title {
+		font-size: 1.25rem;
+		font-weight: 700;
+		color: var(--accent-red);
+	}
+
+	.timeout-answers {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.5rem;
+		justify-content: center;
+		margin-top: 0.75rem;
+	}
+
+	.answer-tag {
+		background: var(--bg-card-hover);
+		padding: 0.25rem 0.75rem;
+		border-radius: 6px;
+		font-size: 0.9rem;
+		color: var(--text-primary);
+	}
+
+	.idle-card p {
+		color: var(--text-secondary);
+		margin: 0.25rem 0 0;
+		font-size: 0.9rem;
+	}
+
+	/* ── Scores ── */
+
+	.scores-list {
+		display: flex;
+		flex-direction: column;
+		gap: 0.35rem;
+	}
+
+	.score-row {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		font-size: 0.85rem;
+	}
+
+	.rank {
+		width: 1.5rem;
+		text-align: center;
+		color: var(--text-secondary);
+		font-weight: 600;
+		flex-shrink: 0;
+	}
+
+	.member-name {
+		flex: 1;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.points {
+		font-weight: 700;
+		color: var(--accent-green);
+		flex-shrink: 0;
+	}
+
+	/* ── Events ── */
+
+	.events-list {
+		max-height: 300px;
+		overflow-y: auto;
+		display: flex;
+		flex-direction: column;
+		gap: 0.25rem;
+	}
+
+	.events-list::-webkit-scrollbar {
+		width: 4px;
+	}
+
+	.events-list::-webkit-scrollbar-thumb {
+		background: var(--bg-card-hover);
+		border-radius: 2px;
+	}
+
+	.event-row {
+		font-size: 0.8rem;
+		padding: 0.3rem 0;
+		border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+	}
+
+	.empty-state {
+		color: var(--text-secondary);
+		font-size: 0.85rem;
+		text-align: center;
+		padding: 1rem 0;
+	}
+</style>
