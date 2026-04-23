@@ -35,7 +35,7 @@
 		"@logtape/file": "^2.0.5",
 		"@logtape/logtape": "^2.0.5",
 		"@logtape/pretty": "^2.0.5",
-		"@mdrv/id": "file:../id",
+		"@mdrv/id": "link:@mdrv/id",
 		"@whiskeysockets/baileys": "github:WhiskeySockets/Baileys#d077902",
 		"pino": "^10.3.1",
 		"qrcode-terminal": "^0.12.0",

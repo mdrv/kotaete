@@ -87,12 +87,12 @@ export class QuizEventLogger {
 		return this.db
 	}
 
-	private chain(fn: () => Promise<void>): Promise<void> {
+	private chain(fn: () => Promise<void>, label?: string): Promise<void> {
 		const run = async () => {
 			try {
 				await fn()
 			} catch (err) {
-				this.log.error('fire-and-forget write failed', { error: err })
+				this.log.error(`fire-and-forget write failed: ${label ?? 'unknown'}`, { error: err })
 			}
 		}
 		this.queryChain = this.queryChain.then(run, run)
@@ -168,10 +168,10 @@ export class QuizEventLogger {
 			}
 			if (sets.length === 0) return
 			await db.query(
-				`UPDATE type::thing($sid) MERGE { ${sets.join(', ')} }`,
+				`UPDATE $sid MERGE { ${sets.join(', ')} }`,
 				{ sid: sessionId },
 			)
-		})
+		}, 'updateSessionState')
 	}
 
 	finishSession(sessionId: string, status?: string): void {
@@ -179,10 +179,10 @@ export class QuizEventLogger {
 			const db = this.ensureDb()
 			const finishStatus = status ?? 'finished'
 			await db.query(
-				`UPDATE type::thing($sid) SET status = $status, finished_at = time::now()`,
+				`UPDATE $sid SET status = $status, finished_at = time::now()`,
 				{ sid: sessionId, status: finishStatus },
 			)
-		})
+		}, 'finishSession')
 	}
 
 	// ── Events ──
@@ -200,7 +200,7 @@ export class QuizEventLogger {
 		this.chain(async () => {
 			const db = this.ensureDb()
 			await db.query(
-				`CREATE quiz_event SET session_id = type::thing($sid), group_id = $gid, season_id = $season_id, event_type = $etype, question_no = $qno, member_mid = $mmid, member_name = $mname, member_classgroup = $mcg, data = $data`,
+				`CREATE quiz_event SET session_id = $sid, group_id = $gid, season_id = $season_id, event_type = $etype, question_no = $qno, member_mid = $mmid, member_name = $mname, member_classgroup = $mcg, data = $data`,
 				{
 					sid: sessionId,
 					gid: opts.groupId,
@@ -213,7 +213,7 @@ export class QuizEventLogger {
 					data: opts.data ?? null,
 				},
 			)
-		})
+		}, `logEvent:${opts.eventType}`)
 	}
 
 	// ── Live score ──
@@ -229,13 +229,13 @@ export class QuizEventLogger {
 			const name = member.nickname || member.kananame
 			const reachedExpr = points > 0 ? `reached_at = time::now()` : `reached_at = $existing[0].reached_at`
 			await db.query(
-				`LET $existing = (SELECT points, reached_at FROM live_score WHERE session_id = type::thing($sid) AND member_mid = $mid LIMIT 1);
+				`LET $existing = (SELECT points, reached_at FROM live_score WHERE session_id = $sid AND member_mid = $mid LIMIT 1);
 				IF $existing = [] {
-					CREATE live_score SET session_id = type::thing($sid), member_mid = $mid, points = $points, reached_at = <datetime>${
+					CREATE live_score SET session_id = $sid, member_mid = $mid, points = $points, reached_at = <datetime>${
 					points > 0 ? 'time::now()' : 'NONE'
 				}, member_name = $name, member_classgroup = $classgroup;
 				} ELSE {
-					UPDATE live_score SET points = $points, ${reachedExpr}, member_name = $name, member_classgroup = $classgroup WHERE session_id = type::thing($sid) AND member_mid = $mid;
+					UPDATE live_score SET points = $points, ${reachedExpr}, member_name = $name, member_classgroup = $classgroup WHERE session_id = $sid AND member_mid = $mid;
 				}`,
 				{
 					sid: sessionId,
@@ -245,17 +245,17 @@ export class QuizEventLogger {
 					classgroup: member.classgroup,
 				},
 			)
-		})
+		}, 'upsertLiveScore')
 	}
 
 	deleteLiveScores(sessionId: string): void {
 		this.chain(async () => {
 			const db = this.ensureDb()
 			await db.query(
-				`DELETE FROM live_score WHERE session_id = type::thing($sid)`,
+				`DELETE FROM live_score WHERE session_id = $sid`,
 				{ sid: sessionId },
 			)
-		})
+		}, 'deleteLiveScores')
 	}
 
 	// ── Live member state ──
@@ -274,11 +274,11 @@ export class QuizEventLogger {
 			const name = member.nickname || member.kananame
 			const cdVal = opts.cooldownUntil ? `<datetime>'${opts.cooldownUntil.toISOString()}'` : 'NONE'
 			await db.query(
-				`LET $existing = (SELECT id FROM live_member_state WHERE session_id = type::thing($sid) AND member_mid = $mid LIMIT 1);
+				`LET $existing = (SELECT id FROM live_member_state WHERE session_id = $sid AND member_mid = $mid LIMIT 1);
 				IF $existing = [] {
-					CREATE live_member_state SET session_id = type::thing($sid), member_mid = $mid, member_name = $name, cooldown_until = ${cdVal}, wrong_remaining = $wr;
+					CREATE live_member_state SET session_id = $sid, member_mid = $mid, member_name = $name, cooldown_until = ${cdVal}, wrong_remaining = $wr;
 				} ELSE {
-					UPDATE live_member_state SET member_name = $name, cooldown_until = ${cdVal}, wrong_remaining = $wr WHERE session_id = type::thing($sid) AND member_mid = $mid;
+					UPDATE live_member_state SET member_name = $name, cooldown_until = ${cdVal}, wrong_remaining = $wr WHERE session_id = $sid AND member_mid = $mid;
 				}`,
 				{
 					sid: sessionId,
@@ -287,16 +287,16 @@ export class QuizEventLogger {
 					wr: opts.wrongRemaining ?? null,
 				},
 			)
-		})
+		}, 'upsertMemberState')
 	}
 
 	deleteMemberStates(sessionId: string): void {
 		this.chain(async () => {
 			const db = this.ensureDb()
 			await db.query(
-				`DELETE FROM live_member_state WHERE session_id = type::thing($sid)`,
+				`DELETE FROM live_member_state WHERE session_id = $sid`,
 				{ sid: sessionId },
 			)
-		})
+		}, 'deleteMemberStates')
 	}
 }
