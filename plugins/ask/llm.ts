@@ -1,3 +1,5 @@
+import { copilotAutoModel } from '../../src/copilot-auto.ts'
+
 import type { IncomingMedia } from '../../src/types.ts'
 import { formatSearchResults, searxngSearch } from '../../src/utils/searxng.ts'
 import { getApiHeaders, getBearerToken, getDb, loadGroupMemory, loadMemory } from './memory.ts'
@@ -218,7 +220,7 @@ export async function verifyAndSendImages(
 				method: 'POST',
 				headers: getApiHeaders(ac, token),
 				body: JSON.stringify({
-					model: ac.config.model,
+					model: ac.config.model === 'auto' ? 'gpt-4o' : ac.config.model,
 					messages: [
 						{
 							role: 'system',
@@ -286,7 +288,7 @@ export async function askAi(
 	groupId?: string,
 	isAdmin = false,
 ): Promise<string> {
-	const { apiUrl, model, maxSearchRounds, systemPrompt, memoryKeepRecent } = ac.config
+	const { apiUrl, maxSearchRounds, systemPrompt, memoryKeepRecent } = ac.config
 
 	// Build message array with memory context
 	const memoryMessages: Array<{ role: string; content: string }> = []
@@ -319,6 +321,23 @@ export async function askAi(
 	const url = apiUrl.endsWith('/') ? `${apiUrl}chat/completions` : `${apiUrl}/chat/completions`
 	const token = await getBearerToken(ac)
 
+	// Resolve model — auto routing or static
+	let resolvedModel = ac.config.model
+	let autoSessionToken: string | undefined
+	if (ac.config.isCopilot && ac.config.model === 'auto') {
+		try {
+			const resolved = await copilotAutoModel.resolveModel(token, question)
+			resolvedModel = resolved.model
+			autoSessionToken = resolved.sessionToken
+			ac.ctx.log.info(`ask: auto model resolved to ${resolvedModel}`)
+		} catch (err) {
+			ac.ctx.log.warn(
+				`ask: auto model resolution failed, using gpt-4o: ${err instanceof Error ? err.message : String(err)}`,
+			)
+			resolvedModel = 'gpt-4o'
+		}
+	}
+
 	// Build tool list
 	const allTools = [
 		...buildSearchTools(ac.config.webSearch),
@@ -337,7 +356,7 @@ export async function askAi(
 	// Function calling loop
 	for (let round = 0; round <= maxSearchRounds; round++) {
 		const body: Record<string, unknown> = {
-			model,
+			model: resolvedModel,
 			messages,
 			temperature: 0.7,
 		}
@@ -347,8 +366,10 @@ export async function askAi(
 
 		const response = await fetch(url, {
 			method: 'POST',
-			headers: getApiHeaders(ac, token),
-			body: JSON.stringify(body),
+			headers: {
+				...getApiHeaders(ac, token),
+				...(autoSessionToken ? { 'Copilot-Session-Token': autoSessionToken } : {}),
+			},
 		})
 		if (!response.ok) {
 			const errBody = await response.text()
