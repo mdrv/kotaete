@@ -9,7 +9,7 @@ export async function GET({ params }) {
 		const db = await getDb()
 
 		const [events] = await db.query(
-			'SELECT * FROM quiz_event WHERE session_id = type::thing($sid) ORDER BY created_at DESC LIMIT 50',
+			'SELECT * FROM quiz_event WHERE session_id = type::record($sid) ORDER BY created_at DESC LIMIT 50',
 			{ sid: sessionId as string },
 		).collect<[QuizEvent[]]>()
 
