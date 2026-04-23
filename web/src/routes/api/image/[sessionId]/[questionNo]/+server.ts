@@ -1,4 +1,5 @@
 import { getDb } from '$lib/server/surreal'
+import { RecordId } from 'surrealdb'
 import type { QuizSession } from '$lib/server/types'
 import { json } from '@sveltejs/kit'
 import { readFile, stat } from 'node:fs/promises'
@@ -50,17 +51,24 @@ async function findImage(
 	return null
 }
 
-export async function GET({ params }) {
+/** Extract record key from potentially full RecordId string like 'quiz_session:xxx' */
+function extractKey(id: string): string {
+	const idx = id.indexOf(':')
+	return idx >= 0 ? id.slice(idx + 1) : id
+}
+
+export async function GET({ params }: { params: { sessionId: string; questionNo: string } }) {
 	const { sessionId, questionNo } = params
+	const key = extractKey(sessionId)
 
 	try {
 		const db = await getDb()
+		const sid = new RecordId('quiz_session', key)
 
 		const [sessions] = await db.query(
 			'SELECT * FROM quiz_session WHERE id = $sid',
-			{ sid: sessionId as string },
+			{ sid },
 		).collect<[QuizSession[]]>()
-
 		const session = sessions[0]
 		if (!session) {
 			return json({ error: 'Session not found' }, { status: 400 })

@@ -2,7 +2,7 @@ import { getDb } from '$lib/server/surreal'
 import type { SeasonScore } from '$lib/server/types'
 import { json } from '@sveltejs/kit'
 
-export async function GET({ params }) {
+export async function GET({ params }: { params: { id: string } }) {
 	const { id } = params
 
 	try {

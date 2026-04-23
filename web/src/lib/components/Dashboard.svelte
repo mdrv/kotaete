@@ -175,6 +175,19 @@
 	}
 
 	// ── SSE Handler ────────────────────────────────────────
+	function matchesSeason(record: Record<string, unknown>): boolean {
+		const sid = record.season_id as string | null | undefined
+		if (!sid) return true // sessions without season_id are always shown
+		return sid.startsWith(seasonPrefix)
+	}
+
+	function matchesSession(record: Record<string, unknown>): boolean {
+		if (!session) return false
+		// Both IDs should now be clean strings (key-only)
+		const recSessionId = record.session_id ?? record.id
+		return String(recSessionId) === String(session.id)
+	}
+
 	function handleLiveEvent(
 		table: string,
 		action: string,
@@ -183,10 +196,13 @@
 		switch (table) {
 			case 'quiz_session':
 				if (action === 'UPDATE' || action === 'CREATE') {
+					if (!matchesSeason(record)) break
 					session = record as unknown as QuizSession
 					imageError = false
 				}
 				if (action === 'DELETE') {
+					// Only clear if it's our current session
+					if (!matchesSession(record)) break
 					session = null
 					scores = []
 					events = []
@@ -194,11 +210,13 @@
 				break
 			case 'quiz_event':
 				if (action === 'CREATE') {
+					if (!matchesSession(record)) break
 					events = [record as unknown as QuizEvent, ...events].slice(0, 20)
 				}
 				break
 			case 'live_score':
 				if (action === 'CREATE' || action === 'UPDATE') {
+					if (!matchesSession(record)) break
 					const score = record as unknown as LiveScore
 					const idx = scores.findIndex((s) => s.id === score.id)
 					if (idx >= 0) {
@@ -209,6 +227,7 @@
 				}
 				break
 		}
+	}
 	}
 
 	// ── Timer Effect ───────────────────────────────────────
@@ -257,7 +276,7 @@
 	onMount(async () => {
 		try {
 			const [activeRes, seasonsRes] = await Promise.all([
-				fetch('/api/active'),
+				fetch(`/api/active?prefix=${encodeURIComponent(seasonPrefix)}`),
 				fetch(`/api/seasons?prefix=${encodeURIComponent(seasonPrefix)}`),
 			])
 			const activeData = await activeRes.json()
