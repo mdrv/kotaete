@@ -13,7 +13,7 @@ export async function GET() {
 		const db = await getDb()
 
 		const [seasons] = await db.query(
-			"SELECT season_id, caption, group_id, members FROM season WHERE season_id CONTAINS 'kotaete-s' ORDER BY season_id DESC",
+			"SELECT season_id, caption, group_id, members FROM season WHERE string::starts_with(season_id, 'kotaete-s') ORDER BY season_id DESC",
 		).collect<[SeasonRecord[]]>()
 
 		return json(seasons)

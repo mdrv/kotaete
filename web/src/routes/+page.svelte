@@ -17,6 +17,7 @@
 	let connected = $state(false)
 	let timeRemaining = $state(0)
 	let imageError = $state(false)
+	let showZeroPts = $state(false)
 
 	// ── Derived ────────────────────────────────────────────
 	let displayMode = $derived.by(() => {
@@ -68,9 +69,12 @@
 		[...scores].sort((a, b) => b.points - a.points)
 	)
 
-	let topSeasonScores = $derived.by(() =>
-		[...seasonScores].sort((a, b) => b.points - a.points).slice(0, 20)
-	)
+	let topSeasonScores = $derived.by(() => {
+		const sorted = [...seasonScores].sort((a, b) => b.points - a.points)
+		return showZeroPts
+			? sorted.slice(0, 30)
+			: sorted.filter((s) => s.points > 0).slice(0, 30)
+	})
 
 	// ── Helpers ────────────────────────────────────────────
 	function memberDisplay(
@@ -349,9 +353,17 @@
 		<div class='card'>
 			<div class='card-header'>
 				<h2 class='card-title'>🏅 Season Scoreboard</h2>
-				{#if seasonInfo?.caption}
-					<span class='badge small'>{seasonInfo.caption}</span>
-				{/if}
+				<div class='header-right-group'>
+					{#if seasonInfo?.caption}
+						<span class='badge small'>{seasonInfo.caption}</span>
+					{/if}
+					<button
+						class='toggle-btn'
+						onclick={() => (showZeroPts = !showZeroPts)}
+					>
+						{showZeroPts ? 'Hide' : 'Show'} 0pts
+					</button>
+				</div>
 			</div>
 			<div class='scores-list'>
 				{#each topSeasonScores as score, i (score.id)}
@@ -676,5 +688,29 @@
 		font-size: 0.85rem;
 		text-align: center;
 		padding: 1rem 0;
+	}
+
+	/* ── Toggle Button ── */
+
+	.header-right-group {
+		display: flex;
+		align-items: center;
+		gap: 0.4rem;
+	}
+
+	.toggle-btn {
+		background: var(--bg-card-hover);
+		color: var(--text-secondary);
+		border: 1px solid rgba(255, 255, 255, 0.1);
+		border-radius: 6px;
+		padding: 0.2rem 0.5rem;
+		font-size: 0.65rem;
+		cursor: pointer;
+		white-space: nowrap;
+	}
+
+	.toggle-btn:hover {
+		color: var(--text-primary);
+		border-color: rgba(255, 255, 255, 0.2);
 	}
 </style>

@@ -9,7 +9,14 @@ export async function GET({ params }) {
 		const db = await getDb()
 
 		const [scores] = await db.query(
-			'SELECT * FROM season_score WHERE season_id = $sid ORDER BY points DESC',
+			`SELECT
+				id,
+				season_id,
+				member_mid: mid,
+				member_name: kananame,
+				member_classgroup: classgroup,
+				points
+			FROM season_score WHERE season_id = $sid ORDER BY points DESC`,
 			{ sid: id as string },
 		).collect<[SeasonScore[]]>()
 
