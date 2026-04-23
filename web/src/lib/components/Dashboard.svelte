@@ -662,21 +662,24 @@
 				{#if sortedScores.length > 0}
 					<div class='scores-list'>
 						{#each sortedScores.slice(0, 10) as score, i (score.id)}
-							{@const ms = memberStates.get(score.member_mid)}
+								{@const ms = memberStates.get(score.member_mid)}
 							{@const cooldownSec = ms?.cooldown_until
-							? Math.max(0, Math.ceil((new Date(ms.cooldown_until).getTime() - now) / 1000))
-							: 0}
-							<div class='score-row'>
-								<span class='rank'>{i + 1}</span>
-								<span class='member-name'>
-									{memberDisplay(score.member_name, score.member_classgroup)}
-								</span>
-								{#if cooldownSec > 0}
-									<span class='cooldown-badge' title='Cooldown'
-									>⏳ {cooldownSec}s</span>
-								{/if}
-								<span class='points'>{score.points}pts</span>
-							</div>
+								? Math.max(0, Math.ceil((new Date(ms.cooldown_until).getTime() - now) / 1000))
+								: 0}
+							{@const cooldownText = cooldownSec > 0
+								? `${Math.floor(cooldownSec / 60)}:${(cooldownSec % 60).toString().padStart(2, '0')}`
+								: ''}
+								<div class='score-row'>
+									<span class='rank'>{i + 1}</span>
+									<span class='member-name'>
+										{memberDisplay(score.member_name, score.member_classgroup)}
+									</span>
+									{#if cooldownSec > 0}
+										<span class='cooldown-badge' title='Cooldown'
+										>⏳ {cooldownText}</span>
+									{/if}
+									<span class='points'>{score.points}pts</span>
+								</div>
 						{/each}
 					</div>
 				{:else}
