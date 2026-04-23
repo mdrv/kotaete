@@ -82,8 +82,7 @@
 			if (a.reached_at && b.reached_at) {
 				return a.reached_at.localeCompare(b.reached_at)
 			}
-			const cgDiff = classgroupRank(a.member_classgroup)
-				- classgroupRank(b.member_classgroup)
+			const cgDiff = classgroupCompare(a.member_classgroup, b.member_classgroup)
 			if (cgDiff !== 0) return cgDiff
 			return (a.member_name ?? '').localeCompare(b.member_name ?? '', 'ja')
 		})
@@ -94,8 +93,7 @@
 			if (b.points !== a.points) return b.points - a.points
 			const aRa = a.reached_at
 			const bRa = b.reached_at
-			const cgDiff = classgroupRank(a.member_classgroup)
-				- classgroupRank(b.member_classgroup)
+			const cgDiff = classgroupCompare(a.member_classgroup, b.member_classgroup)
 			if (cgDiff !== 0) return cgDiff
 			return (a.member_name ?? '').localeCompare(b.member_name ?? '', 'ja')
 		})
@@ -118,22 +116,21 @@
 		applyTheme(theme)
 	}
 
-	const CLASSGROUP_ORDER = [
-		'7A',
-		'7B',
-		'8A',
-		'8B',
-		'10A',
-		'10B',
-		'10C',
-		'10D',
-		'11C',
-	]
-
-	function classgroupRank(cg: string | null | undefined): number {
-		if (!cg) return CLASSGROUP_ORDER.length
-		const idx = CLASSGROUP_ORDER.indexOf(cg)
-		return idx >= 0 ? idx : CLASSGROUP_ORDER.length
+	function classgroupCompare(a: string | null | undefined, b: string | null | undefined): number {
+		if (!a && !b) return 0
+		if (!a) return 1
+		if (!b) return -1
+		// Natural sort: extract leading number, then compare remainder alphabetically
+		const numA = parseInt(a, 10)
+		const numB = parseInt(b, 10)
+		if (!isNaN(numA) && !isNaN(numB)) {
+			if (numA !== numB) return numA - numB
+			// Same number — compare suffix alphabetically
+			return a.replace(/^\d+/, '').localeCompare(b.replace(/^\d+/, ''))
+		}
+		if (!isNaN(numA)) return -1
+		if (!isNaN(numB)) return 1
+		return a.localeCompare(b)
 	}
 
 	function memberDisplay(
@@ -162,10 +159,10 @@
 			}
 			case 'answer_wrong': {
 				const remaining = (evt.data.remainingChances as number) ?? 0
-				const emojis = ['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣']
-				const emoji = emojis[remaining] ?? `${remaining}.`
+				const emojis = ['🙈', '1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣']
+				const emoji = emojis[remaining + 1] ?? `${remaining + 1}`
 				const answerText = evt.data.answerText as string | undefined
-				const suffix = answerText ? `${answerText} (sisa ${remaining + 1} kali jawab)` : 'wrong'
+				const suffix = answerText ? `${answerText}` : 'wrong answer'
 				return {
 					text: `${emoji} ${name} — ${suffix}`,
 					color: 'var(--accent-orange)',

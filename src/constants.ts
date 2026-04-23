@@ -42,7 +42,7 @@ export const QUIZ_TUNABLES = {
 		/** Number of wrong answers allowed per player per question (normal stage) */
 		maxCount: 2,
 		/** Emojis to show for each remaining wrong attempt (index 0 = first wrong, etc.) */
-		emojiStreak: ['2️⃣', '1️⃣', '🙊'] as ReadonlyArray<string>,
+		emojiStreak: ['2️⃣', '1️⃣', '🙈'] as ReadonlyArray<string>,
 	},
 	stage: {
 		/** Question number that triggers special/god stage behavior */
