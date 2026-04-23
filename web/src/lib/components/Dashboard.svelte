@@ -209,6 +209,32 @@
 		return idx >= 0 ? s.slice(idx + 1) : s
 	}
 
+	// ── Score Refresh (REST fallback when SSE live_score fails) ──
+	let scoreRefreshTimer: ReturnType<typeof setTimeout> | null = null
+
+	function scheduleScoreRefresh() {
+		if (scoreRefreshTimer) return
+		scoreRefreshTimer = setTimeout(async () => {
+			scoreRefreshTimer = null
+			try {
+				const res = await fetch(`/api/active?prefix=${encodeURIComponent(seasonPrefix)}`)
+				const data = await res.json()
+				if (data.session) {
+					session = data.session
+					scores = data.scores ?? []
+				}
+				// Also refresh season scores if a season is selected
+				if (seasonInfo) {
+					const seasonRes = await fetch(`/api/season/${encodeURIComponent(seasonInfo.id)}`)
+					const seasonData = await seasonRes.json()
+					seasonScores = seasonData.scores ?? []
+				}
+			} catch (e) {
+				console.error('[refresh] failed:', e)
+			}
+		}, 500)
+	}
+
 	function matchesSession(record: Record<string, unknown>): boolean {
 		if (!session) {
 			console.debug('[SSE] matchesSession: no session loaded, dropping', { table: record._table })
@@ -253,6 +279,9 @@
 						session_id: normalizeRecordId(record.session_id),
 					}
 					events = [normEvent as unknown as QuizEvent, ...events].slice(0, 20)
+					// Fallback: refresh scores via REST on quiz events
+					// (live_score SSE may not fire due to SurrealDB live query issues)
+					scheduleScoreRefresh()
 				}
 				break
 			case 'live_score':
@@ -431,6 +460,7 @@
 
 	onDestroy(() => {
 		disconnectFn?.()
+		if (scoreRefreshTimer) clearTimeout(scoreRefreshTimer)
 	})
 </script>
 
