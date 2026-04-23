@@ -44,7 +44,7 @@ export const GET: RequestHandler = async ({ request }) => {
 			try {
 				// Subscribe to all tables
 				for (const tableName of TABLES) {
-					log.debug('subscribing to live table', { table: tableName })
+					log.debug('calling db.live()', { table: tableName })
 					const live = await db.live(new Table(tableName))
 					log.info('live subscription created', { table: tableName })
 					subs.push(live)
@@ -71,11 +71,8 @@ export const GET: RequestHandler = async ({ request }) => {
 								log.warning('live iterator ended unexpectedly', { table: tableName })
 							}
 						} catch (err) {
-							log.error('live query error', {
-								table: tableName,
-								error: err instanceof Error ? err.message : String(err),
-								stack: err instanceof Error ? err.stack : undefined,
-							})
+							console.error(`[SSE] LIVE ERROR (${tableName}):`, err)
+							log.error('live query error ({table}): {error}', { table: tableName, error: err instanceof Error ? err.stack ?? err.message : JSON.stringify(err) })
 						}
 					})()
 				})
@@ -88,10 +85,8 @@ export const GET: RequestHandler = async ({ request }) => {
 					}),
 				])
 			} catch (err) {
-				log.error('SSE setup error', {
-					error: err instanceof Error ? err.message : String(err),
-					stack: err instanceof Error ? err.stack : undefined,
-				})
+				console.error('[SSE] SETUP ERROR:', err)
+				log.error('SSE setup error: {error}', { error: err instanceof Error ? err.stack ?? err.message : JSON.stringify(err) })
 			} finally {
 				closed = true
 				clearInterval(heartbeat)
