@@ -33,12 +33,16 @@ export async function GET({ url }: { url: URL }) {
 		const session = sessions[0] ? normalizeSession(sessions[0] as any) as QuizSession : null
 		let scores: LiveScore[] = []
 
+		console.log(`[active] prefix=${prefix} sessions_found=${sessions.length}`, session ? `session_id=${session.id} status=${(sessions[0] as any)?.status} season_id=${(sessions[0] as any)?.season_id}` : 'null')
+
 		if (session) {
 			const sid = new RecordId('quiz_session', session.id)
+			console.log(`[active] querying live_score with sid=`, sid)
 			const [scoreResults] = await db.query(
 				'SELECT * FROM live_score WHERE session_id = $sid ORDER BY points DESC',
 				{ sid },
 			).collect<[LiveScore[]]>()
+			console.log(`[active] live_score count=${scoreResults.length}`, scoreResults.length > 0 ? `first_id=${normalizeId((scoreResults[0] as any)?.id)}` : '')
 			scores = scoreResults.map((s) => normalizeSession(s as any) as LiveScore)
 		}
 

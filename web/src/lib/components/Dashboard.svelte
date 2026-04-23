@@ -222,6 +222,9 @@
 				if (data.session) {
 					session = data.session
 					scores = data.scores ?? []
+					console.debug('[refresh] updated scores:', scores.length)
+				} else {
+					console.debug('[refresh] no session from API (quiz not running?)')
 				}
 				// Also refresh season scores if a season is selected
 				if (seasonInfo) {
@@ -258,16 +261,24 @@
 			case 'quiz_session':
 				if (action === 'UPDATE' || action === 'CREATE') {
 					if (!matchesSeason(record)) break
-					const norm = { ...record, id: normalizeRecordId(record.id) }
-					session = norm as unknown as QuizSession
-					imageError = false
+					const norm = { ...record, id: normalizeRecordId(record.id) } as Record<string, unknown>
+					const newStatus = norm.status as string | undefined
+					if (newStatus && newStatus !== 'running' && session) {
+						// Session ended (stopped/finished/crashed) — clear like DELETE
+						console.debug('[SSE] quiz session ended:', newStatus)
+						session = null
+						scores = []
+						events = []
+					} else {
+						session = norm as unknown as QuizSession
+						imageError = false
+					}
 				}
 				if (action === 'DELETE') {
-					// Only clear if it's our current session
 					if (!matchesSession(record)) break
 					session = null
-					scores = []
-					events = []
+						scores = []
+						events = []
 				}
 				break
 			case 'quiz_event':
