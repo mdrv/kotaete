@@ -10,7 +10,7 @@ export function parseAskArgs(args: Record<string, string | undefined>): AskConfi
 	const apiKey = args['apiKey'] ?? 'c28e5e85d9714c8abfb6408353fe54a7.dG0sZUU1Jovsvyib'
 	const defaultApiUrl = isCopilot ? 'https://api.githubcopilot.com' : 'https://api.z.ai/api/coding/paas/v4/'
 	const apiUrl = args['apiUrl'] ?? defaultApiUrl
-	const defaultModel = isCopilot ? 'auto' : 'glm-5v-turbo'
+	const defaultModel = isCopilot ? 'gpt-4o' : 'glm-5v-turbo'
 	const model = args['model'] ?? defaultModel
 	const busyMessage = args['busyMessage'] ?? '🐻 Kuis sedang berjalan! Boleh tanya kalau sudah selesai, ya.'
 	const maxMessages = Number(args['maxMessages'] ?? 3)
