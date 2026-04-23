@@ -28,6 +28,11 @@ export function connectLive(
 			onEvent('quiz_session', data.action, data.record)
 		})
 
+		es.addEventListener('season_score', (e) => {
+			const data = JSON.parse(e.data)
+			onEvent('season_score', data.action, data.record)
+		})
+
 		es.onopen = () => {
 			reconnectDelay = 1000
 			onOpen?.()

@@ -213,9 +213,16 @@
 	}
 
 	function matchesSession(record: Record<string, unknown>): boolean {
-		if (!session) return false
+		if (!session) {
+			console.debug('[SSE] matchesSession: no session loaded, dropping', { table: record._table })
+			return false
+		}
 		const recSessionId = normalizeRecordId(record.session_id ?? record.id)
-		return recSessionId === String(session.id)
+		const match = recSessionId === String(session.id)
+		if (!match) {
+			console.debug('[SSE] matchesSession: mismatch', { recSessionId, sessionId: session.id })
+		}
+		return match
 	}
 
 	function handleLiveEvent(
@@ -285,6 +292,24 @@
 						const next = new Map(memberStates)
 						next.delete(mid)
 						memberStates = next
+					}
+				}
+				break
+			case 'season_score':
+				if (action === 'CREATE' || action === 'UPDATE') {
+					if (!matchesSeason(record)) break
+					const normSeasonScore = {
+						...record,
+						id: normalizeRecordId(record.id),
+					} as unknown as SeasonScore
+					// Only update if this matches the currently viewed season
+					if (seasonInfo && normSeasonScore.season_id === seasonInfo.id) {
+						const idx = seasonScores.findIndex((s) => s.id === normSeasonScore.id)
+						if (idx >= 0) {
+							seasonScores = seasonScores.map((s, i) => (i === idx ? normSeasonScore : s))
+						} else {
+							seasonScores = [...seasonScores, normSeasonScore]
+						}
 					}
 				}
 				break

@@ -3,7 +3,7 @@ import { getDb } from '$lib/server/surreal'
 import { type LiveSubscription, Table } from 'surrealdb'
 import type { RequestHandler } from './$types'
 
-const TABLES = ['quiz_event', 'live_score', 'live_member_state', 'quiz_session'] as const
+const TABLES = ['quiz_event', 'live_score', 'live_member_state', 'quiz_session', 'season_score'] as const
 const log = getLogger(['kotaete', 'web', 'sse'])
 
 export const GET: RequestHandler = async ({ request }) => {
