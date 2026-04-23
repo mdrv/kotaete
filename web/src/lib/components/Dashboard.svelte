@@ -48,9 +48,9 @@
 		const name = e.member_name ?? '???'
 		const cg = e.member_classgroup
 		const displayName = cg ? `${name} (${cg})` : name
-		const pts = (e.data.points as number) ?? 0
-		const answer = (e.data.matched_answer as string)
-			?? (e.data.answer as string) ?? null
+		const pts = (e.data.totalGained as number) ?? (e.data.gained as number) ?? 0
+		const answer = (e.data.matchedAnswer as string)
+			?? (e.data.matched_answer as string) ?? null
 		return { displayName, points: pts, answer, questionNo: e.question_no }
 	})
 
@@ -148,11 +148,13 @@
 
 		switch (evt.event_type) {
 		case 'answer_correct': {
-			const pts = (evt.data.totalGained as number) ?? (evt.data.gained as number) ?? 0
-			return {
-				text: `✅ ${name} — +${pts}pts`,
-				color: 'var(--accent-green)',
-			}
+		const pts = (evt.data.totalGained as number) ?? (evt.data.gained as number) ?? 0
+		const answer = (evt.data.matchedAnswer as string) ?? (evt.data.matched_answer as string) ?? null
+		const suffix = answer ? ` (+${pts}pts, ${answer})` : ` (+${pts}pts)`
+		return {
+			text: `✅ ${name}${suffix}`,
+			color: 'var(--accent-green)',
+		}
 		}
 		case 'answer_wrong': {
 			const attempt = (evt.data.remainingChances as number) ?? 1
