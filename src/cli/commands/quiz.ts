@@ -113,18 +113,13 @@ export const quizCmd = app
 					process.exit(1)
 				}
 
-				if (jobs.length === 1) {
-					await runControl({ type: 'quiz-stop', id: jobs[0]!.id, silent: flags.silent }, flags)
-					return
-				}
-
-				// Multiple jobs
+				// Show selection (1+ jobs)
 				if (flags.json) {
 					console.log(
 						JSON.stringify(
 							{
 								ok: false,
-								message: `multiple jobs active — pass an id to stop a specific job`,
+									message: `active jobs found — select one to stop or pass an id`,
 								jobs,
 							},
 							null,
