@@ -1,4 +1,5 @@
 <script lang='ts'>
+	import { browser } from '$app/environment'
 	import { connectLive } from '$lib/live-connection'
 	import type {
 		LiveMemberState as LiveMemberStateType,
@@ -7,7 +8,6 @@
 		QuizSession,
 		SeasonScore,
 	} from '$lib/types'
-	import { browser } from '$app/environment'
 	import { onDestroy, onMount } from 'svelte'
 
 	let { seasonPrefix = 'kotaete-s' }: { seasonPrefix?: string } = $props()
@@ -32,7 +32,9 @@
 	let displayMode = $derived.by(() => {
 		if (!session) return 'idle'
 		// Session state is source of truth — show question immediately when accepting
-		if (session.accepting_answers && session.current_question !== null) return 'question'
+		if (session.accepting_answers && session.current_question !== null) {
+			return 'question'
+		}
 		// Otherwise show result from latest event
 		const latest = events[0]
 		if (latest) {
@@ -147,28 +149,30 @@
 		const qNo = evt.question_no
 
 		switch (evt.event_type) {
-		case 'answer_correct': {
-		const pts = (evt.data.totalGained as number) ?? (evt.data.gained as number) ?? 0
-		const answer = (evt.data.matchedAnswer as string) ?? (evt.data.matched_answer as string) ?? null
-		const suffix = answer ? ` (+${pts}pts, ${answer})` : ` (+${pts}pts)`
-		return {
-			text: `✅ ${name}${suffix}`,
-			color: 'var(--accent-green)',
-		}
-		}
-		case 'answer_wrong': {
-			const attempt = (evt.data.remainingChances as number) ?? 1
-			const maxAttempts = 5
-			const wrongNum = maxAttempts - attempt
-			const emojis = ['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣']
-			const emoji = emojis[wrongNum - 1] ?? `${wrongNum}.`
-			const answerText = evt.data.answerText as string | undefined
-			const suffix = answerText ? `${answerText} is incorrect` : 'wrong'
-			return {
-				text: `${emoji} ${name} — ${suffix}`,
-				color: 'var(--accent-orange)',
+			case 'answer_correct': {
+				const pts = (evt.data.totalGained as number)
+					?? (evt.data.gained as number) ?? 0
+				const answer = (evt.data.matchedAnswer as string)
+					?? (evt.data.matched_answer as string) ?? null
+				const suffix = answer ? ` (+${pts}pts, ${answer})` : ` (+${pts}pts)`
+				return {
+					text: `✅ ${name}${suffix}`,
+					color: 'var(--accent-green)',
+				}
 			}
-		}
+			case 'answer_wrong': {
+				const remaining = (evt.data.remainingChances as number) ?? 0
+				const emojis = ['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣']
+				const emoji = remaining > 0
+					? emojis[remaining - 1] ?? `${remaining}.`
+					: '0️⃣'
+				const answerText = evt.data.answerText as string | undefined
+				const suffix = answerText ? `${answerText} is incorrect` : 'wrong'
+				return {
+					text: `${emoji} ${name} — ${suffix}`,
+					color: 'var(--accent-orange)',
+				}
+			}
 			case 'timeout':
 				return {
 					text: qNo ? `⏰ Q${qNo} timed out` : '⏰ Timed out',
@@ -240,14 +244,22 @@
 			case 'quiz_event':
 				if (action === 'CREATE') {
 					if (!matchesSession(record)) break
-					const normEvent = { ...record, id: normalizeRecordId(record.id), session_id: normalizeRecordId(record.session_id) }
+					const normEvent = {
+						...record,
+						id: normalizeRecordId(record.id),
+						session_id: normalizeRecordId(record.session_id),
+					}
 					events = [normEvent as unknown as QuizEvent, ...events].slice(0, 20)
 				}
 				break
 			case 'live_score':
 				if (action === 'CREATE' || action === 'UPDATE') {
 					if (!matchesSession(record)) break
-					const normScore = { ...record, id: normalizeRecordId(record.id), session_id: normalizeRecordId(record.session_id) } as unknown as LiveScore
+					const normScore = {
+						...record,
+						id: normalizeRecordId(record.id),
+						session_id: normalizeRecordId(record.session_id),
+					} as unknown as LiveScore
 					const idx = scores.findIndex((s) => s.id === normScore.id)
 					if (idx >= 0) {
 						scores = scores.map((s, i) => (i === idx ? normScore : s))
@@ -260,7 +272,11 @@
 				if (action === 'CREATE' || action === 'UPDATE') {
 					if (!matchesSession(record)) break
 					const mid = record.member_mid as string
-					const normState = { ...record, id: normalizeRecordId(record.id), session_id: normalizeRecordId(record.session_id) } as unknown as LiveMemberStateType
+					const normState = {
+						...record,
+						id: normalizeRecordId(record.id),
+						session_id: normalizeRecordId(record.session_id),
+					} as unknown as LiveMemberStateType
 					const next = new Map(memberStates)
 					next.set(mid, normState)
 					memberStates = next
@@ -296,7 +312,9 @@
 
 	// ── Now Ticker (drives cooldown countdowns) ──
 	$effect(() => {
-		const tick = () => { now = Date.now() }
+		const tick = () => {
+			now = Date.now()
+		}
 		tick()
 		const interval = setInterval(tick, 1000)
 		return () => clearInterval(interval)
@@ -331,11 +349,16 @@
 	onMount(async () => {
 		// Init theme from localStorage or system preference
 		if (browser) {
-			const saved = localStorage.getItem('kotaete-theme') as 'dark' | 'light' | null
+			const saved = localStorage.getItem('kotaete-theme') as
+				| 'dark'
+				| 'light'
+				| null
 			if (saved) {
 				theme = saved
 			} else {
-				theme = window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark'
+				theme = window.matchMedia('(prefers-color-scheme: light)').matches
+					? 'light'
+					: 'dark'
 			}
 			applyTheme(theme)
 		}
@@ -415,9 +438,39 @@
 			<span class='status-text'>{connected ? 'LIVE' : 'Connecting...'}</span>
 			<button class='theme-toggle' onclick={toggleTheme} title='Toggle theme'>
 				{#if theme === 'dark'}
-					<svg width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><circle cx='12' cy='12' r='5'/><line x1='12' y1='1' x2='12' y2='3'/><line x1='12' y1='21' x2='12' y2='23'/><line x1='4.22' y1='4.22' x2='5.64' y2='5.64'/><line x1='18.36' y1='18.36' x2='19.78' y2='19.78'/><line x1='1' y1='12' x2='3' y2='12'/><line x1='21' y1='12' x2='23' y2='12'/><line x1='4.22' y1='19.78' x2='5.64' y2='18.36'/><line x1='18.36' y1='5.64' x2='19.78' y2='4.22'/></svg>
+					<svg
+						width='16'
+						height='16'
+						viewBox='0 0 24 24'
+						fill='none'
+						stroke='currentColor'
+						stroke-width='2'
+						stroke-linecap='round'
+						stroke-linejoin='round'
+					>
+						<circle cx='12' cy='12' r='5' />
+						<line x1='12' y1='1' x2='12' y2='3' />
+						<line x1='12' y1='21' x2='12' y2='23' />
+						<line x1='4.22' y1='4.22' x2='5.64' y2='5.64' />
+						<line x1='18.36' y1='18.36' x2='19.78' y2='19.78' />
+						<line x1='1' y1='12' x2='3' y2='12' />
+						<line x1='21' y1='12' x2='23' y2='12' />
+						<line x1='4.22' y1='19.78' x2='5.64' y2='18.36' />
+						<line x1='18.36' y1='5.64' x2='19.78' y2='4.22' />
+					</svg>
 				{:else}
-					<svg width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z'/></svg>
+					<svg
+						width='16'
+						height='16'
+						viewBox='0 0 24 24'
+						fill='none'
+						stroke='currentColor'
+						stroke-width='2'
+						stroke-linecap='round'
+						stroke-linejoin='round'
+					>
+						<path d='M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z' />
+					</svg>
 				{/if}
 			</button>
 		</div>
@@ -489,20 +542,23 @@
 				<div class='card'>
 					<h2 class='card-title'>📊 Live Scores</h2>
 					<div class='scores-list'>
-							{#each sortedScores.slice(0, 10) as score, i (score.id)}
-								{@const ms = memberStates.get(score.member_mid)}
-								{@const cooldownSec = ms?.cooldown_until ? Math.max(0, Math.ceil((new Date(ms.cooldown_until).getTime() - now) / 1000)) : 0}
-								<div class='score-row'>
-									<span class='rank'>{i + 1}</span>
-									<span class='member-name'>
-										{memberDisplay(score.member_name, score.member_classgroup)}
-									</span>
-									{#if cooldownSec > 0}
-										<span class='cooldown-badge' title='Cooldown'>⏳ {cooldownSec}s</span>
-									{/if}
-									<span class='points'>{score.points}pts</span>
-								</div>
-							{/each}
+						{#each sortedScores.slice(0, 10) as score, i (score.id)}
+							{@const ms = memberStates.get(score.member_mid)}
+							{@const cooldownSec = ms?.cooldown_until
+							? Math.max(0, Math.ceil((new Date(ms.cooldown_until).getTime() - now) / 1000))
+							: 0}
+							<div class='score-row'>
+								<span class='rank'>{i + 1}</span>
+								<span class='member-name'>
+									{memberDisplay(score.member_name, score.member_classgroup)}
+								</span>
+								{#if cooldownSec > 0}
+									<span class='cooldown-badge' title='Cooldown'
+									>⏳ {cooldownSec}s</span>
+								{/if}
+								<span class='points'>{score.points}pts</span>
+							</div>
+						{/each}
 					</div>
 				</div>
 			{/if}
