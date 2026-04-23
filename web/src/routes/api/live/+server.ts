@@ -8,9 +8,10 @@ const log = getLogger(['kotaete', 'web', 'sse'])
 
 export const GET: RequestHandler = async ({ request }) => {
 	const signal = request.signal
+	log.info('new SSE connection')
+
 	const db = await getDb()
-	const connId = crypto.randomUUID().slice(0, 8)
-	log.info('new SSE connection', { connId })
+	log.debug('db connection ready')
 
 	const stream = new ReadableStream({
 		async start(controller) {
@@ -24,7 +25,7 @@ export const GET: RequestHandler = async ({ request }) => {
 						encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`),
 					)
 				} catch (err) {
-					log.warning('send failed, closing', { connId, event, error: String(err) })
+					log.warning('send failed', { event, error: err instanceof Error ? err.message : String(err) })
 					closed = true
 				}
 			}
@@ -38,56 +39,68 @@ export const GET: RequestHandler = async ({ request }) => {
 				}
 			}, 30_000)
 
-			const unsubFns: (() => void)[] = []
 			const subs: LiveSubscription[] = []
 
 			try {
+				// Subscribe to all tables
 				for (const tableName of TABLES) {
-					log.debug('subscribing to live table', { connId, table: tableName })
+					log.debug('subscribing to live table', { table: tableName })
 					const live = await db.live(new Table(tableName))
-					log.debug('live subscription created', { connId, table: tableName })
-
-					const unsub = live.subscribe((message) => {
-						if (signal.aborted || closed) return
-						log.debug('live event', {
-							connId,
-							table: tableName,
-							action: message.action,
-							recordId: String(message.recordId),
-						})
-						send(tableName, {
-							action: message.action,
-							record: message.value,
-						})
-					})
-					unsubFns.push(unsub)
+					log.info('live subscription created', { table: tableName })
 					subs.push(live)
 				}
 
-				log.info('all live subscriptions active', { connId, tables: TABLES.length })
+				log.info('all subscriptions active, entering event loop')
 
-				// Block until abort — subscribe callbacks don't "end"
-				await new Promise<void>((resolve) => {
-					signal.addEventListener('abort', () => {
-						log.info('abort signal received', { connId })
-						resolve()
-					}, { once: true })
+				// Process events from all subscriptions concurrently.
+				// Each subscription runs in its own loop so one ending
+				// doesn't collapse the others.
+				const tasks = subs.map((sub, i) => {
+					const tableName = TABLES[i]
+					return (async () => {
+						try {
+							for await (const message of sub) {
+								if (signal.aborted) break
+								log.debug('live event', { table: tableName, action: message.action, recordId: String(message.recordId) })
+								send(tableName, {
+									action: message.action,
+									record: message.value,
+								})
+							}
+							if (!signal.aborted) {
+								log.warning('live iterator ended unexpectedly', { table: tableName })
+							}
+						} catch (err) {
+							log.error('live query error', {
+								table: tableName,
+								error: err instanceof Error ? err.message : String(err),
+								stack: err instanceof Error ? err.stack : undefined,
+							})
+						}
+					})()
 				})
+
+				// Wait until client disconnects or all tasks finish
+				await Promise.race([
+					Promise.all(tasks),
+					new Promise<void>((resolve) => {
+						signal.addEventListener('abort', () => resolve(), { once: true })
+					}),
+				])
 			} catch (err) {
-				log.error('SSE error', { connId, error: String(err) })
+				log.error('SSE setup error', {
+					error: err instanceof Error ? err.message : String(err),
+					stack: err instanceof Error ? err.stack : undefined,
+				})
 			} finally {
 				closed = true
 				clearInterval(heartbeat)
-				log.info('cleaning up SSE connection', { connId, unsubCount: unsubFns.length })
-				for (const unsub of unsubFns) {
-					try { unsub() } catch { /* ignore */ }
-				}
-				// Kill live queries to free SurrealDB resources
+				log.info('cleaning up SSE', { subs: subs.length })
 				for (const sub of subs) {
 					try { await sub.kill() } catch { /* ignore */ }
 				}
 				try { controller.close() } catch { /* already closed */ }
-				log.info('SSE connection closed', { connId })
+				log.info('SSE closed')
 			}
 		},
 	})
