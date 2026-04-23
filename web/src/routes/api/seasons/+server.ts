@@ -8,12 +8,14 @@ interface SeasonRecord {
 	members: unknown
 }
 
-export async function GET() {
+export async function GET({ url }: { url: URL }) {
+	const prefix = url.searchParams.get('prefix') ?? 'kotaete-s'
 	try {
 		const db = await getDb()
 
 		const [seasons] = await db.query(
-			"SELECT season_id, caption, group_id, members FROM season WHERE string::starts_with(season_id, 'kotaete-s') ORDER BY season_id DESC",
+			`SELECT season_id, caption, group_id, members FROM season WHERE string::starts_with(season_id, $prefix) ORDER BY season_id DESC`,
+			{ prefix },
 		).collect<[SeasonRecord[]]>()
 
 		return json(seasons)

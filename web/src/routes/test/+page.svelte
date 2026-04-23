@@ -2,4 +2,4 @@
 	import Dashboard from '$lib/components/Dashboard.svelte'
 </script>
 
-<Dashboard seasonPrefix='kotaete-s' />
+<Dashboard seasonPrefix='test-' />
