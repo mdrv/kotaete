@@ -73,7 +73,7 @@ const SCHEMA_QUERIES = [
 	`DEFINE FIELD IF NOT EXISTS nickname ON season_score TYPE string`,
 	`DEFINE FIELD IF NOT EXISTS kananame ON season_score TYPE string`,
 	`DEFINE FIELD IF NOT EXISTS classgroup ON season_score TYPE string`,
-	`DEFINE INDEX IF NOT EXISTS season_score_unique ON season_score COLUMNS (season_id, mid) UNIQUE`,
+	`DEFINE INDEX IF NOT EXISTS season_score_unique ON season_score COLUMNS season_id, mid UNIQUE`,
 ] as const
 
 type ScoreRow = {
