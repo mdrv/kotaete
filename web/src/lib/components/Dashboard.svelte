@@ -164,10 +164,10 @@
 				const remaining = (evt.data.remainingChances as number) ?? 0
 				const emojis = ['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣']
 				const emoji = remaining > 0
-					? emojis[remaining - 1] ?? `${remaining}.`
+					? emojis[remaining] ?? `${remaining}.`
 					: '0️⃣'
 				const answerText = evt.data.answerText as string | undefined
-				const suffix = answerText ? `${answerText} (sisa ${remaining} kali jawab)` : 'wrong'
+				const suffix = answerText ? `${answerText} (sisa ${remaining + 1} kali jawab)` : 'wrong'
 				return {
 					text: `${emoji} ${name} — ${suffix}`,
 					color: 'var(--accent-orange)',
