@@ -1,5 +1,5 @@
+import { select } from '@crustjs/prompts'
 import { createConnection } from 'node:net'
-import * as readline from 'node:readline'
 import { DEFAULT_SOCKET_PATH } from '../../constants.ts'
 import type { RelayResponse } from '../../daemon/protocol.ts'
 import { expandHome } from '../../utils/path.ts'
@@ -64,28 +64,13 @@ async function runControl(
 	console.log(`✅ ${response.message}`)
 }
 
-function promptSelection(options: Array<{ id: string; label: string }>): Promise<string> {
-	return new Promise((resolve, reject) => {
-		if (!process.stdin.isTTY) {
-			reject(new Error('not a TTY — pass a job id explicitly'))
-			return
-		}
-		const rl = readline.createInterface({ input: process.stdin, output: process.stdout })
-		console.log('')
-		for (const opt of options) {
-			console.log(`  ${opt.id}  ${opt.label}`)
-		}
-		console.log('')
-		rl.question('Select job id to stop: ', (answer) => {
-			rl.close()
-			const trimmed = answer.trim()
-			const match = options.find((opt) => opt.id === trimmed)
-			if (!match) {
-				reject(new Error(`invalid selection: "${trimmed}"`))
-				return
-			}
-			resolve(match.id)
-		})
+async function promptSelection(options: Array<{ id: string; label: string }>): Promise<string> {
+	return await select({
+		message: 'Select a job to stop',
+		choices: options.map((opt) => ({
+			value: opt.id,
+			label: `${opt.id}  ${opt.label}`,
+		})),
 	})
 }
 
