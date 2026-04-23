@@ -144,22 +144,26 @@
 		const qNo = evt.question_no
 
 		switch (evt.event_type) {
-			case 'answer_correct': {
-				const pts = (evt.data.gained as number) ?? 0
-				return {
-					text: `✅ ${name} — +${pts}pts`,
-					color: 'var(--accent-green)',
-				}
+		case 'answer_correct': {
+			const pts = (evt.data.totalGained as number) ?? (evt.data.gained as number) ?? 0
+			return {
+				text: `✅ ${name} — +${pts}pts`,
+				color: 'var(--accent-green)',
 			}
-			case 'answer_wrong': {
-				const attempt = (evt.data.attempt as number) ?? 1
-				const emojis = ['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣']
-				const emoji = emojis[attempt - 1] ?? `${attempt}.`
-				return {
-					text: `${emoji} ${name} — wrong`,
-					color: 'var(--accent-orange)',
-				}
+		}
+		case 'answer_wrong': {
+			const attempt = (evt.data.remainingChances as number) ?? 1
+			const maxAttempts = 5
+			const wrongNum = maxAttempts - attempt
+			const emojis = ['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣']
+			const emoji = emojis[wrongNum - 1] ?? `${wrongNum}.`
+			const answerText = evt.data.answerText as string | undefined
+			const suffix = answerText ? `${answerText} is incorrect` : 'wrong'
+			return {
+				text: `${emoji} ${name} — ${suffix}`,
+				color: 'var(--accent-orange)',
 			}
+		}
 			case 'timeout':
 				return {
 					text: qNo ? `⏰ Q${qNo} timed out` : '⏰ Timed out',
@@ -195,11 +199,16 @@
 		return sid.startsWith(seasonPrefix)
 	}
 
+	function normalizeRecordId(id: unknown): string {
+		const s = String(id)
+		const idx = s.indexOf(':')
+		return idx >= 0 ? s.slice(idx + 1) : s
+	}
+
 	function matchesSession(record: Record<string, unknown>): boolean {
 		if (!session) return false
-		// Both IDs should now be clean strings (key-only)
-		const recSessionId = record.session_id ?? record.id
-		return String(recSessionId) === String(session.id)
+		const recSessionId = normalizeRecordId(record.session_id ?? record.id)
+		return recSessionId === String(session.id)
 	}
 
 	function handleLiveEvent(
@@ -211,7 +220,8 @@
 			case 'quiz_session':
 				if (action === 'UPDATE' || action === 'CREATE') {
 					if (!matchesSeason(record)) break
-					session = record as unknown as QuizSession
+					const norm = { ...record, id: normalizeRecordId(record.id) }
+					session = norm as unknown as QuizSession
 					imageError = false
 				}
 				if (action === 'DELETE') {
@@ -225,18 +235,19 @@
 			case 'quiz_event':
 				if (action === 'CREATE') {
 					if (!matchesSession(record)) break
-					events = [record as unknown as QuizEvent, ...events].slice(0, 20)
+					const normEvent = { ...record, id: normalizeRecordId(record.id), session_id: normalizeRecordId(record.session_id) }
+					events = [normEvent as unknown as QuizEvent, ...events].slice(0, 20)
 				}
 				break
 			case 'live_score':
 				if (action === 'CREATE' || action === 'UPDATE') {
 					if (!matchesSession(record)) break
-					const score = record as unknown as LiveScore
-					const idx = scores.findIndex((s) => s.id === score.id)
+					const normScore = { ...record, id: normalizeRecordId(record.id), session_id: normalizeRecordId(record.session_id) } as unknown as LiveScore
+					const idx = scores.findIndex((s) => s.id === normScore.id)
 					if (idx >= 0) {
-						scores = scores.map((s, i) => (i === idx ? score : s))
+						scores = scores.map((s, i) => (i === idx ? normScore : s))
 					} else {
-						scores = [...scores, score]
+						scores = [...scores, normScore]
 					}
 				}
 				break
@@ -526,6 +537,10 @@
 		--accent-blue: #60a5fa;
 		--accent-yellow: #fbbf24;
 		--accent-purple: #a78bfa;
+	}
+	:global(body) {
+		background-color: var(--bg-primary);
+		margin: 0;
 	}
 
 	:global(:root.light) {

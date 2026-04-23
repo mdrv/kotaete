@@ -783,9 +783,10 @@ export class QuizEngine {
 					memberMid: member.mid,
 					memberName: member.kananame,
 					memberClassgroup: member.classgroup,
-					data: {
+data: {
 						matchedAnswer,
 						gained,
+						totalGained: currentQuestionPoints + gained,
 						totalPoints: totalPts,
 						hasExtraPts,
 						isSpecialStage: question.isSpecialStage,
@@ -903,11 +904,12 @@ export class QuizEngine {
 				memberMid: member.mid,
 				memberName: member.kananame,
 				memberClassgroup: member.classgroup,
-				data: {
-					gained,
-					totalPoints: totalPts,
-					remainingChances: remain - 1,
-				},
+data: {
+						answerText: incoming.text.trim(),
+						gained,
+						totalPoints: totalPts,
+						remainingChances: remain - 1,
+					},
 			})
 		}
 	}
