@@ -6,6 +6,7 @@
 		QuizSession,
 		SeasonScore,
 	} from '$lib/types'
+	import { browser } from '$app/environment'
 	import { onDestroy, onMount } from 'svelte'
 
 	let { seasonPrefix = 'kotaete-s' }: { seasonPrefix?: string } = $props()
@@ -22,17 +23,18 @@
 	let imageError = $state(false)
 	let showZeroPts = $state(false)
 	let selectedSeasonId = $state<string | null>(null)
+	let theme = $state<'dark' | 'light'>('dark')
 
 	// ── Derived ────────────────────────────────────────────
 	let displayMode = $derived.by(() => {
 		if (!session) return 'idle'
+		// Session state is source of truth — show question immediately when accepting
+		if (session.accepting_answers && session.current_question !== null) return 'question'
+		// Otherwise show result from latest event
 		const latest = events[0]
 		if (latest) {
 			if (latest.event_type === 'answer_correct') return 'winner'
 			if (latest.event_type === 'timeout') return 'timeout'
-		}
-		if (session.accepting_answers && session.current_question !== null) {
-			return 'question'
 		}
 		return 'idle'
 	})
@@ -99,6 +101,18 @@
 
 	// ── Helpers ────────────────────────────────────────────
 
+	// ── Theme ──────────────────────────────────────────────
+	function applyTheme(t: 'dark' | 'light') {
+		if (!browser) return
+		document.documentElement.classList.toggle('light', t === 'light')
+		localStorage.setItem('kotaete-theme', t)
+	}
+
+	function toggleTheme() {
+		theme = theme === 'dark' ? 'light' : 'dark'
+		applyTheme(theme)
+	}
+
 	const CLASSGROUP_ORDER = [
 		'7A',
 		'7B',
@@ -131,7 +145,7 @@
 
 		switch (evt.event_type) {
 			case 'answer_correct': {
-				const pts = (evt.data.points as number) ?? 0
+				const pts = (evt.data.gained as number) ?? 0
 				return {
 					text: `✅ ${name} — +${pts}pts`,
 					color: 'var(--accent-green)',
@@ -273,6 +287,16 @@
 	let disconnectFn: (() => void) | null = null
 
 	onMount(async () => {
+		// Init theme from localStorage or system preference
+		if (browser) {
+			const saved = localStorage.getItem('kotaete-theme') as 'dark' | 'light' | null
+			if (saved) {
+				theme = saved
+			} else {
+				theme = window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark'
+			}
+			applyTheme(theme)
+		}
 		try {
 			const [activeRes, seasonsRes] = await Promise.all([
 				fetch(`/api/active?prefix=${encodeURIComponent(seasonPrefix)}`),
@@ -347,6 +371,13 @@
 		<div class='header-right'>
 			<span class='live-dot' class:connected></span>
 			<span class='status-text'>{connected ? 'LIVE' : 'Connecting...'}</span>
+			<button class='theme-toggle' onclick={toggleTheme} title='Toggle theme'>
+				{#if theme === 'dark'}
+					<svg width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><circle cx='12' cy='12' r='5'/><line x1='12' y1='1' x2='12' y2='3'/><line x1='12' y1='21' x2='12' y2='23'/><line x1='4.22' y1='4.22' x2='5.64' y2='5.64'/><line x1='18.36' y1='18.36' x2='19.78' y2='19.78'/><line x1='1' y1='12' x2='3' y2='12'/><line x1='21' y1='12' x2='23' y2='12'/><line x1='4.22' y1='19.78' x2='5.64' y2='18.36'/><line x1='18.36' y1='5.64' x2='19.78' y2='4.22'/></svg>
+				{:else}
+					<svg width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z'/></svg>
+				{/if}
+			</button>
 		</div>
 	</header>
 
@@ -495,6 +526,20 @@
 		--accent-blue: #60a5fa;
 		--accent-yellow: #fbbf24;
 		--accent-purple: #a78bfa;
+	}
+
+	:global(:root.light) {
+		--bg-primary: #f1f5f9;
+		--bg-card: #ffffff;
+		--bg-card-hover: #f8fafc;
+		--text-primary: #1e293b;
+		--text-secondary: #64748b;
+		--accent-green: #22c55e;
+		--accent-orange: #ea580c;
+		--accent-red: #dc2626;
+		--accent-blue: #2563eb;
+		--accent-yellow: #d97706;
+		--accent-purple: #7c3aed;
 	}
 
 	.dashboard {
@@ -650,6 +695,23 @@
 		font-size: 0.75rem;
 		font-weight: 600;
 		color: var(--text-secondary);
+	}
+
+	.theme-toggle {
+		background: none;
+		border: none;
+		color: var(--text-secondary);
+		cursor: pointer;
+		padding: 0.25rem;
+		display: flex;
+		align-items: center;
+		margin-left: 0.3rem;
+		border-radius: 4px;
+	}
+
+	.theme-toggle:hover {
+		color: var(--text-primary);
+		background: var(--bg-card-hover);
 	}
 
 	/* ── Cards ── */
