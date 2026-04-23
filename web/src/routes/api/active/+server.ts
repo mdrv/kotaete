@@ -1,7 +1,7 @@
 import { getDb } from '$lib/server/surreal'
-import { RecordId } from 'surrealdb'
 import type { LiveScore, QuizSession } from '$lib/server/types'
 import { json } from '@sveltejs/kit'
+import { RecordId } from 'surrealdb'
 
 /** Normalize SurrealDB RecordId to just the record key (string) */
 function normalizeId(id: unknown): string {

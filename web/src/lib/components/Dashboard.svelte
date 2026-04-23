@@ -228,7 +228,6 @@
 				break
 		}
 	}
-	}
 
 	// ── Timer Effect ───────────────────────────────────────
 	$effect(() => {
@@ -888,3 +887,4 @@
 		color: var(--text-primary);
 		border-color: rgba(255, 255, 255, 0.2);
 	}
+</style>

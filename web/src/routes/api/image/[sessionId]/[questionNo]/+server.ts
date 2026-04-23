@@ -1,9 +1,9 @@
 import { getDb } from '$lib/server/surreal'
-import { RecordId } from 'surrealdb'
 import type { QuizSession } from '$lib/server/types'
 import { json } from '@sveltejs/kit'
 import { readFile, stat } from 'node:fs/promises'
 import { join } from 'node:path'
+import { RecordId } from 'surrealdb'
 
 const IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.webp']
 

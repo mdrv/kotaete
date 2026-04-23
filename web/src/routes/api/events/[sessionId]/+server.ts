@@ -1,7 +1,7 @@
 import { getDb } from '$lib/server/surreal'
-import { RecordId } from 'surrealdb'
 import type { QuizEvent } from '$lib/server/types'
 import { json } from '@sveltejs/kit'
+import { RecordId } from 'surrealdb'
 
 function extractKey(id: string): string {
 	const idx = id.indexOf(':')
