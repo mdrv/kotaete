@@ -19,56 +19,56 @@ const DEFAULTS = {
 
 const SCHEMA_QUERIES = [
 	// Quiz session (mutable state projection)
-	`DEFINE TABLE IF NOT EXISTS quiz_session SCHEMAFULL`,
-	`DEFINE FIELD IF NOT EXISTS group_id ON quiz_session TYPE string`,
-	`DEFINE FIELD IF NOT EXISTS season_id ON quiz_session TYPE option<string>`,
-	`DEFINE FIELD IF NOT EXISTS job_id ON quiz_session TYPE string`,
-	`DEFINE FIELD IF NOT EXISTS status ON quiz_session TYPE string DEFAULT 'running'`,
-	`DEFINE FIELD IF NOT EXISTS started_at ON quiz_session TYPE datetime`,
-	`DEFINE FIELD IF NOT EXISTS finished_at ON quiz_session TYPE option<datetime>`,
-	`DEFINE FIELD IF NOT EXISTS total_questions ON quiz_session TYPE number`,
-	`DEFINE FIELD IF NOT EXISTS current_question ON quiz_session TYPE option<number>`,
-	`DEFINE FIELD IF NOT EXISTS current_round ON quiz_session TYPE option<number>`,
-	`DEFINE FIELD IF NOT EXISTS accepting_answers ON quiz_session TYPE bool DEFAULT false`,
-	`DEFINE FIELD IF NOT EXISTS deadline_at ON quiz_session TYPE option<datetime>`,
-	`DEFINE INDEX IF NOT EXISTS idx_quiz_session_group ON quiz_session COLUMNS group_id`,
-	`DEFINE INDEX IF NOT EXISTS idx_quiz_session_active ON quiz_session COLUMNS group_id, status`,
+	`DEFINE TABLE OVERWRITE quiz_session SCHEMAFULL`,
+	`DEFINE FIELD OVERWRITE group_id ON quiz_session TYPE string`,
+	`DEFINE FIELD OVERWRITE season_id ON quiz_session TYPE option<string>`,
+	`DEFINE FIELD OVERWRITE job_id ON quiz_session TYPE string`,
+	`DEFINE FIELD OVERWRITE status ON quiz_session TYPE string DEFAULT 'running'`,
+	`DEFINE FIELD OVERWRITE started_at ON quiz_session TYPE datetime`,
+	`DEFINE FIELD OVERWRITE finished_at ON quiz_session TYPE option<datetime>`,
+	`DEFINE FIELD OVERWRITE total_questions ON quiz_session TYPE number`,
+	`DEFINE FIELD OVERWRITE current_question ON quiz_session TYPE option<number>`,
+	`DEFINE FIELD OVERWRITE current_round ON quiz_session TYPE option<number>`,
+	`DEFINE FIELD OVERWRITE accepting_answers ON quiz_session TYPE bool DEFAULT false`,
+	`DEFINE FIELD OVERWRITE deadline_at ON quiz_session TYPE option<datetime>`,
+	`DEFINE INDEX OVERWRITE idx_quiz_session_group ON quiz_session COLUMNS group_id`,
+	`DEFINE INDEX OVERWRITE idx_quiz_session_active ON quiz_session COLUMNS group_id, status`,
 
 	// Quiz events (append-only log)
-	`DEFINE TABLE IF NOT EXISTS quiz_event SCHEMAFULL`,
-	`DEFINE FIELD IF NOT EXISTS session_id ON quiz_event TYPE record<quiz_session>`,
-	`DEFINE FIELD IF NOT EXISTS group_id ON quiz_event TYPE string`,
-	`DEFINE FIELD IF NOT EXISTS season_id ON quiz_event TYPE option<string>`,
-	`DEFINE FIELD IF NOT EXISTS event_type ON quiz_event TYPE string`,
-	`DEFINE FIELD IF NOT EXISTS question_no ON quiz_event TYPE option<number>`,
-	`DEFINE FIELD IF NOT EXISTS member_mid ON quiz_event TYPE option<string>`,
-	`DEFINE FIELD IF NOT EXISTS member_name ON quiz_event TYPE option<string>`,
-	`DEFINE FIELD IF NOT EXISTS member_classgroup ON quiz_event TYPE option<string>`,
-	`DEFINE FIELD IF NOT EXISTS data ON quiz_event TYPE option<object>`,
-	`DEFINE FIELD IF NOT EXISTS created_at ON quiz_event TYPE datetime DEFAULT time::now()`,
-	`DEFINE INDEX IF NOT EXISTS idx_quiz_event_session ON quiz_event COLUMNS session_id`,
-	`DEFINE INDEX IF NOT EXISTS idx_quiz_event_session_type ON quiz_event COLUMNS session_id, event_type`,
+	`DEFINE TABLE OVERWRITE quiz_event SCHEMAFULL`,
+	`DEFINE FIELD OVERWRITE session_id ON quiz_event TYPE record<quiz_session>`,
+	`DEFINE FIELD OVERWRITE group_id ON quiz_event TYPE string`,
+	`DEFINE FIELD OVERWRITE season_id ON quiz_event TYPE option<string>`,
+	`DEFINE FIELD OVERWRITE event_type ON quiz_event TYPE string`,
+	`DEFINE FIELD OVERWRITE question_no ON quiz_event TYPE option<number>`,
+	`DEFINE FIELD OVERWRITE member_mid ON quiz_event TYPE option<string>`,
+	`DEFINE FIELD OVERWRITE member_name ON quiz_event TYPE option<string>`,
+	`DEFINE FIELD OVERWRITE member_classgroup ON quiz_event TYPE option<string>`,
+	`DEFINE FIELD OVERWRITE data ON quiz_event TYPE object FLEXIBLE`,
+	`DEFINE FIELD OVERWRITE created_at ON quiz_event TYPE datetime DEFAULT time::now()`,
+	`DEFINE INDEX OVERWRITE idx_quiz_event_session ON quiz_event COLUMNS session_id`,
+	`DEFINE INDEX OVERWRITE idx_quiz_event_session_type ON quiz_event COLUMNS session_id, event_type`,
 
 	// Live scoreboard (per-member, mutable)
-	`DEFINE TABLE IF NOT EXISTS live_score SCHEMAFULL`,
-	`DEFINE FIELD IF NOT EXISTS session_id ON live_score TYPE record<quiz_session>`,
-	`DEFINE FIELD IF NOT EXISTS member_mid ON live_score TYPE string`,
-	`DEFINE FIELD IF NOT EXISTS member_name ON live_score TYPE string`,
-	`DEFINE FIELD IF NOT EXISTS member_classgroup ON live_score TYPE string`,
-	`DEFINE FIELD IF NOT EXISTS points ON live_score TYPE number DEFAULT 0`,
-	`DEFINE FIELD IF NOT EXISTS reached_at ON live_score TYPE option<datetime>`,
-	`DEFINE INDEX IF NOT EXISTS idx_live_score_session ON live_score COLUMNS session_id`,
-	`DEFINE INDEX IF NOT EXISTS idx_live_score_member ON live_score COLUMNS session_id, member_mid UNIQUE`,
+	`DEFINE TABLE OVERWRITE live_score SCHEMAFULL`,
+	`DEFINE FIELD OVERWRITE session_id ON live_score TYPE record<quiz_session>`,
+	`DEFINE FIELD OVERWRITE member_mid ON live_score TYPE string`,
+	`DEFINE FIELD OVERWRITE member_name ON live_score TYPE string`,
+	`DEFINE FIELD OVERWRITE member_classgroup ON live_score TYPE string`,
+	`DEFINE FIELD OVERWRITE points ON live_score TYPE number DEFAULT 0`,
+	`DEFINE FIELD OVERWRITE reached_at ON live_score TYPE option<datetime>`,
+	`DEFINE INDEX OVERWRITE idx_live_score_session ON live_score COLUMNS session_id`,
+	`DEFINE INDEX OVERWRITE idx_live_score_member ON live_score COLUMNS session_id, member_mid UNIQUE`,
 
 	// Live member state (cooldown, wrong attempts — per-member transient state)
-	`DEFINE TABLE IF NOT EXISTS live_member_state SCHEMAFULL`,
-	`DEFINE FIELD IF NOT EXISTS session_id ON live_member_state TYPE record<quiz_session>`,
-	`DEFINE FIELD IF NOT EXISTS member_mid ON live_member_state TYPE string`,
-	`DEFINE FIELD IF NOT EXISTS member_name ON live_member_state TYPE string`,
-	`DEFINE FIELD IF NOT EXISTS cooldown_until ON live_member_state TYPE option<datetime>`,
-	`DEFINE FIELD IF NOT EXISTS wrong_remaining ON live_member_state TYPE option<number>`,
-	`DEFINE INDEX IF NOT EXISTS idx_lms_session ON live_member_state COLUMNS session_id`,
-	`DEFINE INDEX IF NOT EXISTS idx_lms_member ON live_member_state COLUMNS session_id, member_mid UNIQUE`,
+	`DEFINE TABLE OVERWRITE live_member_state SCHEMAFULL`,
+	`DEFINE FIELD OVERWRITE session_id ON live_member_state TYPE record<quiz_session>`,
+	`DEFINE FIELD OVERWRITE member_mid ON live_member_state TYPE string`,
+	`DEFINE FIELD OVERWRITE member_name ON live_member_state TYPE string`,
+	`DEFINE FIELD OVERWRITE cooldown_until ON live_member_state TYPE option<datetime>`,
+	`DEFINE FIELD OVERWRITE wrong_remaining ON live_member_state TYPE option<number>`,
+	`DEFINE INDEX OVERWRITE idx_lms_session ON live_member_state COLUMNS session_id`,
+	`DEFINE INDEX OVERWRITE idx_lms_member ON live_member_state COLUMNS session_id, member_mid UNIQUE`,
 ] as const
 
 export class QuizEventLogger {
@@ -141,7 +141,7 @@ export class QuizEventLogger {
 		const db = this.ensureDb()
 		const result = await db.query<[{ id: string }[]]>(
 			`CREATE quiz_session SET group_id = $gid, season_id = $sid, job_id = $jid, total_questions = $tq, started_at = time::now(), status = 'running'`,
-			{ gid: opts.groupId, sid: opts.seasonId ?? null, jid: opts.jobId, tq: opts.totalQuestions },
+			{ gid: opts.groupId, sid: opts.seasonId ?? undefined, jid: opts.jobId, tq: opts.totalQuestions },
 		)
 		const id = result[0]?.[0]?.id
 		if (!id) throw new Error('Failed to create quiz_session — no ID returned')
@@ -158,14 +158,14 @@ export class QuizEventLogger {
 		this.chain(async () => {
 			const db = this.ensureDb()
 			const sets: string[] = []
-			if (opts.currentQuestion !== undefined) sets.push(`current_question = ${opts.currentQuestion}`)
-			if (opts.currentRound !== undefined) sets.push(`current_round = ${opts.currentRound}`)
-			if (opts.acceptingAnswers !== undefined) sets.push(`accepting_answers = ${opts.acceptingAnswers}`)
+			if (opts.currentQuestion !== undefined) sets.push(`current_question: ${opts.currentQuestion}`)
+			if (opts.currentRound !== undefined) sets.push(`current_round: ${opts.currentRound}`)
+			if (opts.acceptingAnswers !== undefined) sets.push(`accepting_answers: ${opts.acceptingAnswers}`)
 			if (opts.deadlineAt !== undefined) {
 				if (opts.deadlineAt === null) {
-					sets.push(`deadline_at = NONE`)
+					sets.push(`deadline_at: NONE`)
 				} else {
-					sets.push(`deadline_at = <datetime>'${opts.deadlineAt.toISOString()}'`)
+					sets.push(`deadline_at: <datetime>'${opts.deadlineAt.toISOString()}'`)
 				}
 			}
 			if (sets.length === 0) return
@@ -202,7 +202,7 @@ export class QuizEventLogger {
 		this.chain(async () => {
 			const db = this.ensureDb()
 			await db.query(
-				`CREATE quiz_event SET session_id = $sid, group_id = $gid, season_id = $season_id, event_type = $etype, question_no = $qno, member_mid = $mmid, member_name = $mname, member_classgroup = $mcg, data = $data`,
+				`CREATE quiz_event SET session_id = $sid, group_id = $gid, season_id = $season_id ?? NONE, event_type = $etype, question_no = $qno ?? NONE, member_mid = $mmid ?? NONE, member_name = $mname ?? NONE, member_classgroup = $mcg ?? NONE, data = $data ?? NONE`,
 				{
 					sid: sessionId,
 					gid: opts.groupId,
@@ -286,7 +286,7 @@ export class QuizEventLogger {
 					sid: sessionId,
 					mid: member.mid,
 					name,
-					wr: opts.wrongRemaining ?? null,
+					wr: opts.wrongRemaining ?? undefined,
 				},
 			)
 		}, 'upsertMemberState')
