@@ -92,7 +92,9 @@ export class QuizEventLogger {
 			try {
 				await fn()
 			} catch (err) {
-				this.log.error(`fire-and-forget write failed: ${label ?? 'unknown'}`, { error: err })
+				this.log.error(
+					`fire-and-forget write failed: ${label ?? 'unknown'}: ${err instanceof Error ? err.message : String(err)}`,
+				)
 			}
 		}
 		this.queryChain = this.queryChain.then(run, run)
