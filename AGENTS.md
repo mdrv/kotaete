@@ -2,25 +2,26 @@
 
 ## Project Overview
 
-NIPBANG Kotaete (`@mdrv/kotaete`) is a WhatsApp-based Japanese quiz bot. It runs as a persistent daemon that connects to WhatsApp groups, sends quiz questions on schedule, accepts answers from group members, scores them in real-time, and tracks season-long leaderboards.
+NIPBANG Kotaete (`@mdrv/kotaete`) is a WhatsApp-based Japanese quiz bot. It runs as a persistent daemon that connects to WhatsApp groups, sends quiz questions on schedule, accepts answers from group members, scores them in real-time, and tracks season-long leaderboards. Includes a SvelteKit web dashboard for live spectator view.
 
 **Runtime:** Bun (`>=1.3`). Not Node.js.
 **Language:** TypeScript (strict mode, ESNext, no semicolons via dprint ASI).
 **Formatter:** dprint (config in `dprint.jsonc` — tabs, single quotes, no semicolons).
 **CLI Framework:** Crust.js (`@crustjs/core` + `@crustjs/plugins`).
-**Validation:** Zod (members loader).
+**Validation:** Zod v4 (`^4.3.6`).
+**Database:** SurrealDB (`^2.0.3`) for season scores, event logging, and live dashboard.
 **Path alias:** `@/*` → `./*` (tsconfig).
 
 ## Commands
 
 ```bash
-bun run dev          # Run CLI
-bun run daemon       # Start daemon (default provider: wwebjs)
-bun run daemon:baileys  # Start daemon with Baileys provider (runs patch check first)
-bun run test         # bun test
-bun run check        # dprint format check + typecheck
-bun run fmt          # dprint format
-bun run typecheck    # bun tsc --noEmit
+bun run dev              # Run CLI
+bun run daemon           # Start daemon (default provider: wwebjs)
+bun run daemon:baileys   # Start daemon with Baileys provider (runs patch check first)
+bun run test             # bun test
+bun run check            # dprint format check + typecheck
+bun run fmt              # dprint format
+bun run typecheck        # bun tsc --noEmit
 ```
 
 ## Architecture
@@ -32,46 +33,103 @@ CLI (Crust.js)
       │    ├── WWebJsWhatsAppClient (default, Puppeteer-based)
       │    └── BaileysWhatsAppClient (WebSocket-based, experimental)
       ├── QuizEngine (state machine: idle → running → scoring)
-      └── SeasonStore (persistent JSON-backed season scores)
+      ├── SeasonStore (SurrealDB-backed season scores)
+      ├── QuizEventLogger (SurrealDB-backed live event tracking)
+      ├── PluginManager (hot-loadable plugin system)
+      └── [Unix Socket] ← CLI relay (run, status, stop, plugins)
+Web (SvelteKit)
+ └── Dashboard ← SurrealDB live subscriptions ← QuizEventLogger
 ```
 
 ### Source Layout
 
 ```
 src/
+├── index.ts                   # Public API exports (definePlugin, defineConfig, types)
+├── types.ts                   # Core type definitions
+├── constants.ts               # App constants, quiz tunables, reaction emojis
+├── logger.ts                  # Structured logging (logtape)
+├── copilot-auth.ts            # GitHub Copilot OAuth device flow + session token mgmt
 ├── cli/
-│   ├── index.ts              # CLI entry point
-│   ├── shared.ts             # Crust app instance, sendRelayRequest()
+│   ├── index.ts               # CLI entry point — registers all commands
+│   ├── shared.ts              # Crust app instance, sendRelayRequest()
 │   └── commands/
-│       ├── daemon.ts         # `daemon` command (start the long-running bot)
-│       ├── quiz.ts           # `quiz` command (debug/inspect)
-│       ├── season.ts         # `season` commands (start, stop, scores, reset)
-│       └── tool.ts           # `tool` commands (misc utilities)
+│       ├── daemon.ts          # `daemon` command (start the long-running bot)
+│       ├── auth.ts            # `auth copilot` command
+│       ├── quiz.ts            # `quiz status|stop|run` commands
+│       ├── season.ts          # `season stop|show|add|set|reset|clear` commands
+│       ├── run.ts             # Shared run handler for quiz run
+│       ├── tool.ts            # `tool to-pn|to-lid` commands
+│       ├── plugin.ts          # `plugin enable|disable|list` commands
+│       └── x.ts               # `x ask close|open|tool` commands
 ├── daemon/
-│   ├── runtime.ts            # DaemonRuntime — orchestrates WA + quiz + scheduling
-│   └── protocol.ts           # Unix socket protocol schemas (Zod-based)
+│   ├── runtime.ts             # DaemonRuntime — orchestrates WA + quiz + scheduling
+│   ├── protocol.ts            # Unix socket request/response schemas (Zod)
+│   ├── protocol.test.ts
+│   └── queue.test.ts
 ├── quiz/
-│   ├── engine.ts             # QuizEngine — state machine, answer handling, timers
-│   ├── loader.ts             # Quiz bundle loader from config dirs + markdown files
-│   ├── messages.ts           # All WhatsApp message formatters
-│   ├── answer-checker.ts     # Answer normalization + matching
-│   ├── scoring.ts            # Point calculation (correct/wrong, caps)
-│   ├── season-store.ts       # Season score persistence (~/.kotaete/state/)
-│   └── season-scoreboard.ts  # Season-end scoreboard formatting
+│   ├── engine.ts              # QuizEngine — state machine, answer handling, timers
+│   ├── loader.ts              # Quiz bundle loader + defineConfig()
+│   ├── messages.ts            # All WhatsApp message formatters
+│   ├── answer-checker.ts      # Answer normalization + matching
+│   ├── scoring.ts             # Point calculation (correct/wrong, caps)
+│   ├── season-store.ts        # Season score persistence (SurrealDB-backed)
+│   ├── season-scoreboard.ts   # Season-end scoreboard image generation
+│   ├── event-logger.ts        # SurrealDB event logging for live dashboard
+│   ├── engine.test.ts
+│   ├── messages.test.ts
+│   ├── season-scoreboard.test.ts
+│   ├── loader.test.ts
+│   └── scoring.test.ts
 ├── whatsapp/
-│   ├── client.ts             # WhatsAppClient facade (provider selection)
-│   ├── types.ts              # IWhatsAppClient interface, WhatsAppProvider
-│   ├── wwebjs-client.ts      # whatsapp-web.js provider implementation
-│   ├── baileys-client.ts     # Baileys provider implementation
-│   └── lid-pn-store.ts       # Persistent LID↔PN mapping store
+│   ├── client.ts              # WhatsAppClient facade (provider selection)
+│   ├── types.ts               # IWhatsAppClient interface, WhatsAppProvider
+│   ├── wwebjs-client.ts       # whatsapp-web.js provider implementation
+│   ├── baileys-client.ts      # Baileys provider implementation
+│   ├── lid-pn-store.ts        # Persistent LID↔PN mapping store
+│   ├── wwebjs-client.test.ts
+│   ├── baileys-client.test.ts
+│   ├── types.test.ts
+│   └── lid-pn-store.test.ts
 ├── members/
-│   └── loader.ts             # Member list loader (JSON/TS, Zod-validated)
-├── utils/
-│   ├── normalize.ts          # JID/phone/LID normalization utilities
-│   └── path.ts               # Path resolution helpers
-├── constants.ts              # App constants, quiz tunables, reaction emojis
-├── logger.ts                 # Structured logging (logtape)
-└── types.ts                  # Core type definitions
+│   └── loader.ts              # Member list loader (JSON/TS, Zod-validated)
+├── plugin/
+│   ├── index.ts               # Re-exports
+│   ├── types.ts               # Plugin system types
+│   ├── define-plugin.ts       # definePlugin() helper
+│   ├── loader.ts              # Dynamic plugin module loader
+│   ├── manager.ts             # PluginManager — lifecycle, hooks, error handling
+│   ├── store.ts               # Plugin manifest persistence (~/.kotaete/state/plugins.json)
+│   └── manager.test.ts
+└── utils/
+    ├── normalize.ts           # JID/phone/LID normalization utilities
+    ├── path.ts                # Path resolution helpers
+    └── searxng.ts             # SearXNG search utility
+```
+
+### Web Frontend (`web/`)
+
+SvelteKit 2 + Svelte 5 + Vite 8, adapter-node.
+
+```
+web/
+├── server.ts                  # Production HTTP server + WebSocket (KotaeteWsServer)
+├── src/
+│   ├── routes/
+│   │   ├── +page.svelte          # Main dashboard
+│   │   └── api/
+│   │       ├── active/           # Active quiz sessions
+│   │       ├── events/[sessionId]/  # Event stream
+│   │       ├── image/[sessionId]/[questionNo]/  # Question images
+│   │       ├── season/[id]/      # Season scores
+│   │       └── seasons/          # Season list
+│   └── lib/
+│       ├── live-connection.ts    # WebSocket client (reconnect, live updates)
+│       ├── components/
+│       │   └── Dashboard.svelte  # Main UI component
+│       └── server/
+│           ├── surreal.ts        # SurrealDB connection singleton
+│           └── ws-handler.ts     # SurrealDB live subscriptions → WebSocket broadcast
 ```
 
 ## Key Concepts
@@ -81,6 +139,7 @@ src/
 1. **Config-based (primary):** Quiz questions are defined in `kotaete.ts` files inside quiz directories (e.g., `~/.kotaete/w20260405/kotaete.ts`). The config specifies schedule, rounds, questions with multi-type answers (kana/romaji/kanji), image templates, members, and message overrides.
 2. **Markdown-based (legacy):** Questions can also be `.md` files in a quiz directory with `---`-separated sections (text, answers, explanation).
 3. **Daemon:** The daemon loads a quiz bundle, waits for scheduled intro time, sends questions per-round schedule, accepts/validates answers, tracks scores, and sends results.
+4. **State recovery:** On daemon restart, quiz state is recovered from checkpoint files. The engine resumes from the exact question it was on, preserving scores and cooldowns.
 
 ### Answer Types
 
@@ -98,18 +157,37 @@ WhatsApp uses both LID (Linked ID, e.g., `abc@lid`) and PN (phone number, e.g., 
 
 ### Scoring
 
-- **Normal stage:** Max 10 pts per correct answer (decreasing by 1 per wrong attempt). 1 pt per wrong answer.
-- **God stage (q#99):** Fixed 25 pts, no cooldown, one attempt per member, 30-min timeout.
+- **Normal stage:** Max 10 pts per correct answer (decreasing by 1 per wrong attempt). 1 pt per wrong answer. Max 2 wrong attempts per member per question.
+- **God stage (q#99):** Fixed 15 pts, no cooldown, one attempt per member, 30-min timeout.
 - **extraPts:** Bonus on top of correct answer points (configurable per question).
 - **Tie-breaking:** Higher score wins; ties broken by who reached that score first (timestamp).
 
 ### Seasons
 
-Seasons track cumulative scores across multiple quiz sessions. Stored in `~/.kotaete/state/season-points.json`. CLI: `season start`, `season stop`, `season scores`, `season reset`.
+Seasons track cumulative scores across multiple quiz sessions. Stored in SurrealDB (`season` + `season_score` tables). CLI: `season stop`, `season show`, `season add`, `season set`, `season reset`, `season clear`.
 
 ### Message Templates
 
 All user-facing WhatsApp messages are defined in `QuizMessageTemplates` (default values in `messages.ts`). Quiz configs can override any template via `messages: { ... }`. Templates use `{placeholder}` syntax.
+
+### Plugin System
+
+Hot-loadable plugins with hooks, tools, and error thresholds. Manifest persisted in `~/.kotaete/state/plugins.json`. CLI: `plugin enable`, `plugin disable`, `plugin list`.
+
+## SurrealDB Schema
+
+**Connection:** `http://localhost:596/rpc`, namespace `medrivia`, database `nipbang_kotaete`.
+
+### Tables
+
+| Table               | Purpose                    | Key Fields                                                                                    |
+| ------------------- | -------------------------- | --------------------------------------------------------------------------------------------- |
+| `quiz_session`      | Mutable quiz session state | `group_id`, `status`, `current_question`, `current_round`, `accepting_answers`, `deadline_at` |
+| `quiz_event`        | Append-only event log      | `session_id`, `event_type`, `question_no`, `member_mid`, `data`                               |
+| `live_score`        | Per-member live scoreboard | `session_id`, `member_mid`, `points`, `reached_at`                                            |
+| `live_member_state` | Per-member transient state | `session_id`, `member_mid`, `cooldown_until`, `wrong_remaining`                               |
+| `season`            | Season metadata            | `season_id` (unique), `group_id`, `caption`, `status`                                         |
+| `season_score`      | Season score records       | `season_id` + `mid` (unique), `points`, `reached_at`                                          |
 
 ## Config Format (kotaete.ts)
 
@@ -176,21 +254,25 @@ export default defineConfig({
 
 - Framework: `bun test`
 - Tests colocated with source: `*.test.ts` files
-- 156 tests across 11 files covering engine, loader, messages, scoring, season-store, daemon protocol, member loader, and WhatsApp client utilities.
+- 209 tests across 13 files covering engine, loader, messages, scoring, season-scoreboard, daemon protocol, member loader, plugin manager, and WhatsApp client utilities.
 
 ## State Files
 
 ```
 ~/.kotaete/
 ├── auth/
-│   ├── baileys/         # Baileys auth state
-│   └── wwebjs/          # WWebJS auth state (Puppeteer session)
+│   ├── baileys/              # Baileys auth state
+│   └── wwebjs/               # WWebJS auth state (Puppeteer session)
 ├── state/
-│   ├── season-points.json   # Season scores
-│   ├── lid-pn-map.json      # LID↔PN mapping cache
-│   └── daemon-runtime.json  # Daemon runtime state
-├── daemon.sock           # Unix socket for CLI→daemon relay
-└── daemon.lock           # Daemon lock file
+│   ├── daemon-runtime.json   # Daemon runtime state (job queue metadata)
+│   ├── quiz-checkpoint-{id}.json  # Per-job quiz state checkpoint (for crash recovery)
+│   ├── plugins.json          # Plugin manifest
+│   ├── lid-pn-map.json       # LID↔PN mapping cache
+│   └── season-points.json    # (legacy, now in SurrealDB)
+├── avatars/                  # Member avatar JPGs (<mid>.jpg, default.jpg)
+├── scoreboard-template.svg   # Scoreboard SVG template
+├── daemon.sock               # Unix socket for CLI→daemon relay
+└── daemon.lock               # Daemon lock file
 ```
 
 ## Important Conventions
@@ -201,3 +283,5 @@ export default defineConfig({
 - **Logging:** Use `getLogger(['kotaete', ...category])` from `logger.ts`. Levels: `debug`, `info`, `warning`, `error`.
 - **Time zones:** All schedule times are in WIB (Asia/Jakarta, UTC+7). The engine formats times in WIB.
 - **Quiz directories:** Named with date prefix pattern `wYYYYMMDD` (e.g., `w20260405`). Contain `kotaete.ts` config, question images, and optionally `intro.md`/`outro.md` (config `messages.intro`/`messages.outro` takes priority).
+- **SurrealDB writes:** Use chained promises (`chain()`) for serial writes. Reads use direct `query()`.
+- **Daemon state persistence:** Uses atomic write (tmp file + rename) pattern via `persistState()`.
