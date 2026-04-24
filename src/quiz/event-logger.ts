@@ -141,8 +141,8 @@ export class QuizEventLogger {
 		quizDir?: string
 	}): Promise<string> {
 		const db = this.ensureDb()
-		// Clean up any orphaned running sessions from previous crashes
-		this.cleanupStaleSessions()
+		// Clean up any orphaned running sessions from previous crashes BEFORE creating new one
+		await this.cleanupStaleSessions()
 		const result = await db.query<[{ id: string }[]]>(
 			`CREATE quiz_session SET group_id = $gid, season_id = $sid, job_id = $jid, total_questions = $tq, quiz_dir = $qdir ?? NONE, started_at = time::now(), status = 'running'`,
 			{
@@ -207,8 +207,8 @@ export class QuizEventLogger {
 			)
 		}, 'finishSession')
 	}
-	cleanupStaleSessions(): void {
-		this.chain(async () => {
+	cleanupStaleSessions(): Promise<void> {
+		return this.chain(async () => {
 			const db = this.ensureDb()
 			// Mark orphaned running sessions as crashed
 			const [stale] = await db.query<[{}[]]>(
