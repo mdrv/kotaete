@@ -217,6 +217,7 @@ export class QuizEngine {
 			attemptedSpecial: [...state.attemptedSpecial],
 			cooldownWarningSent: [...state.cooldownWarningSent],
 			warningAlreadySent: state.warningSentForToken === state.questionToken && state.acceptingAnswers,
+			loggerSessionId: state.loggerSessionId,
 		}
 	}
 
@@ -303,8 +304,17 @@ export class QuizEngine {
 			byCanonicalLid.set(canonicalLid, member)
 		}
 
-		const loggerSessionId = this.eventLogger
-			? await this.eventLogger.createSession({
+		// Reuse existing SurrealDB session if available (preserves live dashboard data)
+		let loggerSessionId: string | null = checkpoint.loggerSessionId ?? null
+		if (this.eventLogger && loggerSessionId) {
+			try {
+				this.eventLogger.reactivateSession(loggerSessionId)
+			} catch (err) {
+				log.warning('failed to reactivate event logger session', { error: err })
+				loggerSessionId = null
+			}
+		} else if (this.eventLogger) {
+			loggerSessionId = await this.eventLogger.createSession({
 				groupId,
 				...(bundle.season?.id ? { seasonId: bundle.season.id } : {}),
 				jobId: 'resumed',
@@ -314,7 +324,7 @@ export class QuizEngine {
 				log.warning('failed to create resumed event logger session', { error: err })
 				return null
 			}) ?? null
-			: null
+		}
 
 		this.state = {
 			bundle,
@@ -381,29 +391,11 @@ export class QuizEngine {
 		if (checkpoint.acceptingAnswers) {
 			const remainingMs = checkpoint.deadlineAtMs - Date.now()
 			if (remainingMs > 0) {
-				log.info(`resume: mid-question, ${Math.round(remainingMs / 1000)}s remaining`)
-				// Re-send the question so members can see it after restart
 				const question = this.currentQuestion()
 				if (question) {
+					log.info(`resume: mid-question, ${Math.round(remainingMs / 1000)}s remaining`)
 					const timeoutMs = Math.min(remainingMs, question.isSpecialStage ? GOD_STAGE_TIMEOUT_MS : QUESTION_TIMEOUT_MS)
 					state.deadlineAtMs = Date.now() + timeoutMs
-					const progress = this.getQuestionProgress(question)
-					const caption = formatQuestion(
-						question,
-						progress,
-						formatWibTimeHint(state.deadlineAtMs, { floor: true }),
-						state.bundle.messageTemplates,
-						null,
-					)
-					if (question.imagePath) {
-						state.questionMessageKey = await this.sender.sendImageWithCaption(
-							state.groupId,
-							question.imagePath,
-							caption,
-						)
-					} else {
-						state.questionMessageKey = await this.sender.sendText(state.groupId, caption, { linkPreview: false })
-					}
 
 					state.questionToken += 1
 					const currentToken = state.questionToken
@@ -448,18 +440,12 @@ export class QuizEngine {
 
 					this.persistCheckpoint(state)
 					return
-				} else {
-					log.info('resume: question deadline expired, treating as timeout')
-					// Fall through to Phase C — just advance
 				}
 			}
+			log.info('resume: question deadline expired or not found, advancing')
 
 			// Phase C: between questions (after correct/timeout), advance
 			log.info('resume: between questions, advancing')
-			// moveToNextQuestion expects to be called after a question ended,
-			// so we need to increment index/roundQuestionIndex first
-			// Actually, since acceptingAnswers is false and we're mid-quiz,
-			// just call moveToNextQuestion which will increment and send the next one
 			await this.moveToNextQuestion()
 			return
 		}
@@ -1181,6 +1167,8 @@ export class QuizEngine {
 				},
 			})
 		}
+
+		this.persistCheckpoint(state)
 	}
 
 	private async handleTimeout(token: number): Promise<void> {

@@ -25,6 +25,9 @@ export type QuizStateCheckpoint = {
 
 	// Timer reconstruction
 	warningAlreadySent: boolean
+
+	// SurrealDB session to reuse on resume (preserves live dashboard data)
+	loggerSessionId: string | null
 }
 
 export const quizStateCheckpointSchema = z.object({
@@ -44,4 +47,5 @@ export const quizStateCheckpointSchema = z.object({
 	attemptedSpecial: z.array(z.string()),
 	cooldownWarningSent: z.array(z.string()),
 	warningAlreadySent: z.boolean(),
+	loggerSessionId: z.string().nullable().optional().default(null),
 })

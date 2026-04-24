@@ -158,6 +158,17 @@ export class QuizEventLogger {
 		this._sessionId = id
 		return id
 	}
+	/** Reuse an existing quiz session (e.g. after daemon restart). Restores status to 'running' and stores the ID. */
+	reactivateSession(sessionId: string): void {
+		this._sessionId = sessionId
+		this.chain(async () => {
+			const db = this.ensureDb()
+			await db.query(
+				`UPDATE $sid SET status = 'running', finished_at = NONE WHERE status = 'crashed'`,
+				{ sid: sessionId },
+			)
+		}, 'reactivateSession')
+	}
 
 	updateSessionState(sessionId: string, opts: {
 		currentQuestion?: number

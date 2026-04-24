@@ -1292,6 +1292,7 @@ describe('checkpoint', () => {
 			attemptedSpecial: [],
 			cooldownWarningSent: [],
 			warningAlreadySent: false,
+			loggerSessionId: null,
 		}
 
 		const { engine, sendText } = createEngine()
