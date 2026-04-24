@@ -13,7 +13,7 @@ WhatsApp-based Japanese quiz bot that runs as a persistent daemon, sends quiz qu
 - **Multi-platform WhatsApp**: Supports both whatsapp-web.js (default) and Baileys (experimental) providers
 - **Rich Media**: SVG-based question images with customizable templates
 - **Extensible**: Override message templates, scoring rules, and more via configuration
-- **Web Spectator (upcoming)**: Live web dashboard for real-time quiz viewing via SurrealDB event stream
+- **Web Spectator**: Live web dashboard for real-time quiz viewing via SurrealDB + WebSocket
 
 ## Quick Start
 
@@ -102,7 +102,7 @@ src/
 ├── constants.ts         # App constants and quiz tunables
 ├── logger.ts            # Structured logging
 └── types.ts             # Shared TypeScript types
-web/                    # Web spectator frontend (SvelteKit, upcoming)
+web/                    # Web spectator frontend (SvelteKit + WebSocket)
 ```
 
 ## Quiz Tunables

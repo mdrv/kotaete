@@ -568,7 +568,6 @@
 			{#if connected && viewers > 0}
 				<span class='viewer-count' title={`${viewers} online`}>👥 {viewers}</span>
 			{/if}
-			<span class='status-text'>{connected ? 'LIVE' : 'Connecting...'}</span>
 			<button class='theme-toggle' onclick={toggleTheme} title='Toggle theme'>
 				{#if theme === 'dark'}
 					<svg
