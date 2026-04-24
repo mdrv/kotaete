@@ -16,6 +16,7 @@ import type { IncomingGroupMessage, NMember, QuizBundle, QuizQuestion } from '..
 import { normalizeLid } from '../utils/normalize.ts'
 import type { SendTextOptions } from '../whatsapp/types.ts'
 import { findMatchingAnswer } from './answer-checker.ts'
+import type { QuizStateCheckpoint } from './checkpoint.ts'
 import {
 	formatCooldownWarning,
 	formatExplanation,
@@ -80,6 +81,7 @@ type RunnerState = {
 	totalNormalQuestions: number
 	roundStartToken: Timer | null
 	finishedNotified: boolean
+	warningSentForToken: number
 }
 
 type Timer = ReturnType<typeof setTimeout>
@@ -164,22 +166,25 @@ export class QuizEngine {
 	private readonly onFinished: (() => void) | null
 	private readonly eventLogger: QuizEventLogger | null
 	private readonly saveSvg: boolean
+	private readonly saveCheckpoint: ((checkpoint: QuizStateCheckpoint) => void) | null
 
 	constructor(
 		private readonly sender: SenderPort,
-	opts?: {
-		sleep?: SleepFn
-		seasonStore?: SeasonStoreLike
-		onFinished?: () => void
-		eventLogger?: QuizEventLogger
-		saveSvg?: boolean
-	},
+		opts?: {
+			sleep?: SleepFn
+			seasonStore?: SeasonStoreLike
+			onFinished?: () => void
+			eventLogger?: QuizEventLogger
+			saveSvg?: boolean
+			saveCheckpoint?: (checkpoint: QuizStateCheckpoint) => void
+		},
 	) {
 		this.sleep = opts?.sleep ?? ((ms) => Bun.sleep(ms))
 		this.seasonStore = opts?.seasonStore ?? null
 		this.onFinished = opts?.onFinished ?? null
 		this.eventLogger = opts?.eventLogger ?? null
 		this.saveSvg = opts?.saveSvg ?? false
+		this.saveCheckpoint = opts?.saveCheckpoint ?? null
 	}
 
 	private notifyFinished(state: RunnerState): void {
@@ -189,6 +194,38 @@ export class QuizEngine {
 			this.onFinished?.()
 		} catch (error) {
 			log.warning(`onFinished callback failed: ${error instanceof Error ? error.message : String(error)}`)
+		}
+	}
+
+	private exportCheckpoint(state: RunnerState): QuizStateCheckpoint {
+		return {
+			version: 1,
+			updatedAt: new Date().toISOString(),
+			index: state.index,
+			roundIndex: state.roundIndex,
+			roundQuestionIndex: state.roundQuestionIndex,
+			acceptingAnswers: state.acceptingAnswers,
+			deadlineAtMs: state.deadlineAtMs,
+			questionSentAtMs: state.deadlineAtMs > 0 && state.acceptingAnswers
+				? Date.now()
+				: 0,
+			pointsByMid: Object.fromEntries(state.pointsByMid),
+			scoreReachedAtByMid: Object.fromEntries(state.scoreReachedAtByMid),
+			questionPointsByMid: Object.fromEntries(state.questionPointsByMid),
+			cooldowns: Object.fromEntries(state.cooldowns),
+			wrongStreak: Object.fromEntries(state.wrongStreak),
+			attemptedSpecial: [...state.attemptedSpecial],
+			cooldownWarningSent: [...state.cooldownWarningSent],
+			warningAlreadySent: state.warningSentForToken === state.questionToken && state.acceptingAnswers,
+		}
+	}
+
+	private persistCheckpoint(state: RunnerState): void {
+		if (!this.saveCheckpoint) return
+		try {
+			this.saveCheckpoint(this.exportCheckpoint(state))
+		} catch (error) {
+			log.warning(`checkpoint save failed: ${error instanceof Error ? error.message : String(error)}`)
 		}
 	}
 
@@ -241,6 +278,205 @@ export class QuizEngine {
 			clearTimeout(state.roundStartToken)
 			state.roundStartToken = null
 		}
+	}
+
+	/** Resume a quiz from a saved checkpoint after daemon restart. */
+	async resume(
+		bundle: QuizBundle,
+		members: ReadonlyArray<NMember>,
+		groupId: string,
+		checkpoint: QuizStateCheckpoint,
+		opts?: { noCooldown?: boolean },
+	): Promise<void> {
+		if (this.state?.active) {
+			throw new Error('[quiz] another quiz is currently running')
+		}
+
+		const byLid = new Map<string, NMember>()
+		const byCanonicalLid = new Map<string, NMember>()
+		for (const member of members) {
+			byLid.set(member.lid, member)
+			const canonicalLid = normalizeLid(member.lid)
+			if (!canonicalLid) {
+				throw new Error(`[quiz] invalid member lid: ${member.lid}`)
+			}
+			byCanonicalLid.set(canonicalLid, member)
+		}
+
+		const loggerSessionId = this.eventLogger
+			? await this.eventLogger.createSession({
+				groupId,
+				...(bundle.season?.id ? { seasonId: bundle.season.id } : {}),
+				jobId: 'resumed',
+				totalQuestions: bundle.questions.length,
+				quizDir: bundle.directory,
+			}).catch((err) => {
+				log.warning('failed to create resumed event logger session', { error: err })
+				return null
+			}) ?? null
+			: null
+
+		this.state = {
+			bundle,
+			groupId,
+			byLid,
+			byCanonicalLid,
+			pointsByMid: new Map(Object.entries(checkpoint.pointsByMid)),
+			scoreReachedAtByMid: new Map(Object.entries(checkpoint.scoreReachedAtByMid)),
+			questionPointsByMid: new Map(Object.entries(checkpoint.questionPointsByMid)),
+			cooldowns: new Map(Object.entries(checkpoint.cooldowns)),
+			noCooldown: opts?.noCooldown ?? false,
+			cooldownWarningSent: new Set(checkpoint.cooldownWarningSent),
+			wrongStreak: new Map(Object.entries(checkpoint.wrongStreak)),
+			attemptedSpecial: new Set(checkpoint.attemptedSpecial),
+			index: checkpoint.index,
+			active: true,
+			acceptingAnswers: false,
+			questionToken: 0,
+			deadlineAtMs: checkpoint.deadlineAtMs,
+			timeoutToken: null,
+			warningToken: null,
+			questionMessageKey: null,
+			loggerSessionId,
+			roundIndex: checkpoint.roundIndex,
+			roundQuestionIndex: checkpoint.roundQuestionIndex,
+			roundQuestionTotal: 0,
+			totalNormalQuestions: bundle.questions.filter((q) => !q.isSpecialStage).length,
+			roundStartToken: null,
+			finishedNotified: false,
+			warningSentForToken: -1,
+		}
+
+		log.info(
+			`resuming quiz: index=${checkpoint.index} round=${checkpoint.roundIndex} roundQ=${checkpoint.roundQuestionIndex} accepting=${checkpoint.acceptingAnswers} scores=${
+				Object.keys(checkpoint.pointsByMid).length
+			}`,
+		)
+
+		try {
+			await this.resumeDispatch(checkpoint)
+		} catch (error) {
+			log.error(`resumed quiz loop crashed: ${error instanceof Error ? error.message : String(error)}`)
+			if (this.state?.active) {
+				await this.finishQuiz()
+			}
+		}
+	}
+
+	/** Determine where to resume based on checkpoint state and dispatch accordingly. */
+	private async resumeDispatch(checkpoint: QuizStateCheckpoint): Promise<void> {
+		const state = this.state
+		if (!state) return
+
+		const rounds = buildRoundPlan(state.bundle)
+
+		// Phase D: all questions done
+		if (checkpoint.index >= state.bundle.questions.length - 1 && !checkpoint.acceptingAnswers) {
+			log.info('resume: quiz was at/past last question, finishing')
+			await this.finishQuiz()
+			return
+		}
+
+		// Phase B: mid-question with time remaining
+		if (checkpoint.acceptingAnswers) {
+			const remainingMs = checkpoint.deadlineAtMs - Date.now()
+			if (remainingMs > 0) {
+				log.info(`resume: mid-question, ${Math.round(remainingMs / 1000)}s remaining`)
+				// Re-send the question so members can see it after restart
+				const question = this.currentQuestion()
+				if (question) {
+					const timeoutMs = Math.min(remainingMs, question.isSpecialStage ? GOD_STAGE_TIMEOUT_MS : QUESTION_TIMEOUT_MS)
+					state.deadlineAtMs = Date.now() + timeoutMs
+					const progress = this.getQuestionProgress(question)
+					const caption = formatQuestion(
+						question,
+						progress,
+						formatWibTimeHint(state.deadlineAtMs, { floor: true }),
+						state.bundle.messageTemplates,
+						null,
+					)
+					if (question.imagePath) {
+						state.questionMessageKey = await this.sender.sendImageWithCaption(
+							state.groupId,
+							question.imagePath,
+							caption,
+						)
+					} else {
+						state.questionMessageKey = await this.sender.sendText(state.groupId, caption, { linkPreview: false })
+					}
+
+					state.questionToken += 1
+					const currentToken = state.questionToken
+					state.acceptingAnswers = true
+
+					if (this.sid) {
+						this.el?.updateSessionState(this.sid, {
+							currentQuestion: question.number,
+							currentRound: state.roundIndex,
+							acceptingAnswers: true,
+							deadlineAt: new Date(state.deadlineAtMs),
+						})
+						this.el?.logEvent(this.sid, {
+							groupId: state.groupId,
+							...(state.bundle.season?.id ? { seasonId: state.bundle.season.id } : {}),
+							eventType: 'resumed',
+							questionNo: question.number,
+							data: { remainingMs },
+						})
+					}
+
+					// Arm warning timer if not already sent
+					if (!checkpoint.warningAlreadySent) {
+						const warningDelayMs = timeoutMs - QUESTION_WARNING_LEAD_MS
+						if (warningDelayMs > 0) {
+							state.warningToken = setTimeout(() => {
+								void this.handleQuestionWarning(currentToken).catch((error: unknown) => {
+									log.error(`handleQuestionWarning failed: ${error instanceof Error ? error.message : String(error)}`)
+								})
+							}, warningDelayMs)
+						}
+					}
+
+					state.timeoutToken = setTimeout(() => {
+						void this.handleTimeout(currentToken).catch((error: unknown) => {
+							log.error(`handleTimeout failed: ${error instanceof Error ? error.message : String(error)}`)
+							if (this.state?.active) {
+								void this.finishQuiz()
+							}
+						})
+					}, timeoutMs)
+
+					this.persistCheckpoint(state)
+					return
+				} else {
+					log.info('resume: question deadline expired, treating as timeout')
+					// Fall through to Phase C — just advance
+				}
+			}
+
+			// Phase C: between questions (after correct/timeout), advance
+			log.info('resume: between questions, advancing')
+			// moveToNextQuestion expects to be called after a question ended,
+			// so we need to increment index/roundQuestionIndex first
+			// Actually, since acceptingAnswers is false and we're mid-quiz,
+			// just call moveToNextQuestion which will increment and send the next one
+			await this.moveToNextQuestion()
+			return
+		}
+
+		// Phase A: never started a question (index === -1)
+		log.info('resume: quiz not started yet, running from scratch')
+		const firstRound = rounds[0]
+		if (!firstRound) {
+			throw new Error('[quiz] no round plan available')
+		}
+		const firstRoundDelay = Math.max(0, firstRound.startAt.getTime() - Date.now())
+		if (firstRoundDelay > 0) await this.sleep(firstRoundDelay)
+		if (!this.state?.active) return
+		state.roundIndex = 0
+		state.roundQuestionIndex = -1
+		state.roundQuestionTotal = firstRound.questions.length
+		await this.moveToNextQuestion()
 	}
 
 	async run(
@@ -308,6 +544,7 @@ export class QuizEngine {
 			totalNormalQuestions: bundle.questions.filter((q) => !q.isSpecialStage).length,
 			roundStartToken: null,
 			finishedNotified: false,
+			warningSentForToken: -1,
 		}
 
 		const roundPlan = buildRoundPlan(bundle)
@@ -348,7 +585,14 @@ export class QuizEngine {
 		state.roundIndex = 0
 		state.roundQuestionIndex = -1
 		state.roundQuestionTotal = firstRound.questions.length
-		await this.moveToNextQuestion()
+		try {
+			await this.moveToNextQuestion()
+		} catch (error) {
+			log.error(`quiz loop crashed: ${error instanceof Error ? error.message : String(error)}`)
+			if (this.state?.active) {
+				await this.finishQuiz()
+			}
+		}
 	}
 
 	async onIncomingMessage(incoming: IncomingGroupMessage): Promise<void> {
@@ -585,7 +829,12 @@ export class QuizEngine {
 			if (nextRoundDelay > 0) {
 				log.info(`waiting for next round index=${nextRoundIndex} delayMs=${nextRoundDelay}`)
 				state.roundStartToken = setTimeout(() => {
-					void this.startRound(nextRoundIndex)
+					void this.startRound(nextRoundIndex).catch((error: unknown) => {
+						log.error(`startRound failed: ${error instanceof Error ? error.message : String(error)}`)
+						if (this.state?.active) {
+							void this.finishQuiz()
+						}
+					})
 				}, nextRoundDelay)
 				state.roundStartToken.unref?.()
 				return
@@ -679,13 +928,22 @@ export class QuizEngine {
 		const warningDelayMs = timeoutMs - QUESTION_WARNING_LEAD_MS
 		if (warningDelayMs > 0) {
 			state.warningToken = setTimeout(() => {
-				void this.handleQuestionWarning(currentToken)
+				void this.handleQuestionWarning(currentToken).catch((error: unknown) => {
+					log.error(`handleQuestionWarning failed: ${error instanceof Error ? error.message : String(error)}`)
+				})
 			}, warningDelayMs)
 		}
 		if (state.timeoutToken) clearTimeout(state.timeoutToken)
-		state.timeoutToken = setTimeout(async () => {
-			await this.handleTimeout(currentToken)
+		state.timeoutToken = setTimeout(() => {
+			void this.handleTimeout(currentToken).catch((error: unknown) => {
+				log.error(`handleTimeout failed: ${error instanceof Error ? error.message : String(error)}`)
+				if (this.state?.active) {
+					void this.finishQuiz()
+				}
+			})
 		}, timeoutMs)
+
+		this.persistCheckpoint(state)
 	}
 
 	private claimCurrentQuestion(state: RunnerState): boolean {
@@ -739,6 +997,7 @@ export class QuizEngine {
 			...(quotedKey ? { quotedKey } : {}),
 		})
 		state.warningToken = null
+		state.warningSentForToken = state.questionToken
 
 		if (this.state?.loggerSessionId) {
 			this.eventLogger?.logEvent(this.state.loggerSessionId, {
@@ -811,6 +1070,8 @@ export class QuizEngine {
 					state.bundle.season.id,
 				)
 			}
+
+			this.persistCheckpoint(state)
 		}
 
 		if (!question.isSpecialStage) state.cooldowns.set(member.mid, Date.now() + COOLDOWN_MS)

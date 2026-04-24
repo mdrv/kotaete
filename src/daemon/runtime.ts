@@ -8,11 +8,13 @@ import {
 	DEFAULT_DAEMON_LOCK_PATH,
 	DEFAULT_DAEMON_RUNTIME_STATE_PATH,
 	DEFAULT_SOCKET_PATH,
+	DEFAULT_STATE_DIR,
 	OUTBOUND_QUEUE_INTERVAL_MS,
 } from '../constants.ts'
 import { getLogger } from '../logger.ts'
 import { loadMembers } from '../members/loader.ts'
 import { PluginManager } from '../plugin/manager.ts'
+import { type QuizStateCheckpoint, quizStateCheckpointSchema } from '../quiz/checkpoint.ts'
 import { QuizEngine } from '../quiz/engine.ts'
 import type { QuizEventLogger } from '../quiz/event-logger.ts'
 import { loadQuizBundle } from '../quiz/loader.ts'
@@ -72,6 +74,7 @@ type DeferredPayload = {
 	quizBundle: QuizBundle
 	members: ReadonlyArray<NMember>
 	runOptions: { noCooldown: boolean } | undefined
+	checkpoint?: QuizStateCheckpoint | null
 }
 
 export type JobRecord = {
@@ -305,6 +308,7 @@ export class DaemonRuntime {
 	private readonly authDir: string
 	private readonly lockPath: string
 	private readonly statePath: string
+	private readonly stateDir: string
 	private readonly fresh: boolean
 	private readonly wa: WhatsAppClient
 	private readonly pluginManager: PluginManager
@@ -324,6 +328,7 @@ export class DaemonRuntime {
 		this.socketPath = expandHome(options.socketPath ?? DEFAULT_SOCKET_PATH)
 		this.lockPath = expandHome(options.lockPath ?? DEFAULT_DAEMON_LOCK_PATH)
 		this.statePath = expandHome(options.statePath ?? DEFAULT_DAEMON_RUNTIME_STATE_PATH)
+		this.stateDir = expandHome(DEFAULT_STATE_DIR)
 		this.fresh = options.fresh ?? false
 		const provider = parseWhatsAppProvider(options.provider)
 		const defaultAuthDir = provider === 'baileys' ? DEFAULT_BAILEYS_AUTH_DIR : DEFAULT_AUTH_DIR
@@ -408,6 +413,7 @@ export class DaemonRuntime {
 		this.jobs.delete(jobId)
 		this.advanceQueue(groupId)
 		void this.persistState().catch(() => undefined)
+		void this.deleteCheckpoint(jobId)
 	}
 
 	private createEngineForJob(jobId: string): QuizEngine {
@@ -428,9 +434,12 @@ export class DaemonRuntime {
 			onFinished: () => {
 				this.finishJob(jobId)
 			},
-		...(this.eventLogger ? { eventLogger: this.eventLogger } : {}),
-		...(this.saveSvg ? { saveSvg: true } : {}),
-	})
+			...(this.eventLogger ? { eventLogger: this.eventLogger } : {}),
+			...(this.saveSvg ? { saveSvg: true } : {}),
+			saveCheckpoint: (checkpoint) => {
+				void this.persistCheckpoint(jobId, checkpoint)
+			},
+		})
 	}
 
 	private generateJobId(): string {
@@ -539,16 +548,33 @@ export class DaemonRuntime {
 		const nextJob = this.jobs.get(nextJobId)
 		if (!nextJob || !nextJob.deferred) return
 
-		const { quizBundle, members, runOptions } = nextJob.deferred
+		const { quizBundle, members, runOptions, checkpoint } = nextJob.deferred
 		nextJob.deferred = null // consumed
 
-		log.info(`advancing queue for group ${groupId}: starting job ${nextJobId}`)
-		void nextJob.engine
-			.run(quizBundle, members, groupId, runOptions)
-			.catch((error: unknown) => {
-				log.error(`queued job ${nextJobId} runtime failed: ${error instanceof Error ? error.message : String(error)}`)
-				this.finishJob(nextJobId)
-			})
+		log.info(
+			`advancing queue for group ${groupId}: starting job ${nextJobId}${
+				checkpoint ? ' (resuming from checkpoint)' : ''
+			}`,
+		)
+
+		if (checkpoint) {
+			// Resume from checkpoint — saves quiz state after crash
+			void nextJob.engine
+				.resume(quizBundle, members, groupId, checkpoint, runOptions)
+				.catch((error: unknown) => {
+					log.error(
+						`resumed job ${nextJobId} runtime failed: ${error instanceof Error ? error.message : String(error)}`,
+					)
+					this.finishJob(nextJobId)
+				})
+		} else {
+			void nextJob.engine
+				.run(quizBundle, members, groupId, runOptions)
+				.catch((error: unknown) => {
+					log.error(`queued job ${nextJobId} runtime failed: ${error instanceof Error ? error.message : String(error)}`)
+					this.finishJob(nextJobId)
+				})
+		}
 	}
 
 	// ---------------------------------------------------------------------------
@@ -577,6 +603,41 @@ export class DaemonRuntime {
 		}
 		this.stateSaveChain = this.stateSaveChain.then(runSave, runSave)
 		await this.stateSaveChain
+	}
+
+	private checkpointPath(jobId: string): string {
+		return join(this.stateDir, `quiz-checkpoint-${jobId}.json`)
+	}
+
+	private async persistCheckpoint(jobId: string, checkpoint: QuizStateCheckpoint): Promise<void> {
+		const filePath = this.checkpointPath(jobId)
+		await mkdir(this.stateDir, { recursive: true })
+		const tmpPath = `${filePath}.${randomUUID()}.tmp`
+		try {
+			await writeFile(tmpPath, `${JSON.stringify(checkpoint, null, 2)}\n`, 'utf-8')
+			await rename(tmpPath, filePath)
+		} catch (error) {
+			try {
+				await unlink(tmpPath)
+			} catch { /* ignore */ }
+			log.warning(`failed persisting checkpoint ${jobId}: ${error instanceof Error ? error.message : String(error)}`)
+		}
+	}
+
+	private async loadCheckpoint(jobId: string): Promise<QuizStateCheckpoint | null> {
+		const filePath = this.checkpointPath(jobId)
+		try {
+			const raw = await readFile(filePath, 'utf-8')
+			const parsed = JSON.parse(raw)
+			return quizStateCheckpointSchema.parse(parsed)
+		} catch {
+			return null
+		}
+	}
+
+	private async deleteCheckpoint(jobId: string): Promise<void> {
+		const filePath = this.checkpointPath(jobId)
+		await rm(filePath, { force: true }).catch(() => undefined)
 	}
 
 	// ---------------------------------------------------------------------------
@@ -654,6 +715,8 @@ export class DaemonRuntime {
 					? new Date(entry.firstRoundAt)
 					: (quizBundle.rounds[0]?.startAt ?? quizBundle.startAt)
 
+				// Try to load a checkpoint from the original job ID for state recovery
+				const checkpoint = await this.loadCheckpoint(entry.id)
 				const jobRecord: JobRecord = {
 					id: jobId,
 					engine,
@@ -669,7 +732,7 @@ export class DaemonRuntime {
 						introAt,
 						firstRoundAt,
 					},
-					deferred: { quizBundle, members, runOptions },
+					deferred: { quizBundle, members, runOptions, checkpoint },
 				}
 				this.jobs.set(jobId, jobRecord)
 				const position = this.addToQueue(jobId, resolvedGroupId)
@@ -678,7 +741,11 @@ export class DaemonRuntime {
 				}
 
 				recovered += 1
-				log.info(`recovered job ${jobId} for group ${resolvedGroupId} (original id ${entry.id})`)
+				log.info(
+					`recovered job ${jobId} for group ${resolvedGroupId} (original id ${entry.id}${
+						checkpoint ? ', has checkpoint' : ''
+					})`,
+				)
 			} catch (error) {
 				log.error(
 					`failed to recover job for group ${entry.groupId}: ${error instanceof Error ? error.message : String(error)}`,
@@ -1059,9 +1126,9 @@ export class DaemonRuntime {
 												...(sampleBundle?.season?.scoreboardTemplate
 													? { templatePath: sampleBundle.season.scoreboardTemplate }
 													: {}),
-														outputStem: `scoreboard-${groupIdStem}`,
-														...(this.saveSvg ? { saveSvg: true } : {}),
-													})
+												outputStem: `scoreboard-${groupIdStem}`,
+												...(this.saveSvg ? { saveSvg: true } : {}),
+											})
 
 											const { formatSeasonTopMessage, formatSeasonOthersMessage } = await import('../quiz/messages.ts')
 											const imgCaption = formatSeasonTopMessage(top3, sampleBundle?.season?.caption)
