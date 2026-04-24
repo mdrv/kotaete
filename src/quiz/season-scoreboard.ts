@@ -81,9 +81,33 @@ async function readAvatarAsDataUri(filePath: string): Promise<string | null> {
 }
 
 /**
+ * Replace the xlink:href value on the <image> element with id="avatar{N}".
+ * Handles multi-line elements where attributes can appear in any order.
+ */
+function replaceXlinkHref(svg: string, avatarNum: string, dataUri: string): string {
+	// Find the <image element containing id="avatarN" and replace its xlink:href
+	// We search for <image ... xlink:href="..." ... id="avatarN" .../> or any attribute order
+	const pattern = new RegExp(
+		`(<image\\b[^>]*?)(xlink:href=\\")([^\"]*?)(\\")([^>]*?id=\\"avatar${avatarNum}\\"[^>]*?>)`,
+		's',
+	)
+	let result = svg.replace(pattern, `$1$2${dataUri}$4$5`)
+
+	// Try reverse order: id before xlink:href
+	if (result === svg) {
+		const reversePattern = new RegExp(
+			`(<image\\b[^>]*?id=\\"avatar${avatarNum}\\"[^>]*?)(xlink:href=\\")([^\"]*?)(\\")([^>]*?>)`,
+			's',
+		)
+		result = result.replace(reversePattern, `$1$2${dataUri}$4$5`)
+	}
+
+	return result
+}
+/**
  * Embed avatar images into the SVG content by replacing xlink:href on #avatarN elements.
- * For each slot with a mid, looks up ~/.kotaete/avatars/<mid>.jpg, falls back to default.jpg.
- * If no avatar is found, keeps the original href unchanged.
+ * For each slot (including empty ones), embeds avatar images as base64 data URIs.
+ * Empty slots and missing avatars fall back to default.jpg.
  */
 export async function embedAvatarDataUris(
 	svgContent: string,
@@ -92,27 +116,32 @@ export async function embedAvatarDataUris(
 ): Promise<string> {
 	const resolvedDir = expandHome(avatarDir ?? DEFAULT_AVATAR_DIR)
 	const defaultAvatar = join(resolvedDir, 'default.jpg')
+	const defaultDataUri = await readAvatarAsDataUri(defaultAvatar)
 	let rendered = svgContent
 
 	const totalSlots = 7
 	for (let i = 0; i < totalSlots; i++) {
 		const slot = slots[i]
 		const mid = slot?.mid
-		if (!mid) continue
-
 		const n = String(i + 1)
-		const memberAvatar = join(resolvedDir, `${mid}.jpg`)
-		const dataUri = (await readAvatarAsDataUri(memberAvatar)) ?? await readAvatarAsDataUri(defaultAvatar)
+
+		// Pick avatar: member-specific or default
+		let dataUri: string | undefined
+		if (mid) {
+			const memberAvatar = join(resolvedDir, `${mid}.jpg`)
+			dataUri = (await readAvatarAsDataUri(memberAvatar)) ?? (defaultDataUri ?? undefined)
+		} else {
+			dataUri = defaultDataUri ?? undefined
+		}
+
 		if (!dataUri) {
-			log.debug(`no avatar found for slot ${n} (mid=${mid})`)
+			log.debug(`no avatar found for slot ${n}`)
 			continue
 		}
 
-		// Replace xlink:href on the element with id="avatar{N}"
-		rendered = rendered.replace(
-			new RegExp(`(\\s+xlink\\:href=["'])avatars/[^"']*(["'])\\s+id=["']avatar${n}["']`),
-			` xlink:href="${dataUri}" id="avatar${n}"`,
-		)
+		// Replace xlink:href value only on the <image> element with id="avatar{N}"
+		// The element may span multiple lines with attributes in any order
+		rendered = replaceXlinkHref(rendered, n, dataUri)
 	}
 
 	return rendered
