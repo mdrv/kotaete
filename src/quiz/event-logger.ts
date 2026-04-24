@@ -141,8 +141,6 @@ export class QuizEventLogger {
 		quizDir?: string
 	}): Promise<string> {
 		const db = this.ensureDb()
-		// Clean up any orphaned running sessions from previous crashes BEFORE creating new one
-		await this.cleanupStaleSessions()
 		const result = await db.query<[{ id: string }[]]>(
 			`CREATE quiz_session SET group_id = $gid, season_id = $sid, job_id = $jid, total_questions = $tq, quiz_dir = $qdir ?? NONE, started_at = time::now(), status = 'running'`,
 			{
@@ -217,14 +215,6 @@ export class QuizEventLogger {
 			const count = stale?.length ?? 0
 			if (count > 0) {
 				this.log.info('cleaned up {count} stale quiz_session(s)', { count })
-				// Remove transient live data belonging to crashed sessions
-				await db.query(
-					`DELETE live_member_state WHERE session_id IN (SELECT id FROM quiz_session WHERE status = 'crashed')`,
-				)
-				await db.query(
-					`DELETE live_score WHERE session_id IN (SELECT id FROM quiz_session WHERE status = 'crashed')`,
-				)
-				this.log.info('cleaned up live data for crashed sessions')
 			}
 		}, 'cleanupStaleSessions')
 	}

@@ -968,6 +968,12 @@ export class DaemonRuntime {
 			} catch (err) {
 				log.warning('failed to initialize event logger, continuing without live logging', { error: err })
 			}
+			// Clean up orphaned sessions BEFORE recovering jobs
+			// This marks stale 'running' sessions as 'crashed'
+			// recoverJobs() will reactivate sessions that have checkpoints
+			if (this.eventLogger && !this.fresh) {
+				await this.eventLogger.cleanupStaleSessions()
+			}
 
 			// Initialize plugin manager and restore persisted plugins
 			await this.pluginManager.init()
