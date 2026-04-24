@@ -33,6 +33,8 @@
 	// ── Derived ────────────────────────────────────────────
 	let displayMode = $derived.by(() => {
 		if (!session) return 'idle'
+		// Finished/stopped session — always show final state
+		if (session.status === 'finished' || session.status === 'stopped') return 'finished'
 		// Session state is source of truth — show question immediately when accepting
 		if (session.accepting_answers && session.current_question !== null) {
 			return 'question'
@@ -291,17 +293,8 @@
 						// Session we were tracking transitioned to non-running — keep showing final state
 						console.debug('[SSE] quiz session ended:', newStatus, '(keeping final state)')
 						session = { ...existingSession, ...norm } as unknown as QuizSession
-						// Don't clear scores/events — show final results
-						// Schedule cleanup after a delay so user can see results
-						if (scoreRefreshTimer) clearTimeout(scoreRefreshTimer)
-						scoreRefreshTimer = setTimeout(() => {
-							console.debug('[SSE] clearing ended session after delay')
-							session = null
-							scores = []
-							events = []
-							memberStates = new Map()
-							imageError = false
-						}, 60_000) // Clear after 1 minute
+					// Don't clear scores/events — keep final results visible
+					// until a new session starts (handled in new-session path)
 					} else {
 						// New session or running update
 						if (!existingSession || !isSameSession) {
@@ -662,6 +655,14 @@
 									<span class='answer-tag'>{answer}</span>
 								{/each}
 							</div>
+						{/if}
+					</div>
+				{:else if displayMode === 'finished'}
+					<div class='result-card finished-card'>
+						<div class='result-emoji'>🏁</div>
+						<div class='result-title'>Quiz Finished!</div>
+						{#if sortedScores.length > 0}
+							<p class='finished-subtitle'>🏆 {sortedScores[0].points}pts — {memberDisplay(sortedScores[0].member_name, sortedScores[0].member_classgroup)}</p>
 						{/if}
 					</div>
 				{:else}
@@ -1117,6 +1118,16 @@
 		color: var(--text-secondary);
 		margin: 0.25rem 0 0;
 		font-size: 0.9rem;
+	}
+
+	.finished-card .result-title {
+		color: var(--accent-green);
+	}
+
+	.finished-subtitle {
+		color: var(--text-secondary);
+		font-size: 0.85rem;
+		margin: 0.25rem 0 0;
 	}
 
 	/* ── Scores ── */
