@@ -257,6 +257,42 @@
 		}, 500)
 	}
 
+	async function refreshOnReconnect() {
+		try {
+			const res = await fetch(
+				`/api/active?prefix=${encodeURIComponent(seasonPrefix)}`,
+			)
+			const data = await res.json()
+			if (data.session) {
+				const newId = String(data.session.id)
+				const oldId = session ? String(session.id) : null
+				if (newId !== oldId) {
+					// Session changed — full reset
+					console.debug('[reconnect] session changed:', oldId, '→', newId)
+					session = data.session
+					scores = data.scores ?? []
+					events = []
+					memberStates = new Map()
+					imageError = false
+					tryFetchEvents(newId)
+				} else {
+					// Same session — just refresh scores
+					session = data.session
+					scores = data.scores ?? []
+					if (data.memberStates?.length) {
+						const msMap = new Map<string, LiveMemberStateType>()
+						for (const ms of data.memberStates as LiveMemberStateType[]) {
+							if (ms.member_mid) msMap.set(ms.member_mid, ms)
+						}
+						memberStates = msMap
+					}
+				}
+			}
+		} catch (e) {
+			console.error('[reconnect] refresh failed:', e)
+		}
+	}
+
 	async function tryFetchEvents(sessionId: string) {
 		try {
 			const eventsRes = await fetch(
@@ -576,6 +612,8 @@
 			},
 			onOpen() {
 				connected = true
+				// Re-fetch active session on reconnect — session may have changed during disconnect
+				refreshOnReconnect()
 			},
 			onClose() {
 				connected = false

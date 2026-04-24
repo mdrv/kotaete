@@ -1,5 +1,14 @@
-import { Surreal } from 'surrealdb'
+import { RecordId, Surreal } from 'surrealdb'
 import { getLogger } from '../logger.ts'
+
+/** Parse a session ID string ('quiz_session:xxx' or plain 'xxx') into a RecordId. */
+function parseSessionRecordId(sessionId: string): RecordId {
+	const idx = sessionId.indexOf(':')
+	if (idx >= 0) {
+		return new RecordId(sessionId.slice(0, idx), sessionId.slice(idx + 1))
+	}
+	return new RecordId('quiz_session', sessionId)
+}
 
 export interface QuizEventLoggerOptions {
 	endpoint?: string
@@ -76,7 +85,7 @@ export class QuizEventLogger {
 	private db: Surreal | null = null
 	private readonly options: Required<QuizEventLoggerOptions>
 	private queryChain = Promise.resolve()
-	private _sessionId: string | null = null
+	private _sessionId: RecordId | string | null = null
 	private readonly log = getLogger(['kotaete', 'event-logger'])
 
 	constructor(options?: QuizEventLoggerOptions) {
@@ -158,12 +167,13 @@ export class QuizEventLogger {
 	}
 	/** Reuse an existing quiz session (e.g. after daemon restart). Restores status to 'running' and stores the ID. */
 	reactivateSession(sessionId: string): void {
-		this._sessionId = sessionId
+		const rid = parseSessionRecordId(sessionId)
+		this._sessionId = rid
 		this.chain(async () => {
 			const db = this.ensureDb()
 			await db.query(
 				`UPDATE $sid SET status = 'running', finished_at = NONE WHERE status = 'crashed'`,
-				{ sid: sessionId },
+				{ sid: rid },
 			)
 		}, 'reactivateSession')
 	}
