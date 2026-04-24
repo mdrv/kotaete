@@ -263,13 +263,15 @@
 
 	function matchesSession(record: Record<string, unknown>): boolean {
 		if (!session) {
-			console.debug('[SSE] matchesSession: no session loaded, dropping', { table: record._table })
+			// No session loaded yet — try to fetch from REST so future events match
+			console.debug('[WS] matchesSession: no session, triggering refresh')
+			scheduleScoreRefresh()
 			return false
 		}
 		const recSessionId = normalizeRecordId(record.session_id ?? record.id)
 		const match = recSessionId === String(session.id)
 		if (!match) {
-			console.debug('[SSE] matchesSession: mismatch', { recSessionId, sessionId: session.id })
+			console.debug('[WS] matchesSession: mismatch', { recSessionId, sessionId: session.id })
 		}
 		return match
 	}
@@ -316,6 +318,8 @@
 							// Same session update — merge fields
 							session = { ...session!, ...norm } as unknown as QuizSession
 							imageError = false
+							// Refresh scores on significant state changes
+							scheduleScoreRefresh()
 						}
 					}
 				}
@@ -525,9 +529,12 @@
 			onViewers(count) {
 				viewers = count
 			},
-			onOpen() {
-				connected = true
-			},
+		onOpen() {
+			connected = true
+		},
+		onClose() {
+			connected = false
+		},
 		})
 	})
 

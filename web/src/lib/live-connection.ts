@@ -2,6 +2,7 @@ export interface LiveConnectionCallbacks {
 	onEvent: (table: string, action: string, record: Record<string, unknown>) => void
 	onViewers?: (count: number) => void
 	onOpen?: () => void
+	onClose?: () => void
 }
 
 export function connectLive(callbacks: LiveConnectionCallbacks): () => void {
@@ -34,6 +35,7 @@ export function connectLive(callbacks: LiveConnectionCallbacks): () => void {
 
 		ws.onclose = () => {
 			if (!alive) return
+			callbacks.onClose?.()
 			setTimeout(connect, reconnectDelay)
 			reconnectDelay = Math.min(reconnectDelay * 2, 30_000)
 		}
