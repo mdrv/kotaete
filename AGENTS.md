@@ -69,6 +69,7 @@ src/
 │   └── queue.test.ts
 ├── quiz/
 │   ├── engine.ts              # QuizEngine — state machine, answer handling, timers
+│   ├── checkpoint.ts           # QuizStateCheckpoint type + Zod schema (crash recovery)
 │   ├── loader.ts              # Quiz bundle loader + defineConfig()
 │   ├── messages.ts            # All WhatsApp message formatters
 │   ├── answer-checker.ts      # Answer normalization + matching
@@ -140,6 +141,7 @@ web/
 2. **Markdown-based (legacy):** Questions can also be `.md` files in a quiz directory with `---`-separated sections (text, answers, explanation).
 3. **Daemon:** The daemon loads a quiz bundle, waits for scheduled intro time, sends questions per-round schedule, accepts/validates answers, tracks scores, and sends results.
 4. **State recovery:** On daemon restart, quiz state is recovered from checkpoint files. The engine resumes from the exact question it was on, preserving scores and cooldowns.
+5. **Crash safety:** The quiz loop is wrapped in try/catch. If any handler throws, `finishQuiz()` is called to ensure scoreboard and season scores are still generated. Timer callbacks also have error handling.
 
 ### Answer Types
 
@@ -165,6 +167,20 @@ WhatsApp uses both LID (Linked ID, e.g., `abc@lid`) and PN (phone number, e.g., 
 ### Seasons
 
 Seasons track cumulative scores across multiple quiz sessions. Stored in SurrealDB (`season` + `season_score` tables). CLI: `season stop`, `season show`, `season add`, `season set`, `season reset`, `season clear`.
+
+### Quiz State Recovery
+
+On daemon crash or restart, the quiz engine can resume mid-quiz using checkpoint files:
+
+- **Checkpoint files**: `~/.kotaete/state/quiz-checkpoint-{jobId}.json` — persisted after every question sent and every correct answer
+- **QuizStateCheckpoint**: Captures `index`, `roundIndex`, `roundQuestionIndex`, `acceptingAnswers`, `deadlineAtMs`, all score maps, cooldowns, wrong streaks, and warning state
+- **Recovery phases**:
+  - **Phase A** (index=-1): Quiz never started → run from scratch with schedule times
+  - **Phase B** (acceptingAnswers=true): Mid-question → re-send question with remaining time
+  - **Phase C** (acceptingAnswers=false): Between questions → advance to next
+  - **Phase D** (past last question): Call finishQuiz immediately
+- **Engine methods**: `resume()` for recovery, `exportCheckpoint()` for serialization, `saveCheckpoint` callback in constructor opts
+- **DaemonRuntime**: `persistCheckpoint()`, `loadCheckpoint()`, `deleteCheckpoint()` — atomic write pattern (tmp + rename). Checkpoints deleted on clean job finish.
 
 ### Message Templates
 
@@ -285,3 +301,5 @@ export default defineConfig({
 - **Quiz directories:** Named with date prefix pattern `wYYYYMMDD` (e.g., `w20260405`). Contain `kotaete.ts` config, question images, and optionally `intro.md`/`outro.md` (config `messages.intro`/`messages.outro` takes priority).
 - **SurrealDB writes:** Use chained promises (`chain()`) for serial writes. Reads use direct `query()`.
 - **Daemon state persistence:** Uses atomic write (tmp file + rename) pattern via `persistState()`.
+- **Checkpoint persistence:** Uses atomic write (tmp file + rename) via `persistCheckpoint()`. Written after every `moveToNextQuestion()` call and every `handleCorrect()` score update. Deleted on `finishJob()`.
+- **Engine error handling:** `run()` and `resume()` wrap the quiz loop in try/catch, calling `finishQuiz()` on failure. All `setTimeout` callbacks (timeout, warning, startRound) have `.catch()` handlers.

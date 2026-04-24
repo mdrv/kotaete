@@ -202,7 +202,13 @@ function makeIncoming(overrides?: Partial<IncomingGroupMessage>): IncomingGroupM
 	}
 }
 
-function createEngine(opts?: { seasonStore?: InMemorySeasonStore; onFinished?: () => void }) {
+function createEngine(
+	opts?: {
+		seasonStore?: InMemorySeasonStore
+		onFinished?: () => void
+		saveCheckpoint?: (checkpoint: import('./checkpoint.ts').QuizStateCheckpoint) => void
+	},
+) {
 	const sleep = mock(async (_ms: number) => undefined)
 	const sendText = mock(
 		async (_groupId: string, _text: string, _opts?: SendTextOptions) => ({
@@ -223,6 +229,7 @@ function createEngine(opts?: { seasonStore?: InMemorySeasonStore; onFinished?: (
 			sleep,
 			...(opts?.seasonStore ? { seasonStore: opts.seasonStore } : {}),
 			...(opts?.onFinished ? { onFinished: opts.onFinished } : {}),
+			...(opts?.saveCheckpoint ? { saveCheckpoint: opts.saveCheckpoint } : {}),
 		},
 	)
 	return { engine, sendText, sendImageWithCaption, react, sleep }
@@ -1191,5 +1198,110 @@ describe('season accumulation behavior', () => {
 			const texts = sendText.mock.calls.map((call) => String(call[1] ?? ''))
 			expect(texts.some((t) => t.includes('kelupaan'))).toBe(false)
 		})
+	})
+})
+
+import type { QuizStateCheckpoint } from './checkpoint.ts'
+
+describe('checkpoint', () => {
+	test('saveCheckpoint callback is called after moveToNextQuestion sends a question', async () => {
+		const checkpoints: QuizStateCheckpoint[] = []
+		const { engine } = createEngine({
+			saveCheckpoint: mock((cp: QuizStateCheckpoint) => {
+				checkpoints.push(cp)
+			}),
+		})
+		await engine.run(makeSingleQuestionBundle(), [makeMember()], '120@g.us')
+
+		expect(checkpoints.length).toBeGreaterThanOrEqual(1)
+		const last = checkpoints[checkpoints.length - 1]!
+		expect(last.index).toBeGreaterThanOrEqual(0)
+		expect(last.roundIndex).toBe(0)
+		expect(last.acceptingAnswers).toBe(true)
+	})
+
+	test('saveCheckpoint callback is called after handleCorrect awards points', async () => {
+		const checkpoints: QuizStateCheckpoint[] = []
+		const { engine } = createEngine({
+			saveCheckpoint: mock((cp: QuizStateCheckpoint) => {
+				checkpoints.push(cp)
+			}),
+		})
+		await engine.run(makeSingleQuestionBundle(), [makeMember()], '120@g.us')
+
+		await engine.onIncomingMessage(makeIncoming({ text: 'abc', key: { id: 'CP-CORRECT', remoteJid: '120@g.us' } }))
+
+		// After correct answer, checkpoint should include the member's points
+		const withPoints = checkpoints.find((cp) => cp.pointsByMid['1'] !== undefined && cp.pointsByMid['1']! > 0)
+		expect(withPoints).toBeTruthy()
+		expect(withPoints!.pointsByMid['1']).toBe(10)
+	})
+
+	test('resume restores scores and continues quiz', async () => {
+		const checkpoints: QuizStateCheckpoint[] = []
+		const { engine: engine1 } = createEngine({
+			saveCheckpoint: mock((cp: QuizStateCheckpoint) => {
+				checkpoints.push(cp)
+			}),
+		})
+		const bundle = makeBundle()
+		await engine1.run(bundle, [makeMember()], '120@g.us', { noCooldown: true })
+
+		// Answer Q1 correctly — this triggers checkpoint after scoring and then moveToNextQuestion
+		await engine1.onIncomingMessage(makeIncoming({ text: 'abc', key: { id: 'RESUME-Q1', remoteJid: '120@g.us' } }))
+
+		// Find a checkpoint where Q2 is active (index=1, acceptingAnswers=true)
+		const atQ2 = checkpoints.find((cp) => cp.index === 1 && cp.acceptingAnswers)
+		expect(atQ2).toBeTruthy()
+		expect(atQ2!.pointsByMid['1']).toBe(10)
+
+		// Now create a new engine and resume from that checkpoint
+		const { engine: engine2, sendText } = createEngine()
+		await engine2.resume(bundle, [makeMember()], '120@g.us', atQ2!, { noCooldown: true })
+
+		expect(engine2.isRunning()).toBe(true)
+
+		// Answer Q2 correctly — should finish the quiz
+		await engine2.onIncomingMessage(makeIncoming({ text: 'xyz', key: { id: 'RESUME-Q2', remoteJid: '120@g.us' } }))
+
+		expect(engine2.isRunning()).toBe(false)
+		// Should have a final scoreboard
+		const finalCall = sendText.mock.calls.find((call) =>
+			Array.isArray(call) && call.length > 1 && String(call[1]).includes('はやくこたえて！ END')
+		)
+		expect(finalCall).toBeTruthy()
+	})
+
+	test('resume with phase C (between questions) advances to next question', async () => {
+		const bundle = makeBundle()
+		// Phase C requires acceptingAnswers=true but deadline expired
+		const checkpoint: QuizStateCheckpoint = {
+			version: 1,
+			updatedAt: new Date().toISOString(),
+			index: 0,
+			roundIndex: 0,
+			roundQuestionIndex: 0,
+			acceptingAnswers: true,
+			deadlineAtMs: Date.now() - 1000, // expired
+			questionSentAtMs: Date.now() - 60_000,
+			pointsByMid: {},
+			scoreReachedAtByMid: {},
+			questionPointsByMid: {},
+			cooldowns: {},
+			wrongStreak: {},
+			attemptedSpecial: [],
+			cooldownWarningSent: [],
+			warningAlreadySent: false,
+		}
+
+		const { engine, sendText } = createEngine()
+		await engine.resume(bundle, [makeMember()], '120@g.us', checkpoint, { noCooldown: true })
+
+		expect(engine.isRunning()).toBe(true)
+		// Should have sent Q2 (index 0 was already done, so it advances to index 1)
+		const q2Call = sendText.mock.calls.find((call) =>
+			Array.isArray(call) && call.length > 1 && String(call[1]).includes('Q2')
+		)
+		expect(q2Call).toBeTruthy()
 	})
 })

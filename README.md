@@ -14,6 +14,8 @@ WhatsApp-based Japanese quiz bot that runs as a persistent daemon, sends quiz qu
 - **Rich Media**: SVG-based question images with customizable templates
 - **Extensible**: Override message templates, scoring rules, and more via configuration
 - **Web Spectator**: Live web dashboard for real-time quiz viewing via SurrealDB + WebSocket
+- **Crash Recovery**: Quiz state persisted to checkpoint files; resumes mid-quiz after daemon restart
+- **Crash Safety**: Quiz loop wrapped in try/catch ensuring scoreboard/season scores are always generated
 
 ## Quick Start
 
@@ -94,11 +96,11 @@ bun run kotaete season reset # Reset season scores
 src/
 ├── cli/                 # CLI entry point and commands
 ├── daemon/              # Daemon runtime and Unix socket protocol
-├── quiz/                # Quiz engine, scoring, and message formatting
-├── event-logger.ts       # Quiz event logging to SurrealDB
+├── quiz/                # Quiz engine, scoring, checkpoint, and message formatting
 ├── whatsapp/            # WhatsApp client abstractions (wwebjs, baileys)
 ├── members/             # Member list loading and validation
-├── utils/               # Helper functions (normalization, paths)
+├── plugin/              # Plugin system (hooks, tools, manifest)
+├── utils/               # Helper functions (normalization, paths, search)
 ├── constants.ts         # App constants and quiz tunables
 ├── logger.ts            # Structured logging
 └── types.ts             # Shared TypeScript types
@@ -155,16 +157,17 @@ bun test src/quiz/    # Run quiz-specific tests
 
 Quiz state is persisted in SurrealDB:
 
-| Path/Table                | Purpose                                             |
-| ------------------------- | --------------------------------------------------- |
-| `season` table            | Season metadata (id, group, status)                 |
-| `season_score` table      | Cumulative season scores per member                 |
-| `quiz_session` table      | Active quiz session state                           |
-| `quiz_event` table        | Append-only quiz event log                          |
-| `live_score` table        | Per-member score projection for live viewing        |
-| `live_member_state` table | Per-member cooldown and chances                     |
-| `~/.kotaete/auth/`        | WhatsApp auth sessions (Baileys, WWebJS)            |
-| `~/.kotaete/state/`       | Daemon runtime state, plugin manifest, LID↔PN cache |
+| Path/Table                                   | Purpose                                             |
+| -------------------------------------------- | --------------------------------------------------- |
+| `season` table                               | Season metadata (id, group, status)                 |
+| `season_score` table                         | Cumulative season scores per member                 |
+| `quiz_session` table                         | Active quiz session state                           |
+| `quiz_event` table                           | Append-only quiz event log                          |
+| `live_score` table                           | Per-member score projection for live viewing        |
+| `live_member_state` table                    | Per-member cooldown and chances                     |
+| `~/.kotaete/state/quiz-checkpoint-{id}.json` | Per-job quiz state checkpoint for crash recovery    |
+| `~/.kotaete/auth/`                           | WhatsApp auth sessions (Baileys, WWebJS)            |
+| `~/.kotaete/state/`                          | Daemon runtime state, plugin manifest, LID↔PN cache |
 
 ## Development
 
