@@ -10,6 +10,12 @@ function parseSessionRecordId(sessionId: string): RecordId {
 	return new RecordId('quiz_session', sessionId)
 }
 
+/** Ensure a sessionId value is a RecordId for SurrealDB queries. */
+function toRid(sessionId: string | RecordId): RecordId {
+	if (sessionId instanceof RecordId) return sessionId
+	return parseSessionRecordId(sessionId)
+}
+
 export interface QuizEventLoggerOptions {
 	endpoint?: string
 	username?: string
@@ -85,7 +91,7 @@ export class QuizEventLogger {
 	private db: Surreal | null = null
 	private readonly options: Required<QuizEventLoggerOptions>
 	private queryChain = Promise.resolve()
-	private _sessionId: RecordId | string | null = null
+	private _sessionId: RecordId | null = null
 	private readonly log = getLogger(['kotaete', 'event-logger'])
 
 	constructor(options?: QuizEventLoggerOptions) {
@@ -160,10 +166,10 @@ export class QuizEventLogger {
 				qdir: opts.quizDir ?? undefined,
 			},
 		)
-		const id = result[0]?.[0]?.id
-		if (!id) throw new Error('Failed to create quiz_session — no ID returned')
-		this._sessionId = id
-		return id
+		const rawId = result[0]?.[0]?.id
+		if (!rawId) throw new Error('Failed to create quiz_session — no ID returned')
+		this._sessionId = parseSessionRecordId(String(rawId))
+		return String(this._sessionId)
 	}
 	/** Reuse an existing quiz session (e.g. after daemon restart). Restores status to 'running' and stores the ID. */
 	reactivateSession(sessionId: string): void {
@@ -200,7 +206,7 @@ export class QuizEventLogger {
 			if (sets.length === 0) return
 			await db.query(
 				`UPDATE $sid MERGE { ${sets.join(', ')} }`,
-				{ sid: sessionId },
+				{ sid: toRid(sessionId) },
 			)
 		}, 'updateSessionState')
 	}
@@ -211,7 +217,7 @@ export class QuizEventLogger {
 			const finishStatus = status ?? 'finished'
 			await db.query(
 				`UPDATE $sid SET status = $status, finished_at = time::now()`,
-				{ sid: sessionId, status: finishStatus },
+				{ sid: toRid(sessionId), status: finishStatus },
 			)
 		}, 'finishSession')
 	}
@@ -246,7 +252,7 @@ export class QuizEventLogger {
 			await db.query(
 				`CREATE quiz_event SET session_id = $sid, group_id = $gid, season_id = $season_id ?? NONE, event_type = $etype, question_no = $qno ?? NONE, member_mid = $mmid ?? NONE, member_name = $mname ?? NONE, member_classgroup = $mcg ?? NONE, data = $data ?? NONE`,
 				{
-					sid: sessionId,
+					sid: toRid(sessionId),
 					gid: opts.groupId,
 					season_id: opts.seasonId ?? null,
 					etype: opts.eventType,
@@ -282,7 +288,7 @@ export class QuizEventLogger {
 					UPDATE live_score SET points = $points, ${reachedExpr}, member_name = $name, member_classgroup = $classgroup WHERE session_id = $sid AND member_mid = $mid;
 				}`,
 				{
-					sid: sessionId,
+				sid: toRid(sessionId),
 					mid: member.mid,
 					points,
 					name,
@@ -297,7 +303,7 @@ export class QuizEventLogger {
 			const db = this.ensureDb()
 			await db.query(
 				`DELETE FROM live_score WHERE session_id = $sid`,
-				{ sid: sessionId },
+				{ sid: toRid(sessionId) },
 			)
 		}, 'deleteLiveScores')
 	}
@@ -327,7 +333,7 @@ export class QuizEventLogger {
 					UPDATE live_member_state SET member_name = $name${cdFragment}, wrong_remaining = $wr WHERE session_id = $sid AND member_mid = $mid;
 				}`,
 				{
-					sid: sessionId,
+				sid: toRid(sessionId),
 					mid: member.mid,
 					name,
 					wr: opts.wrongRemaining ?? undefined,
@@ -341,7 +347,7 @@ export class QuizEventLogger {
 			const db = this.ensureDb()
 			await db.query(
 				`DELETE FROM live_member_state WHERE session_id = $sid`,
-				{ sid: sessionId },
+				{ sid: toRid(sessionId) },
 			)
 		}, 'deleteMemberStates')
 	}
