@@ -1,10 +1,14 @@
-import { readFile, unlink, writeFile } from 'node:fs/promises'
+import { access, constants, readFile, unlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { DEFAULT_STATE_DIR } from '../constants.ts'
+import { getLogger } from '../logger.ts'
 import { expandHome } from '../utils/path.ts'
 
 const DEFAULT_SCOREBOARD_TEMPLATE_PATH = `${DEFAULT_STATE_DIR}/../scoreboard-template.svg`
+const DEFAULT_AVATAR_DIR = `${DEFAULT_STATE_DIR}/../avatars`
+
+const log = getLogger(['kotaete', 'quiz', 'scoreboard'])
 
 /**
  * Escape XML special characters.
@@ -24,6 +28,7 @@ export type SeasonScoreboardSlot = {
 	nickname: string
 	classgroup: string
 	score: number
+	mid?: string
 }
 
 /**
@@ -56,6 +61,58 @@ export function renderSeasonScoreboardSvg(
 			.replaceAll(`{{nickname${n}}}`, escapeXml(nickname))
 			.replaceAll(`{{classgroup${n}}}`, escapeXml(classgroup))
 			.replaceAll(`{{score${n}}}`, escapeXml(String(slot ? score : '...')))
+	}
+
+	return rendered
+}
+
+/**
+ * Read a JPG file and return it as a base64 data URI string.
+ * Returns null if the file does not exist or cannot be read.
+ */
+async function readAvatarAsDataUri(filePath: string): Promise<string | null> {
+	try {
+		await access(filePath, constants.R_OK)
+		const buffer = await readFile(filePath)
+		return `data:image/jpeg;base64,${buffer.toString('base64')}`
+	} catch {
+		return null
+	}
+}
+
+/**
+ * Embed avatar images into the SVG content by replacing xlink:href on #avatarN elements.
+ * For each slot with a mid, looks up ~/.kotaete/avatars/<mid>.jpg, falls back to default.jpg.
+ * If no avatar is found, keeps the original href unchanged.
+ */
+export async function embedAvatarDataUris(
+	svgContent: string,
+	slots: ReadonlyArray<SeasonScoreboardSlot>,
+	avatarDir?: string,
+): Promise<string> {
+	const resolvedDir = expandHome(avatarDir ?? DEFAULT_AVATAR_DIR)
+	const defaultAvatar = join(resolvedDir, 'default.jpg')
+	let rendered = svgContent
+
+	const totalSlots = 7
+	for (let i = 0; i < totalSlots; i++) {
+		const slot = slots[i]
+		const mid = slot?.mid
+		if (!mid) continue
+
+		const n = String(i + 1)
+		const memberAvatar = join(resolvedDir, `${mid}.jpg`)
+		const dataUri = (await readAvatarAsDataUri(memberAvatar)) ?? await readAvatarAsDataUri(defaultAvatar)
+		if (!dataUri) {
+			log.debug(`no avatar found for slot ${n} (mid=${mid})`)
+			continue
+		}
+
+		// Replace xlink:href on the element with id="avatar{N}"
+		rendered = rendered.replace(
+			new RegExp(`(\\s+xlink\\:href=["'])avatars/[^"']*(["'])\\s+id=["']avatar${n}["']`),
+			` xlink:href="${dataUri}" id="avatar${n}"`,
+		)
 	}
 
 	return rendered
@@ -157,7 +214,8 @@ export async function generateSeasonScoreboardImage(
 	const rendered = renderSeasonScoreboardSvg(templateContent, slots, {
 		...(opts?.caption !== undefined ? { caption: opts.caption } : {}),
 	})
-	return await exportSeasonScoreboardImage(rendered, {
+	const withAvatars = await embedAvatarDataUris(rendered, slots)
+	return await exportSeasonScoreboardImage(withAvatars, {
 		...(opts?.outputDir ? { outputDir: opts.outputDir } : {}),
 		...(opts?.outputStem ? { outputStem: opts.outputStem } : {}),
 	})

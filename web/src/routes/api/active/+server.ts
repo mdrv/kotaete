@@ -39,14 +39,22 @@ export async function GET({ url }: { url: URL }) {
 				{ prefix },
 			).collect<[QuizSession[]]>()
 			sessions = recent
-			console.log(`[active] no running sessions, fallback to recent:`, recent.length > 0 ? `id=${normalizeId((recent[0] as any)?.id)} status=${(recent[0] as any)?.status}` : 'none')
+			console.log(
+				`[active] no running sessions, fallback to recent:`,
+				recent.length > 0 ? `id=${normalizeId((recent[0] as any)?.id)} status=${(recent[0] as any)?.status}` : 'none',
+			)
 		}
 
 		const session = sessions[0] ? normalizeSession(sessions[0] as any) as QuizSession : null
 		let scores: LiveScore[] = []
 		let memberStateList: LiveMemberStateType[] = []
 
-		console.log(`[active] prefix=${prefix} sessions_found=${sessions.length}`, session ? `session_id=${session.id} status=${(sessions[0] as any)?.status} season_id=${(sessions[0] as any)?.season_id}` : 'null')
+		console.log(
+			`[active] prefix=${prefix} sessions_found=${sessions.length}`,
+			session
+				? `session_id=${session.id} status=${(sessions[0] as any)?.status} season_id=${(sessions[0] as any)?.season_id}`
+				: 'null',
+		)
 
 		if (session) {
 			const sid = new RecordId('quiz_session', session.id)

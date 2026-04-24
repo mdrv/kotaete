@@ -119,7 +119,7 @@ export const quizCmd = app
 						JSON.stringify(
 							{
 								ok: false,
-									message: `active jobs found — select one to stop or pass an id`,
+								message: `active jobs found — select one to stop or pass an id`,
 								jobs,
 							},
 							null,

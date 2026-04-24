@@ -1027,8 +1027,8 @@ export class QuizEngine {
 					nickname: entry.member.nickname,
 					classgroup: entry.member.classgroup,
 					score: entry.points,
+					mid: entry.member.mid,
 				}))
-
 				try {
 					const { generateSeasonScoreboardImage } = await import('./season-scoreboard.ts')
 					await mkdir(state.bundle.directory, { recursive: true })

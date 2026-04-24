@@ -1048,8 +1048,8 @@ export class DaemonRuntime {
 											nickname: entry.member?.nickname ?? entry.member?.mid ?? '',
 											classgroup: entry.member?.classgroup ?? '',
 											score: entry.points,
+											mid: entry.member?.mid,
 										}))
-
 										try {
 											const { generateSeasonScoreboardImage } = await import('../quiz/season-scoreboard.ts')
 											const groupIdStem = groupId.split('@')[0] ?? groupId

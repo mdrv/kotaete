@@ -34,7 +34,9 @@
 	let displayMode = $derived.by(() => {
 		if (!session) return 'idle'
 		// Finished/stopped session — always show final state
-		if (session.status === 'finished' || session.status === 'stopped') return 'finished'
+		if (session.status === 'finished' || session.status === 'stopped') {
+			return 'finished'
+		}
 		// Session state is source of truth — show question immediately when accepting
 		if (session.accepting_answers && session.current_question !== null) {
 			return 'question'
@@ -126,7 +128,10 @@
 		applyTheme(theme)
 	}
 
-	function classgroupCompare(a: string | null | undefined, b: string | null | undefined): number {
+	function classgroupCompare(
+		a: string | null | undefined,
+		b: string | null | undefined,
+	): number {
 		if (!a && !b) return 0
 		if (!a) return 1
 		if (!b) return -1
@@ -227,7 +232,9 @@
 		scoreRefreshTimer = setTimeout(async () => {
 			scoreRefreshTimer = null
 			try {
-				const res = await fetch(`/api/active?prefix=${encodeURIComponent(seasonPrefix)}`)
+				const res = await fetch(
+					`/api/active?prefix=${encodeURIComponent(seasonPrefix)}`,
+				)
 				const data = await res.json()
 				if (data.session) {
 					session = data.session
@@ -238,7 +245,9 @@
 				}
 				// Also refresh season scores if a season is selected
 				if (seasonInfo) {
-					const seasonRes = await fetch(`/api/season/${encodeURIComponent(seasonInfo.id)}`)
+					const seasonRes = await fetch(
+						`/api/season/${encodeURIComponent(seasonInfo.id)}`,
+					)
 					const seasonData = await seasonRes.json()
 					seasonScores = seasonData.scores ?? []
 				}
@@ -250,11 +259,17 @@
 
 	async function tryFetchEvents(sessionId: string) {
 		try {
-			const eventsRes = await fetch(`/api/events/${encodeURIComponent(sessionId)}`)
+			const eventsRes = await fetch(
+				`/api/events/${encodeURIComponent(sessionId)}`,
+			)
 			const eventsData = await eventsRes.json()
 			if (eventsData.events?.length) {
 				events = eventsData.events.slice(0, 20)
-				console.debug('[SSE] fetched events for session', sessionId, events.length)
+				console.debug(
+					'[SSE] fetched events for session',
+					sessionId,
+					events.length,
+				)
 			}
 		} catch (e) {
 			console.error('[SSE] failed to fetch events:', e)
@@ -271,7 +286,10 @@
 		const recSessionId = normalizeRecordId(record.session_id ?? record.id)
 		const match = recSessionId === String(session.id)
 		if (!match) {
-			console.debug('[WS] matchesSession: mismatch', { recSessionId, sessionId: session.id })
+			console.debug('[WS] matchesSession: mismatch', {
+				recSessionId,
+				sessionId: session.id,
+			})
 		}
 		return match
 	}
@@ -281,27 +299,42 @@
 		action: string,
 		record: Record<string, unknown>,
 	) {
-		console.debug('[SSE] handleLiveEvent', { table, action, id: String(record.id) })
+		console.debug('[SSE] handleLiveEvent', {
+			table,
+			action,
+			id: String(record.id),
+		})
 		switch (table) {
 			case 'quiz_session':
 				if (action === 'UPDATE' || action === 'CREATE') {
 					if (!matchesSeason(record)) break
-					const norm = { ...record, id: normalizeRecordId(record.id) } as Record<string, unknown>
+					const norm = {
+						...record,
+						id: normalizeRecordId(record.id),
+					} as Record<string, unknown>
 					const newStatus = norm.status as string | undefined
 					const existingSession = session
-					const isSameSession = existingSession && normalizeRecordId(norm.id) === String(existingSession.id)
+					const isSameSession = existingSession
+						&& normalizeRecordId(norm.id) === String(existingSession.id)
 
 					if (newStatus && newStatus !== 'running' && isSameSession) {
 						// Session we were tracking transitioned to non-running — keep showing final state
-						console.debug('[SSE] quiz session ended:', newStatus, '(keeping final state)')
+						console.debug(
+							'[SSE] quiz session ended:',
+							newStatus,
+							'(keeping final state)',
+						)
 						session = { ...existingSession, ...norm } as unknown as QuizSession
-					// Don't clear scores/events — keep final results visible
-					// until a new session starts (handled in new-session path)
+						// Don't clear scores/events — keep final results visible
+						// until a new session starts (handled in new-session path)
 					} else {
 						// New session or running update
 						if (!existingSession || !isSameSession) {
 							// Brand new session — clear stale data immediately
-							console.debug('[SSE] new session detected, fetching events/scores', { id: norm.id, status: newStatus })
+							console.debug(
+								'[SSE] new session detected, fetching events/scores',
+								{ id: norm.id, status: newStatus },
+							)
 							session = { ...norm } as unknown as QuizSession
 							scores = []
 							events = []
@@ -326,9 +359,9 @@
 				if (action === 'DELETE') {
 					if (!matchesSession(record)) break
 					session = null
-						scores = []
-						events = []
-					}
+					scores = []
+					events = []
+				}
 				break
 			case 'quiz_event':
 				if (action === 'CREATE') {
@@ -346,8 +379,11 @@
 				break
 			case 'live_score':
 				if (action === 'CREATE' || action === 'UPDATE') {
-				if (!matchesSession(record)) break
-					console.debug('[SSE] live_score matched, adding', { mid: record.member_mid, points: record.points })
+					if (!matchesSession(record)) break
+					console.debug('[SSE] live_score matched, adding', {
+						mid: record.member_mid,
+						points: record.points,
+					})
 					const normScore = {
 						...record,
 						id: normalizeRecordId(record.id),
@@ -385,25 +421,34 @@
 				break
 			case 'season_score':
 				if (action === 'CREATE' || action === 'UPDATE') {
-				if (!matchesSeason(record)) break
-				console.debug('[SSE] season_score matched', { season_id: record.season_id, mid: record.mid, points: record.points })
-				const normSeasonScore = {
-					...record,
-					id: normalizeRecordId(record.id),
-					member_mid: record.mid,
-					member_name: record.nickname || record.kananame,
-					member_classgroup: record.classgroup,
-				} as unknown as SeasonScore
-				// Only update if this matches the currently viewed season
-				if (seasonInfo && normSeasonScore.season_id === seasonInfo.id) {
-					const idx = seasonScores.findIndex((s) => s.id === normSeasonScore.id)
-					if (idx >= 0) {
-						seasonScores = seasonScores.map((s, i) => (i === idx ? normSeasonScore : s))
-					} else {
-						seasonScores = [...seasonScores, normSeasonScore]
+					if (!matchesSeason(record)) break
+					console.debug('[SSE] season_score matched', {
+						season_id: record.season_id,
+						mid: record.mid,
+						points: record.points,
+					})
+					const normSeasonScore = {
+						...record,
+						id: normalizeRecordId(record.id),
+						member_mid: record.mid,
+						member_name: record.nickname || record.kananame,
+						member_classgroup: record.classgroup,
+					} as unknown as SeasonScore
+					// Only update if this matches the currently viewed season
+					if (seasonInfo && normSeasonScore.season_id === seasonInfo.id) {
+						const idx = seasonScores.findIndex((s) =>
+							s.id === normSeasonScore.id
+						)
+						if (idx >= 0) {
+							seasonScores = seasonScores.map((
+								s,
+								i,
+							) => (i === idx ? normSeasonScore : s))
+						} else {
+							seasonScores = [...seasonScores, normSeasonScore]
+						}
 					}
 				}
-			}
 				break
 		}
 	}
@@ -529,12 +574,12 @@
 			onViewers(count) {
 				viewers = count
 			},
-		onOpen() {
-			connected = true
-		},
-		onClose() {
-			connected = false
-		},
+			onOpen() {
+				connected = true
+			},
+			onClose() {
+				connected = false
+			},
 		})
 	})
 
@@ -573,7 +618,9 @@
 			<span class='live-dot' class:connected></span>
 			<span class='status-text'>{connected ? 'LIVE' : 'Connecting...'}</span>
 			{#if connected && viewers > 0}
-				<span class='viewer-count' title={`${viewers} online`}>👥 {viewers}</span>
+				<span class='viewer-count' title={`${viewers} online`}>👥 {
+						viewers
+					}</span>
 			{/if}
 			<button class='theme-toggle' onclick={toggleTheme} title='Toggle theme'>
 				{#if theme === 'dark'}
@@ -668,7 +715,11 @@
 						<div class='result-emoji'>🏁</div>
 						<div class='result-title'>Quiz Finished!</div>
 						{#if sortedScores.length > 0}
-							<p class='finished-subtitle'>🏆 {sortedScores[0].points}pts — {memberDisplay(sortedScores[0].member_name, sortedScores[0].member_classgroup)}</p>
+							<p class='finished-subtitle'>
+								🏆 {sortedScores[0].points}pts — {
+									memberDisplay(sortedScores[0].member_name, sortedScores[0].member_classgroup)
+								}
+							</p>
 						{/if}
 					</div>
 				{:else}
@@ -690,24 +741,27 @@
 				{#if sortedScores.length > 0}
 					<div class='scores-list'>
 						{#each sortedScores.slice(0, 10) as score, i (score.id)}
-								{@const ms = memberStates.get(score.member_mid)}
+							{@const ms = memberStates.get(score.member_mid)}
 							{@const cooldownSec = ms?.cooldown_until
-								? Math.max(0, Math.ceil((new Date(ms.cooldown_until).getTime() - now) / 1000))
-								: 0}
+							? Math.max(0, Math.ceil((new Date(ms.cooldown_until).getTime() - now) / 1000))
+							: 0}
 							{@const cooldownText = cooldownSec > 0
-								? `${Math.floor(cooldownSec / 60)}:${(cooldownSec % 60).toString().padStart(2, '0')}`
-								: ''}
-								<div class='score-row'>
-									<span class='rank'>{i + 1}</span>
-									<span class='member-name'>
-										{memberDisplay(score.member_name, score.member_classgroup)}
-									</span>
-									{#if cooldownSec > 0}
-										<span class='cooldown-badge' title='Cooldown'
-										>⏳ {cooldownText}</span>
-									{/if}
-									<span class='points'>{score.points}pts</span>
-								</div>
+							? `${Math.floor(cooldownSec / 60)}:${
+								(cooldownSec % 60).toString().padStart(2, '0')
+							}`
+							: ''}
+							<div class='score-row'>
+								<span class='rank'>{i + 1}</span>
+								<span class='member-name'>
+									{memberDisplay(score.member_name, score.member_classgroup)}
+								</span>
+								{#if cooldownSec > 0}
+									<span class='cooldown-badge' title='Cooldown'>⏳ {
+											cooldownText
+										}</span>
+								{/if}
+								<span class='points'>{score.points}pts</span>
+							</div>
 						{/each}
 					</div>
 				{:else}

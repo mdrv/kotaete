@@ -218,7 +218,6 @@ export class QuizEventLogger {
 		}, 'cleanupStaleSessions')
 	}
 
-
 	// ── Events ──
 
 	logEvent(sessionId: string, opts: {
