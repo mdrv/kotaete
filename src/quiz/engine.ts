@@ -163,15 +163,23 @@ export class QuizEngine {
 	private readonly seasonStore: SeasonStoreLike | null
 	private readonly onFinished: (() => void) | null
 	private readonly eventLogger: QuizEventLogger | null
+	private readonly saveSvg: boolean
 
 	constructor(
 		private readonly sender: SenderPort,
-		opts?: { sleep?: SleepFn; seasonStore?: SeasonStoreLike; onFinished?: () => void; eventLogger?: QuizEventLogger },
+	opts?: {
+		sleep?: SleepFn
+		seasonStore?: SeasonStoreLike
+		onFinished?: () => void
+		eventLogger?: QuizEventLogger
+		saveSvg?: boolean
+	},
 	) {
 		this.sleep = opts?.sleep ?? ((ms) => Bun.sleep(ms))
 		this.seasonStore = opts?.seasonStore ?? null
 		this.onFinished = opts?.onFinished ?? null
 		this.eventLogger = opts?.eventLogger ?? null
+		this.saveSvg = opts?.saveSvg ?? false
 	}
 
 	private notifyFinished(state: RunnerState): void {
@@ -1038,6 +1046,7 @@ export class QuizEngine {
 						outputDir: state.bundle.directory,
 						outputStem: `scoreboard-${groupIdStem}`,
 						...(season.caption ? { caption: season.caption } : {}),
+						...(this.saveSvg ? { saveSvg: true } : {}),
 					})
 					const imgCaption = formatSeasonTopMessage(top3, season.caption)
 					await this.sender.sendImageWithCaption(state.groupId, scoreboardOutput.jpgPath, imgCaption)

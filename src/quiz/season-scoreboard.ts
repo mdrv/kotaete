@@ -156,12 +156,13 @@ export function buildSeasonScoreboardMagickArgs(
  */
 export async function exportSeasonScoreboardImage(
 	svgContent: string,
-	opts?: { outputDir?: string; outputStem?: string },
-): Promise<{ pngPath: string; jpgPath: string }> {
+	opts?: { outputDir?: string; outputStem?: string; saveSvg?: boolean },
+): Promise<{ pngPath: string; jpgPath: string; svgPath?: string }> {
 	const outputDir = opts?.outputDir ? expandHome(opts.outputDir) : tmpdir()
 	const stem = opts?.outputStem?.trim().length
 		? opts.outputStem.trim()
 		: `kotaete-season-scoreboard-${Date.now()}-${Math.random().toString(36).slice(2)}`
+	const svgPath = join(outputDir, `${stem}.svg`)
 	const pngPath = join(outputDir, `${stem}.png`)
 	const jpgPath = join(outputDir, `${stem}.jpg`)
 
@@ -197,8 +198,11 @@ export async function exportSeasonScoreboardImage(
 		)
 	}
 
+	if (opts?.saveSvg) {
+		await writeFile(svgPath, svgContent, 'utf-8')
+	}
 	await unlink(tmpSvgPath).catch(() => undefined)
-	return { pngPath, jpgPath }
+	return { pngPath, jpgPath, ...(opts?.saveSvg ? { svgPath } : {}) }
 }
 
 /**
@@ -207,8 +211,8 @@ export async function exportSeasonScoreboardImage(
  */
 export async function generateSeasonScoreboardImage(
 	slots: ReadonlyArray<SeasonScoreboardSlot>,
-	opts?: { templatePath?: string; outputDir?: string; outputStem?: string; caption?: string },
-): Promise<{ pngPath: string; jpgPath: string }> {
+	opts?: { templatePath?: string; outputDir?: string; outputStem?: string; caption?: string; saveSvg?: boolean },
+): Promise<{ pngPath: string; jpgPath: string; svgPath?: string }> {
 	const resolvedTemplate = expandHome(opts?.templatePath ?? DEFAULT_SCOREBOARD_TEMPLATE_PATH)
 	const templateContent = await readFile(resolvedTemplate, 'utf-8')
 	const rendered = renderSeasonScoreboardSvg(templateContent, slots, {
@@ -218,5 +222,6 @@ export async function generateSeasonScoreboardImage(
 	return await exportSeasonScoreboardImage(withAvatars, {
 		...(opts?.outputDir ? { outputDir: opts.outputDir } : {}),
 		...(opts?.outputStem ? { outputStem: opts.outputStem } : {}),
+		...(opts?.saveSvg ? { saveSvg: true } : {}),
 	})
 }

@@ -318,6 +318,7 @@ export class DaemonRuntime {
 	private stateSaveChain = Promise.resolve()
 	private readonly seasonStore = new SeasonStore()
 	private eventLogger: QuizEventLogger | null = null
+	private saveSvg = false
 
 	constructor(options: DaemonRuntimeOptions = {}) {
 		this.socketPath = expandHome(options.socketPath ?? DEFAULT_SOCKET_PATH)
@@ -427,8 +428,9 @@ export class DaemonRuntime {
 			onFinished: () => {
 				this.finishJob(jobId)
 			},
-			...(this.eventLogger ? { eventLogger: this.eventLogger } : {}),
-		})
+		...(this.eventLogger ? { eventLogger: this.eventLogger } : {}),
+		...(this.saveSvg ? { saveSvg: true } : {}),
+	})
 	}
 
 	private generateJobId(): string {
@@ -1057,8 +1059,9 @@ export class DaemonRuntime {
 												...(sampleBundle?.season?.scoreboardTemplate
 													? { templatePath: sampleBundle.season.scoreboardTemplate }
 													: {}),
-												outputStem: `scoreboard-${groupIdStem}`,
-											})
+														outputStem: `scoreboard-${groupIdStem}`,
+														...(this.saveSvg ? { saveSvg: true } : {}),
+													})
 
 											const { formatSeasonTopMessage, formatSeasonOthersMessage } = await import('../quiz/messages.ts')
 											const imgCaption = formatSeasonTopMessage(top3, sampleBundle?.season?.caption)
@@ -1250,6 +1253,7 @@ export class DaemonRuntime {
 								...(parsed.data.noGeneration === undefined ? {} : { noGeneration: parsed.data.noGeneration }),
 								...(parsed.data.saveSvg ? { saveSvg: true } : {}),
 							})
+							this.saveSvg = !!parsed.data.saveSvg
 
 							const resolvedGroupId = (parsed.data.groupId ?? quizBundle.groupId ?? '').trim()
 							if (!resolvedGroupId) {
