@@ -946,8 +946,8 @@ export class DaemonRuntime {
 			await this.stateStore.updateDaemonStatus('running')
 			this.heartbeatTimer = setInterval(() => {
 				void this.stateStore.updateDaemonStatus('running')
-			}, 5_000)
-			log.info('daemon heartbeat started (5s interval)')
+			}, 15_000)
+			log.info('daemon heartbeat started (15s interval)')
 
 			const server = createServer((socket) => {
 				let acc = ''

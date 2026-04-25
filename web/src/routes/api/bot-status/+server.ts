@@ -17,7 +17,7 @@ export async function GET() {
 		}
 
 		const lastHb = row.last_heartbeat_at ? new Date(row.last_heartbeat_at).getTime() : 0
-		const staleThreshold = 15_000 // 3 missed heartbeats at 5s interval
+		const staleThreshold = 45_000 // 3 missed heartbeats at 15s interval
 		const online = row.status !== 'stopped' && (Date.now() - lastHb) < staleThreshold
 
 		return json({
