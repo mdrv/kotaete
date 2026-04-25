@@ -52,6 +52,8 @@
 		return 'idle'
 	})
 
+	let isGodStage = $derived(events.some((e) => e.event_type === 'god_stage_announced'))
+
 	let winnerInfo = $derived.by(() => {
 		const e = events[0]
 		if (!e || e.event_type !== 'answer_correct') return null
@@ -786,6 +788,10 @@
 						{#if session}
 							<div class='result-emoji'>⏳</div>
 							<p>Waiting for next question...</p>
+						{:else if seasonInfo}
+							<div class='result-emoji'>🏆</div>
+							<p class='result-title'>{seasonInfo.caption ?? 'Season'}</p>
+							<p class='finished-subtitle'>No active quiz right now — check the season standings!</p>
 						{:else}
 							<div class='result-emoji'>🎬</div>
 							<p>No active quiz</p>
@@ -811,13 +817,11 @@
 							: ''}
 							<div class='score-row'>
 								<span class='rank'>{i + 1}</span>
-								<span class='member-name'>
+								<span class='member-name' title={score.member_name ?? undefined}>
 									{memberDisplay(score.member_name, score.member_classgroup)}
 								</span>
-								{#if cooldownSec > 0}
-									<span class='cooldown-badge' title='Cooldown'>⏳ {
-											cooldownText
-										}</span>
+								{#if cooldownSec > 0 && displayMode !== 'finished'}
+									<span class='cooldown-badge' class:dimmed={isGodStage} title={isGodStage ? 'Cooldown (not active during GOD stage)' : 'Cooldown'}>⏳ {cooldownText}</span>
 								{/if}
 								<span class='points'>{score.points} 🌸</span>
 							</div>
@@ -868,7 +872,7 @@
 						{#each topSeasonScores as score, i (score.id)}
 							<div class='score-row'>
 								<span class='rank'>{i + 1}</span>
-								<span class='member-name'>{
+								<span class='member-name' title={score.member_name ?? undefined}>{
 									memberDisplay(score.member_name, score.member_classgroup)
 								}</span>
 								<span class='points'>{score.points} 🌸</span>
@@ -1321,6 +1325,11 @@
 		color: #fff;
 		font-weight: 600;
 		flex-shrink: 0;
+	}
+
+	.cooldown-badge.dimmed {
+		opacity: 0.4;
+		text-decoration: line-through;
 	}
 
 	/* ── Events ── */
