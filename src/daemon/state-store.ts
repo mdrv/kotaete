@@ -317,7 +317,11 @@ export class DaemonStateStore {
 		const db = this.ensureDb()
 		await this.chain(async () => {
 			await db.query(
-				`UPDATE daemon_status:only MERGE { status: $status, last_heartbeat_at: time::now(), pid: $pid }`,
+				`IF (SELECT count() FROM daemon_status:only GROUP ALL).count > 0 {
+					UPDATE daemon_status:only MERGE { status: $status, last_heartbeat_at: time::now(), pid: $pid }
+				} ELSE {
+					CREATE daemon_status:only SET status = $status, last_heartbeat_at = time::now(), pid = $pid, started_at = time::now()
+				}`,
 				{ status, pid: process.pid },
 			)
 		})

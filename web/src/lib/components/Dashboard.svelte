@@ -620,7 +620,7 @@
 		}
 
 		checkBotStatus()
-		botStatusInterval = setInterval(checkBotStatus, 30_000)
+		botStatusInterval = setInterval(checkBotStatus, 10_000)
 
 		disconnectFn = connectLive({
 			onEvent(table, action, record) {
@@ -675,6 +675,7 @@
 		</div>
 		<div class='header-right'>
 			<span class='live-dot' class:connected></span>
+			<span class='status-text'>{connected ? 'DB' : 'Connecting...'}</span>
 			<span class='status-text'>{connected ? 'LIVE' : 'Connecting...'}</span>
 			{#if connected && viewers > 0}
 				<span class='viewer-count' title={`${viewers} online`}>👥 {
@@ -683,12 +684,12 @@
 			{/if}
 			<span class='separator'>·</span>
 			<span
-				class='bot-dot'
+				class='wa-dot'
 				class:online={botOnline === true}
 				class:offline={botOnline === false}
 			></span>
 			<span class='status-text'>{
-				botOnline === null ? 'BOT ...' : botOnline ? 'BOT' : 'BOT ✗'
+				botOnline === null ? 'WA ...' : botOnline ? 'WA' : 'WA ✗'
 			}</span>
 			<button class='theme-toggle' onclick={toggleTheme} title='Toggle theme'>
 				{#if theme === 'dark'}
@@ -1084,7 +1085,9 @@
 		opacity: 0.4;
 	}
 
-	.bot-dot {
+	.wa-dot {
+		width: 8px;
+		height: 8px;
 		width: 8px;
 		height: 8px;
 		border-radius: 50%;
@@ -1093,12 +1096,12 @@
 		flex-shrink: 0;
 	}
 
-	.bot-dot.online {
+	.wa-dot.online {
 		background: var(--accent-green);
 		animation: pulse 2s ease-in-out infinite;
 	}
 
-	.bot-dot.offline {
+	.wa-dot.offline {
 		background: var(--accent-red, #ef4444);
 	}
 	@keyframes pulse {
