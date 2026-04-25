@@ -278,7 +278,7 @@ DaemonRuntime
  │    ├── enable(sourcePath, args)                    
  │    │    ├── loadPlugin() → dynamic import()        
  │    │    ├── definition.setup(ctx, args) → hooks    
- │    │    └── PluginStore.add() → persist to disk    
+ │    │    └── PluginStore.add() → persist to SurrealDB
  │    ├── disable(name)                               
  │    │    ├── hooks.teardown('manual-disable')       
  │    │    └── PluginStore.remove()                   
@@ -292,7 +292,7 @@ DaemonRuntime
  │    ├── pluginManager.emitIncoming(message)  ← non-blocking
  │    └── quiz engine dispatch                      
  │                                                    
- └── PluginStore (~/.kotaete/state/plugins.json)
+ └── PluginStore (plugin_manifest table)
 ```
 
 ### Loading
@@ -301,26 +301,13 @@ DaemonRuntime
 2. The daemon's `PluginManager` calls `loadPlugin()` which does a dynamic `import()` of the source file.
 3. The plugin's `setup()` is called with a `KotaetePluginContext` and the parsed arguments.
 4. The returned hooks are stored in the active plugin registry.
-5. The plugin is persisted to `~/.kotaete/state/plugins.json`.
+5. The plugin is persisted to the `plugin_manifest` table.
 
 ### Persistence
 
-Enabled plugins are saved to `~/.kotaete/state/plugins.json`:
+Enabled plugins are saved in the `plugin_manifest` table:
 
-```json
-{
-	"version": 1,
-	"updatedAt": "2026-04-11T10:00:00.000Z",
-	"plugins": [
-		{
-			"name": "ping",
-			"sourcePath": "/absolute/path/to/ping.ts",
-			"args": { "prefix": "!" },
-			"enabledAt": "2026-04-11T10:00:00.000Z"
-		}
-	]
-}
-```
+Each row stores `name`, `source_path`, `args`, and `enabled_at`.
 
 On daemon startup, `restoreFromManifest()` re-enables all persisted plugins. If a plugin fails to load (e.g., file deleted), it's removed from the manifest and a warning is logged.
 

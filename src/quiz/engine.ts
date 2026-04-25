@@ -223,8 +223,19 @@ export class QuizEngine {
 
 	private async persistCheckpoint(state: RunnerState): Promise<void> {
 		if (!this.saveCheckpoint) return
+		const checkpoint = this.exportCheckpoint(state)
+		log.info('persistCheckpoint: saving checkpoint', {
+			index: checkpoint.index,
+			roundIndex: checkpoint.roundIndex,
+			roundQuestionIndex: checkpoint.roundQuestionIndex,
+			acceptingAnswers: checkpoint.acceptingAnswers,
+			deadlineAtMs: checkpoint.deadlineAtMs,
+			questionToken: state.questionToken,
+			sessionId: checkpoint.loggerSessionId,
+		})
 		try {
-			await this.saveCheckpoint(this.exportCheckpoint(state))
+			await this.saveCheckpoint(checkpoint)
+			log.info('persistCheckpoint: saved successfully')
 		} catch (error) {
 			log.warning(`checkpoint save failed: ${error instanceof Error ? error.message : String(error)}`)
 		}
@@ -306,9 +317,16 @@ export class QuizEngine {
 
 		// Reuse existing SurrealDB session if available (preserves live dashboard data)
 		let loggerSessionId: string | null = checkpoint.loggerSessionId ?? null
+		log.info('resume: session recovery', {
+			loggerSessionId,
+			hasEventLogger: !!this.eventLogger,
+			checkpointSessionId: checkpoint.loggerSessionId,
+		})
 		if (this.eventLogger && loggerSessionId) {
 			try {
+				log.info('resume: reactivating SurrealDB session', { loggerSessionId })
 				this.eventLogger.reactivateSession(loggerSessionId)
+				log.info('resume: session reactivated', { loggerSessionId })
 			} catch (err) {
 				log.warning('failed to reactivate event logger session', { error: err })
 				loggerSessionId = null
@@ -765,7 +783,9 @@ export class QuizEngine {
 		}
 		const rounds = buildRoundPlan(state.bundle)
 		const activeRound = rounds[state.roundIndex]
-		log.debug(`moveToNextQuestion: idx=${state.index} roundIdx=${state.roundIndex} roundQIdx=${state.roundQuestionIndex} activeRound=${!!activeRound}`)
+		log.debug(
+			`moveToNextQuestion: idx=${state.index} roundIdx=${state.roundIndex} roundQIdx=${state.roundQuestionIndex} activeRound=${!!activeRound}`,
+		)
 		if (!activeRound) {
 			log.debug('moveToNextQuestion: no activeRound, calling finishQuiz')
 			await this.finishQuiz()
@@ -971,7 +991,9 @@ export class QuizEngine {
 
 	private async handleQuestionWarning(token: number): Promise<void> {
 		const state = this.state
-		log.debug(`handleQuestionWarning: token=${token} active=${state?.active} qToken=${state?.questionToken} accepting=${state?.acceptingAnswers}`)
+		log.debug(
+			`handleQuestionWarning: token=${token} active=${state?.active} qToken=${state?.questionToken} accepting=${state?.acceptingAnswers}`,
+		)
 		if (!state?.active) return
 		if (token !== state.questionToken) return
 		if (!state.acceptingAnswers) return
@@ -1179,7 +1201,9 @@ export class QuizEngine {
 	private async handleTimeout(token: number): Promise<void> {
 		const state = this.state
 		const question = this.currentQuestion()
-		log.debug(`handleTimeout: token=${token} active=${state?.active} hasQ=${!!question} qToken=${state?.questionToken} accepting=${state?.acceptingAnswers}`)
+		log.debug(
+			`handleTimeout: token=${token} active=${state?.active} hasQ=${!!question} qToken=${state?.questionToken} accepting=${state?.acceptingAnswers}`,
+		)
 		if (!state?.active || !question) return
 		if (token !== state.questionToken) return
 		if (!state.acceptingAnswers) return

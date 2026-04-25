@@ -100,7 +100,7 @@ src/
 │   ├── define-plugin.ts       # definePlugin() helper
 │   ├── loader.ts              # Dynamic plugin module loader
 │   ├── manager.ts             # PluginManager — lifecycle, hooks, error handling
-│   ├── store.ts               # Plugin manifest persistence (~/.kotaete/state/plugins.json)
+│   ├── store.ts               # Plugin manifest persistence (SurrealDB plugin_manifest)
 │   └── manager.test.ts
 └── utils/
     ├── normalize.ts           # JID/phone/LID normalization utilities
@@ -140,7 +140,7 @@ web/
 1. **Config-based (primary):** Quiz questions are defined in `kotaete.ts` files inside quiz directories (e.g., `~/.kotaete/w20260405/kotaete.ts`). The config specifies schedule, rounds, questions with multi-type answers (kana/romaji/kanji), image templates, members, and message overrides.
 2. **Markdown-based (legacy):** Questions can also be `.md` files in a quiz directory with `---`-separated sections (text, answers, explanation).
 3. **Daemon:** The daemon loads a quiz bundle, waits for scheduled intro time, sends questions per-round schedule, accepts/validates answers, tracks scores, and sends results.
-4. **State recovery:** On daemon restart, quiz state is recovered from checkpoint files. The engine resumes from the exact question it was on, preserving scores and cooldowns.
+4. **State recovery:** On daemon restart, quiz state is recovered from SurrealDB checkpoints. The engine resumes from the exact question it was on, preserving scores and cooldowns.
 5. **Crash safety:** The quiz loop is wrapped in try/catch. If any handler throws, `finishQuiz()` is called to ensure scoreboard and season scores are still generated. Timer callbacks also have error handling.
 
 ### Answer Types
@@ -170,9 +170,9 @@ Seasons track cumulative scores across multiple quiz sessions. Stored in Surreal
 
 ### Quiz State Recovery
 
-On daemon crash or restart, the quiz engine can resume mid-quiz using checkpoint files:
+On daemon crash or restart, the quiz engine can resume mid-quiz using SurrealDB checkpoints:
 
-- **Checkpoint files**: `~/.kotaete/state/quiz-checkpoint-{jobId}.json` — persisted after every question sent and every correct answer
+- **Checkpoint rows**: `daemon_checkpoint` table keyed by `job_id` — persisted after every question sent and every correct answer
 - **QuizStateCheckpoint**: Captures `index`, `roundIndex`, `roundQuestionIndex`, `acceptingAnswers`, `deadlineAtMs`, all score maps, cooldowns, wrong streaks, and warning state
 - **Recovery phases**:
   - **Phase A** (index=-1): Quiz never started → run from scratch with schedule times
@@ -180,7 +180,7 @@ On daemon crash or restart, the quiz engine can resume mid-quiz using checkpoint
   - **Phase C** (acceptingAnswers=false): Between questions → advance to next
   - **Phase D** (past last question): Call finishQuiz immediately
 - **Engine methods**: `resume()` for recovery, `exportCheckpoint()` for serialization, `saveCheckpoint` callback in constructor opts
-- **DaemonRuntime**: `persistCheckpoint()`, `loadCheckpoint()`, `deleteCheckpoint()` — atomic write pattern (tmp + rename). Checkpoints deleted on clean job finish.
+- **DaemonRuntime**: `persistCheckpoint()`, `loadCheckpoint()`, `deleteCheckpoint()` — persisted in SurrealDB. Checkpoints deleted on clean job finish.
 
 ### Message Templates
 
@@ -188,7 +188,7 @@ All user-facing WhatsApp messages are defined in `QuizMessageTemplates` (default
 
 ### Plugin System
 
-Hot-loadable plugins with hooks, tools, and error thresholds. Manifest persisted in `~/.kotaete/state/plugins.json`. CLI: `plugin enable`, `plugin disable`, `plugin list`.
+Hot-loadable plugins with hooks, tools, and error thresholds. Manifest persisted in SurrealDB (`plugin_manifest`). CLI: `plugin enable`, `plugin disable`, `plugin list`.
 
 ## SurrealDB Schema
 
@@ -204,6 +204,9 @@ Hot-loadable plugins with hooks, tools, and error thresholds. Manifest persisted
 | `live_member_state` | Per-member transient state | `session_id`, `member_mid`, `cooldown_until`, `wrong_remaining`                               |
 | `season`            | Season metadata            | `season_id` (unique), `group_id`, `caption`, `status`                                         |
 | `season_score`      | Season score records       | `season_id` + `mid` (unique), `points`, `reached_at`                                          |
+| `daemon_job`        | Daemon runtime job state   | `job_id` (unique), schedule/runtime metadata                                                  |
+| `daemon_checkpoint` | Quiz crash-recovery state  | `job_id` (unique), `checkpoint`                                                               |
+| `plugin_manifest`   | Enabled plugin manifest    | `name` (unique), `source_path`, `args`, `enabled_at`                                          |
 
 ## Config Format (kotaete.ts)
 
@@ -280,11 +283,7 @@ export default defineConfig({
 │   ├── baileys/              # Baileys auth state
 │   └── wwebjs/               # WWebJS auth state (Puppeteer session)
 ├── state/
-│   ├── daemon-runtime.json   # Daemon runtime state (job queue metadata)
-│   ├── quiz-checkpoint-{id}.json  # Per-job quiz state checkpoint (for crash recovery)
-│   ├── plugins.json          # Plugin manifest
-│   ├── lid-pn-map.json       # LID↔PN mapping cache
-│   └── season-points.json    # (legacy, now in SurrealDB)
+│   └── lid-pn-map.json       # LID↔PN mapping cache
 ├── avatars/                  # Member avatar JPGs (<mid>.jpg, default.jpg)
 ├── scoreboard-template.svg   # Scoreboard SVG template
 ├── daemon.sock               # Unix socket for CLI→daemon relay

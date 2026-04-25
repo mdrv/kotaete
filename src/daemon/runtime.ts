@@ -1,20 +1,17 @@
-import { randomUUID } from 'node:crypto'
-import { mkdir, open, readFile, rename, rm, unlink, writeFile } from 'node:fs/promises'
+import { mkdir, open, readFile, rm } from 'node:fs/promises'
 import { createServer, type Socket } from 'node:net'
-import { dirname, join } from 'node:path'
+import { dirname } from 'node:path'
 import {
 	DEFAULT_AUTH_DIR,
 	DEFAULT_BAILEYS_AUTH_DIR,
 	DEFAULT_DAEMON_LOCK_PATH,
-	DEFAULT_DAEMON_RUNTIME_STATE_PATH,
 	DEFAULT_SOCKET_PATH,
-	DEFAULT_STATE_DIR,
 	OUTBOUND_QUEUE_INTERVAL_MS,
 } from '../constants.ts'
 import { getLogger } from '../logger.ts'
 import { loadMembers } from '../members/loader.ts'
 import { PluginManager } from '../plugin/manager.ts'
-import { type QuizStateCheckpoint, quizStateCheckpointSchema } from '../quiz/checkpoint.ts'
+import type { QuizStateCheckpoint } from '../quiz/checkpoint.ts'
 import { QuizEngine } from '../quiz/engine.ts'
 import type { QuizEventLogger } from '../quiz/event-logger.ts'
 import { loadQuizBundle } from '../quiz/loader.ts'
@@ -25,13 +22,13 @@ import { WhatsAppClient } from '../whatsapp/client.ts'
 import type { OutgoingMessageKey, WhatsAppProvider } from '../whatsapp/types.ts'
 import { parseWhatsAppProvider } from '../whatsapp/types.ts'
 import { type JobStatus, relayRequestSchema, type RelayResponse } from './protocol.ts'
+import { DaemonStateStore } from './state-store.ts'
 
 type DaemonRuntimeOptions = {
 	socketPath?: string
 	authDir?: string
 	provider?: string
 	lockPath?: string
-	statePath?: string
 	fresh?: boolean
 }
 
@@ -95,36 +92,7 @@ export type JobRecord = {
 	deferred: DeferredPayload | null
 }
 
-// ---------------------------------------------------------------------------
-// Runtime state snapshot — persisted to disk for crash recovery
-// ---------------------------------------------------------------------------
-
-type RuntimeStateSnapshot = {
-	version: 1
-	updatedAt: string
-	jobs: Array<{
-		id: string
-		sources?: string[]
-		groupId: string
-		quizDir: string
-		membersFile?: string | null
-		noCooldown: boolean
-		noSchedule: boolean
-		noGeneration?: boolean
-		createdAt: string
-		introAt: string | null
-		firstRoundAt: string | null
-	}>
-}
-
 export const __runtimeTestInternals = {
-	serializeSnapshot(jobs: ReadonlyMap<string, JobRecord>): RuntimeStateSnapshot {
-		return serializeSnapshot(jobs)
-	},
-	parseSnapshotEntries(raw: string): Array<RuntimeStateSnapshot['jobs'][number]> {
-		const parsed = JSON.parse(raw) as RuntimeStateSnapshot
-		return parsed.jobs
-	},
 	/**
 	 * Validate that the first round start time is not already in the past.
 	 * Returns null if valid, or an error message string if invalid.
@@ -283,35 +251,14 @@ function createQueueTestContext(): QueueTestContext {
 	}
 }
 
-function serializeSnapshot(jobs: ReadonlyMap<string, JobRecord>): RuntimeStateSnapshot {
-	return {
-		version: 1,
-		updatedAt: new Date().toISOString(),
-		jobs: [...jobs.values()].map((job) => ({
-			id: job.id,
-			sources: [...(job.meta.sources ?? [job.meta.quizDir])],
-			groupId: job.meta.groupId,
-			quizDir: job.meta.quizDir,
-			membersFile: job.meta.membersFile,
-			noCooldown: job.meta.noCooldown,
-			noSchedule: job.meta.noSchedule,
-			...(job.meta.noGeneration ? { noGeneration: true } : {}),
-			createdAt: job.meta.createdAt.toISOString(),
-			introAt: job.meta.introAt?.toISOString() ?? null,
-			firstRoundAt: job.meta.firstRoundAt?.toISOString() ?? null,
-		})),
-	}
-}
-
 export class DaemonRuntime {
 	private readonly socketPath: string
 	private readonly authDir: string
 	private readonly lockPath: string
-	private readonly statePath: string
-	private readonly stateDir: string
 	private readonly fresh: boolean
 	private readonly wa: WhatsAppClient
 	private readonly pluginManager: PluginManager
+	private readonly stateStore = new DaemonStateStore()
 	private jobs = new Map<string, JobRecord>()
 	private groupQueues = new Map<string, string[]>()
 	private jobCounter = 0
@@ -327,8 +274,6 @@ export class DaemonRuntime {
 	constructor(options: DaemonRuntimeOptions = {}) {
 		this.socketPath = expandHome(options.socketPath ?? DEFAULT_SOCKET_PATH)
 		this.lockPath = expandHome(options.lockPath ?? DEFAULT_DAEMON_LOCK_PATH)
-		this.statePath = expandHome(options.statePath ?? DEFAULT_DAEMON_RUNTIME_STATE_PATH)
-		this.stateDir = expandHome(DEFAULT_STATE_DIR)
 		this.fresh = options.fresh ?? false
 		const provider = parseWhatsAppProvider(options.provider)
 		const defaultAuthDir = provider === 'baileys' ? DEFAULT_BAILEYS_AUTH_DIR : DEFAULT_AUTH_DIR
@@ -576,66 +521,71 @@ export class DaemonRuntime {
 	}
 
 	// ---------------------------------------------------------------------------
-	// State persistence (atomic write: tmp + rename)
+	// State persistence
 	// ---------------------------------------------------------------------------
 
 	private async persistState(): Promise<void> {
-		const snapshot = serializeSnapshot(this.jobs)
 		const runSave = async () => {
-			await mkdir(dirname(this.statePath), { recursive: true })
-			if (snapshot.jobs.length === 0) {
-				// No active jobs → remove state file
-				await rm(this.statePath, { force: true }).catch(() => undefined)
-				return
-			}
-			const tmpPath = join(dirname(this.statePath), `daemon-runtime-${randomUUID()}.tmp`)
-			try {
-				await writeFile(tmpPath, `${JSON.stringify(snapshot, null, 2)}\n`, 'utf-8')
-				await rename(tmpPath, this.statePath)
-			} catch (error) {
-				try {
-					await unlink(tmpPath)
-				} catch { /* ignore cleanup failure */ }
-				log.warning(`failed persisting daemon runtime state: ${error instanceof Error ? error.message : String(error)}`)
-			}
+			const jobs = [...this.jobs.values()].map((job) => ({
+				jobId: job.id,
+				sources: [...(job.meta.sources ?? [job.meta.quizDir])],
+				groupId: job.meta.groupId,
+				quizDir: job.meta.quizDir,
+				membersFile: job.meta.membersFile,
+				noCooldown: job.meta.noCooldown,
+				noSchedule: job.meta.noSchedule,
+				noGeneration: job.meta.noGeneration,
+				createdAt: job.meta.createdAt.toISOString(),
+				introAt: job.meta.introAt?.toISOString() ?? null,
+				firstRoundAt: job.meta.firstRoundAt?.toISOString() ?? null,
+			}))
+			await this.stateStore.syncJobs(jobs)
 		}
 		this.stateSaveChain = this.stateSaveChain.then(runSave, runSave)
 		await this.stateSaveChain
 	}
 
-	private checkpointPath(jobId: string): string {
-		return join(this.stateDir, `quiz-checkpoint-${jobId}.json`)
-	}
-
 	private async persistCheckpoint(jobId: string, checkpoint: QuizStateCheckpoint): Promise<void> {
-		const filePath = this.checkpointPath(jobId)
-		await mkdir(this.stateDir, { recursive: true })
-		const tmpPath = `${filePath}.${randomUUID()}.tmp`
+		log.info('persistCheckpoint: writing to SurrealDB', {
+			jobId,
+			index: checkpoint.index,
+			acceptingAnswers: checkpoint.acceptingAnswers,
+			sessionId: checkpoint.loggerSessionId,
+		})
 		try {
-			await writeFile(tmpPath, `${JSON.stringify(checkpoint, null, 2)}\n`, 'utf-8')
-			await rename(tmpPath, filePath)
+			await this.stateStore.saveCheckpoint(jobId, checkpoint)
+			log.info('persistCheckpoint: written successfully', { jobId })
 		} catch (error) {
-			try {
-				await unlink(tmpPath)
-			} catch { /* ignore */ }
 			log.warning(`failed persisting checkpoint ${jobId}: ${error instanceof Error ? error.message : String(error)}`)
 		}
 	}
 
 	private async loadCheckpoint(jobId: string): Promise<QuizStateCheckpoint | null> {
-		const filePath = this.checkpointPath(jobId)
 		try {
-			const raw = await readFile(filePath, 'utf-8')
-			const parsed = JSON.parse(raw)
-			return quizStateCheckpointSchema.parse(parsed)
-		} catch {
+			const checkpoint = await this.stateStore.loadCheckpoint(jobId)
+			if (!checkpoint) {
+				log.info('loadCheckpoint: no checkpoint found', { jobId })
+				return null
+			}
+			log.info('loadCheckpoint: loaded from SurrealDB', {
+				jobId,
+				index: checkpoint.index,
+				acceptingAnswers: checkpoint.acceptingAnswers,
+				sessionId: checkpoint.loggerSessionId,
+			})
+			return checkpoint
+		} catch (error) {
+			log.info('loadCheckpoint: no valid checkpoint found in SurrealDB', {
+				jobId,
+				error: error instanceof Error ? error.message : String(error),
+			})
 			return null
 		}
 	}
 
 	private async deleteCheckpoint(jobId: string): Promise<void> {
-		const filePath = this.checkpointPath(jobId)
-		await rm(filePath, { force: true }).catch(() => undefined)
+		log.info('deleteCheckpoint: removing from SurrealDB', { jobId })
+		await this.stateStore.deleteCheckpoint(jobId)
 	}
 
 	// ---------------------------------------------------------------------------
@@ -643,35 +593,7 @@ export class DaemonRuntime {
 	// ---------------------------------------------------------------------------
 
 	private async recoverJobs(): Promise<void> {
-		let raw: string
-		try {
-			raw = await readFile(this.statePath, 'utf-8')
-		} catch (error) {
-			if (error && typeof error === 'object' && 'code' in error && (error as { code?: string }).code === 'ENOENT') {
-				return
-			}
-			log.warning(`failed reading daemon runtime state: ${error instanceof Error ? error.message : String(error)}`)
-			return
-		}
-
-		let parsed: RuntimeStateSnapshot
-		try {
-			parsed = JSON.parse(raw) as RuntimeStateSnapshot
-		} catch {
-			log.error('daemon runtime state file is malformed JSON — skipping recovery')
-			return
-		}
-		if (!parsed.jobs || !Array.isArray(parsed.jobs)) {
-			log.error('daemon runtime state has no valid jobs array — skipping recovery')
-			return
-		}
-
-		const entries = [...parsed.jobs].sort((a, b) => {
-			const atA = a.firstRoundAt ? new Date(a.firstRoundAt).getTime() : Number.POSITIVE_INFINITY
-			const atB = b.firstRoundAt ? new Date(b.firstRoundAt).getTime() : Number.POSITIVE_INFINITY
-			if (atA !== atB) return atA - atB
-			return a.createdAt.localeCompare(b.createdAt)
-		})
+		const entries = await this.stateStore.listJobs()
 
 		let recovered = 0
 		for (const entry of entries) {
@@ -714,7 +636,7 @@ export class DaemonRuntime {
 					: (quizBundle.rounds[0]?.startAt ?? quizBundle.startAt)
 
 				// Try to load a checkpoint from the original job ID for state recovery
-				const checkpoint = await this.loadCheckpoint(entry.id)
+				const checkpoint = await this.loadCheckpoint(entry.jobId)
 				const jobRecord: JobRecord = {
 					id: jobId,
 					engine,
@@ -726,7 +648,7 @@ export class DaemonRuntime {
 						noCooldown: entry.noCooldown ?? false,
 						noSchedule: entry.noSchedule ?? false,
 						noGeneration: entry.noGeneration ?? false,
-						createdAt: entry.createdAt ? new Date(entry.createdAt) : new Date(),
+						createdAt: new Date(entry.createdAt),
 						introAt,
 						firstRoundAt,
 					},
@@ -740,7 +662,7 @@ export class DaemonRuntime {
 
 				recovered += 1
 				log.info(
-					`recovered job ${jobId} for group ${resolvedGroupId} (original id ${entry.id}${
+					`recovered job ${jobId} for group ${resolvedGroupId} (original id ${entry.jobId}${
 						checkpoint ? ', has checkpoint' : ''
 					})`,
 				)
@@ -940,11 +862,11 @@ export class DaemonRuntime {
 		log.info(`Using WhatsApp provider: ${this.wa.provider}`)
 		await mkdir(dirname(this.socketPath), { recursive: true })
 		await mkdir(dirname(this.lockPath), { recursive: true })
-		await mkdir(dirname(this.statePath), { recursive: true })
 		await mkdir(this.authDir, { recursive: true })
+		await this.stateStore.init()
 
 		if (this.fresh) {
-			await rm(this.statePath, { force: true }).catch(() => undefined)
+			await this.stateStore.clearAll()
 			log.info('fresh mode: cleared persisted runtime state')
 		}
 
@@ -1093,7 +1015,7 @@ export class DaemonRuntime {
 									if (!sampleBundle) {
 										sampleBundle = (engine as any).state?.bundle
 									}
-						await this.finishJob(job.id)
+									await this.finishJob(job.id)
 								}
 								this.groupQueues.delete(groupId)
 								const seasonId = sampleBundle?.season?.id as string | undefined
@@ -1395,7 +1317,7 @@ export class DaemonRuntime {
 							if (queuePosition === 0) {
 								this.advanceQueue(resolvedGroupId)
 							}
-					await this.persistState()
+							await this.persistState()
 
 							if (parsed.data.noSchedule) {
 								writeResponse(socket, {
@@ -1444,8 +1366,8 @@ export class DaemonRuntime {
 			await new Promise<void>((resolve) => {
 				this.server?.close(() => resolve())
 			})
-		await this.persistState()
-		await this.releaseLock()
+			await this.persistState()
+			await this.releaseLock()
 			process.exit(0)
 		}
 

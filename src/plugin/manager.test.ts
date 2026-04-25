@@ -143,7 +143,7 @@ describe('PluginStore', () => {
 	beforeEach(async () => {
 		tmpDir = join(tmpdir(), `kotaete-test-plugin-${Date.now()}-${Math.random().toString(36).slice(2)}`)
 		await mkdir(tmpDir, { recursive: true })
-		storePath = join(tmpDir, 'plugins.json')
+		storePath = join(tmpDir, 'plugin-manifest-scope')
 	})
 
 	test('loads with empty file (ENOENT)', async () => {
@@ -247,7 +247,7 @@ describe('PluginManager', () => {
 	beforeEach(async () => {
 		tmpDir = join(tmpdir(), `kotaete-test-plugin-${Date.now()}-${Math.random().toString(36).slice(2)}`)
 		await mkdir(tmpDir, { recursive: true })
-		storePath = join(tmpDir, 'plugins.json')
+		storePath = join(tmpDir, 'plugin-manifest-scope')
 	})
 
 	test('enable loads a plugin and it appears in list', async () => {

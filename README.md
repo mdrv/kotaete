@@ -157,17 +157,19 @@ bun test src/quiz/    # Run quiz-specific tests
 
 Quiz state is persisted in SurrealDB:
 
-| Path/Table                                   | Purpose                                             |
-| -------------------------------------------- | --------------------------------------------------- |
-| `season` table                               | Season metadata (id, group, status)                 |
-| `season_score` table                         | Cumulative season scores per member                 |
-| `quiz_session` table                         | Active quiz session state                           |
-| `quiz_event` table                           | Append-only quiz event log                          |
-| `live_score` table                           | Per-member score projection for live viewing        |
-| `live_member_state` table                    | Per-member cooldown and chances                     |
-| `~/.kotaete/state/quiz-checkpoint-{id}.json` | Per-job quiz state checkpoint for crash recovery    |
-| `~/.kotaete/auth/`                           | WhatsApp auth sessions (Baileys, WWebJS)            |
-| `~/.kotaete/state/`                          | Daemon runtime state, plugin manifest, LID↔PN cache |
+| Path/Table                         | Purpose                                          |
+| ---------------------------------- | ------------------------------------------------ |
+| `season` table                     | Season metadata (id, group, status)              |
+| `season_score` table               | Cumulative season scores per member              |
+| `quiz_session` table               | Active quiz session state                        |
+| `quiz_event` table                 | Append-only quiz event log                       |
+| `live_score` table                 | Per-member score projection for live viewing     |
+| `live_member_state` table          | Per-member cooldown and chances                  |
+| `daemon_job` table                 | Persisted daemon job queue/runtime metadata      |
+| `daemon_checkpoint` table          | Per-job quiz state checkpoint for crash recovery |
+| `plugin_manifest` table            | Persisted enabled plugin manifest                |
+| `~/.kotaete/auth/`                 | WhatsApp auth sessions (Baileys, WWebJS)         |
+| `~/.kotaete/state/lid-pn-map.json` | LID↔PN mapping cache                             |
 
 ## Development
 

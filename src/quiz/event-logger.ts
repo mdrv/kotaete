@@ -1,5 +1,6 @@
 import { RecordId, Surreal } from 'surrealdb'
 import { getLogger } from '../logger.ts'
+import { getDb } from '../utils/surreal.ts'
 
 /** Parse a session ID string ('quiz_session:xxx' or plain 'xxx') into a RecordId. */
 function parseSessionRecordId(sessionId: string): RecordId {
@@ -22,14 +23,6 @@ export interface QuizEventLoggerOptions {
 	password?: string
 	namespace?: string
 	database?: string
-}
-
-const DEFAULTS = {
-	endpoint: 'http://localhost:596/rpc',
-	username: 'ua',
-	password: 'japan8',
-	namespace: 'medrivia',
-	database: 'nipbang_kotaete',
 }
 
 const SCHEMA_QUERIES = [
@@ -89,13 +82,13 @@ const SCHEMA_QUERIES = [
 
 export class QuizEventLogger {
 	private db: Surreal | null = null
-	private readonly options: Required<QuizEventLoggerOptions>
+	private readonly options: QuizEventLoggerOptions
 	private queryChain = Promise.resolve()
 	private _sessionId: RecordId | null = null
 	private readonly log = getLogger(['kotaete', 'event-logger'])
 
 	constructor(options?: QuizEventLoggerOptions) {
-		this.options = { ...DEFAULTS, ...options }
+		this.options = options ?? {}
 	}
 
 	private ensureDb(): Surreal {
@@ -121,16 +114,7 @@ export class QuizEventLogger {
 	}
 
 	async init(): Promise<void> {
-		const db = new Surreal()
-		await db.connect(this.options.endpoint)
-		await db.signin({
-			username: this.options.username,
-			password: this.options.password,
-		})
-		await db.use({
-			namespace: this.options.namespace,
-			database: this.options.database,
-		})
+		const db = await getDb(this.options)
 
 		for (const q of SCHEMA_QUERIES) {
 			await db.query(q)
@@ -142,10 +126,7 @@ export class QuizEventLogger {
 	async close(): Promise<void> {
 		const sid = this._sessionId
 		this._sessionId = null
-		if (this.db) {
-			await this.db.close()
-			this.db = null
-		}
+		this.db = null
 		if (sid) this.log.debug('closed event logger for session {sessionId}', { sessionId: sid })
 	}
 
@@ -193,7 +174,11 @@ export class QuizEventLogger {
 		acceptingAnswers?: boolean
 		deadlineAt?: Date | null
 	}): void {
-		this.log.debug(`updateSessionState: sid=${sessionId} q=${opts?.currentQuestion} r=${opts?.currentRound} accept=${opts?.acceptingAnswers} dl=${opts?.deadlineAt ?? 'none'}`)
+		this.log.debug(
+			`updateSessionState: sid=${sessionId} q=${opts?.currentQuestion} r=${opts?.currentRound} accept=${opts?.acceptingAnswers} dl=${
+				opts?.deadlineAt ?? 'none'
+			}`,
+		)
 		this.chain(async () => {
 			const db = this.ensureDb()
 			const sets: string[] = []

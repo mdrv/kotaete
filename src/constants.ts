@@ -6,7 +6,6 @@ export const DEFAULT_STATE_DIR = `${process.env.HOME ?? '~'}/.kotaete/state`
 export const DEFAULT_LID_PN_MAP_PATH = `${DEFAULT_STATE_DIR}/lid-pn-map.json`
 export const DEFAULT_SOCKET_PATH = `${process.env.HOME ?? '~'}/.kotaete/daemon.sock`
 export const DEFAULT_DAEMON_LOCK_PATH = `${process.env.HOME ?? '~'}/.kotaete/daemon.lock`
-export const DEFAULT_DAEMON_RUNTIME_STATE_PATH = `${DEFAULT_STATE_DIR}/daemon-runtime.json`
 export const DEFAULT_WHATSAPP_PROVIDER = 'wwebjs' as const
 
 // ---------------------------------------------------------------------------

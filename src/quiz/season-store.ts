@@ -1,5 +1,7 @@
 import { Surreal } from 'surrealdb'
 import type { NMember } from '../types.ts'
+import type { SurrealOptions } from '../utils/surreal.ts'
+import { getDb } from '../utils/surreal.ts'
 
 export type SeasonPointsEntry = {
 	mid: string
@@ -40,21 +42,7 @@ export interface SeasonStoreLike {
 	clearAll(): Promise<void>
 }
 
-export interface SeasonStoreOptions {
-	endpoint?: string
-	username?: string
-	password?: string
-	namespace?: string
-	database?: string
-}
-
-const DEFAULTS = {
-	endpoint: 'http://localhost:596/rpc',
-	username: 'ua',
-	password: 'japan8',
-	namespace: 'medrivia',
-	database: 'nipbang_kotaete',
-}
+export type SeasonStoreOptions = SurrealOptions
 
 const SCHEMA_QUERIES = [
 	`DEFINE TABLE OVERWRITE season SCHEMAFULL`,
@@ -87,16 +75,16 @@ type ScoreRow = {
 
 export class SeasonStore {
 	private db: Surreal | null = null
-	private readonly options: Required<SeasonStoreOptions>
+	private readonly options: SeasonStoreOptions
 	private seasonCache = new Map<string, string>() // groupId → seasonId
 	private queryChain = Promise.resolve()
 
 	constructor(optionsOrPath?: SeasonStoreOptions | string) {
 		if (typeof optionsOrPath === 'string') {
 			// Backward compat: old API accepted a statePath string — ignore it
-			this.options = { ...DEFAULTS }
+			this.options = {}
 		} else {
-			this.options = { ...DEFAULTS, ...optionsOrPath }
+			this.options = { ...optionsOrPath }
 		}
 	}
 
@@ -106,16 +94,7 @@ export class SeasonStore {
 	}
 
 	async load(): Promise<void> {
-		const db = new Surreal()
-		await db.connect(this.options.endpoint)
-		await db.signin({
-			username: this.options.username,
-			password: this.options.password,
-		})
-		await db.use({
-			namespace: this.options.namespace,
-			database: this.options.database,
-		})
+		const db: Surreal = await getDb(this.options)
 
 		// Ensure schema
 		for (const q of SCHEMA_QUERIES) {
@@ -362,7 +341,7 @@ export class SeasonStore {
 				IF $new <= 0 {
 					DELETE FROM season_score WHERE season_id = $sid AND mid = $mid;
 				} ELSE IF $existing = [] {
-					CREATE season_score SET season_id = $sid, mid = $mid, points = $new, reached_at = $now, nickname: '', kananame: '', classgroup: '';
+					CREATE season_score SET season_id = $sid, mid = $mid, points = $new, reached_at = $now, nickname = '', kananame = '', classgroup = '';
 				} ELSE {
 					UPDATE season_score SET points = $new, reached_at = $now WHERE season_id = $sid AND mid = $mid;
 				}`,
@@ -389,7 +368,7 @@ export class SeasonStore {
 			await db.query(
 				`LET $existing = (SELECT id FROM season_score WHERE season_id = $sid AND mid = $mid LIMIT 1);
 				IF $existing = [] {
-					CREATE season_score SET season_id = $sid, mid = $mid, points = $points, reached_at = $now, nickname: '', kananame: '', classgroup: '';
+					CREATE season_score SET season_id = $sid, mid = $mid, points = $points, reached_at = $now, nickname = '', kananame = '', classgroup = '';
 				} ELSE {
 					UPDATE season_score SET points = $points, reached_at = $now WHERE season_id = $sid AND mid = $mid;
 				}`,
