@@ -1,4 +1,4 @@
-import { type ConnectionStatus, Surreal } from 'surrealdb'
+import { Surreal } from 'surrealdb'
 import { getLogger } from './logger'
 
 const log = getLogger(['kotaete', 'web', 'surreal'])
@@ -14,6 +14,11 @@ const {
 let db: Surreal | null = null
 let connecting: Promise<Surreal> | null = null
 let reconnectScheduled = false
+
+const HEARTBEAT_INTERVAL = 15_000
+const instanceName = process.env.INSTANCE_NAME ?? 'default'
+let heartbeatTimer: ReturnType<typeof setInterval> | null = null
+let heartbeatStarted = false
 
 /**
  * Subscribe to SurrealDB connection lifecycle events.
@@ -123,6 +128,20 @@ async function establishConnection(): Promise<Surreal> {
 				})
 			}
 
+			// Start heartbeat (only once across reconnects)
+			if (!heartbeatStarted) {
+				heartbeatStarted = true
+				void updateWebStatus(instance, 'running')
+				heartbeatTimer = setInterval(() => {
+					const current = db
+					if (current) void updateWebStatus(current, 'running')
+				}, HEARTBEAT_INTERVAL)
+				log.info('surreal:web heartbeat started (instance={instanceName}, interval={interval}ms)', {
+					instanceName,
+					interval: HEARTBEAT_INTERVAL,
+				})
+			}
+
 			return instance
 		} catch (err) {
 			log.error('surreal:web connection attempt {attempt} failed, retrying...', {
@@ -150,12 +169,44 @@ export async function getDb(): Promise<Surreal> {
 	return connecting
 }
 
-/** Get the current connection status, or null if never connected. */
-export function getConnectionStatus(): ConnectionStatus | null {
-	return db?.status ?? null
+/**
+ * Update web_status heartbeat record for this instance.
+ */
+async function updateWebStatus(instance: Surreal, status: string): Promise<void> {
+	log.debug('heartbeat: updating web_status:{instanceName} status={status}', { instanceName, status })
+	try {
+		const [result] = await instance.query(
+			`UPSERT web_status:$recordId SET status = $status, last_heartbeat_at = time::now(), pid = $pid, started_at = started_at ?? time::now()`,
+			{ recordId: instanceName, status, pid: process.pid },
+		)
+		log.debug('heartbeat: web_status:{instanceName} updated', { instanceName, result: JSON.stringify(result) })
+	} catch (err) {
+		log.error('heartbeat: web_status:{instanceName} failed: {error}', {
+			instanceName,
+			error: err instanceof Error ? err.message : String(err),
+		})
+	}
 }
 
-/** Check if the connection is currently connected. */
-export function isConnected(): boolean {
-	return db?.status === 'connected'
+/** Stop the heartbeat and mark the instance as stopped. */
+export async function stopHeartbeat(): Promise<void> {
+	if (heartbeatTimer) {
+		clearInterval(heartbeatTimer)
+		heartbeatTimer = null
+	}
+	const current = db
+	if (!current) return
+
+	log.info('heartbeat: marking web_status:{instanceName} stopped', { instanceName })
+	try {
+		await current.query(
+			`UPSERT web_status:$recordId SET status = 'stopped', last_heartbeat_at = time::now()`,
+			{ recordId: instanceName },
+		)
+	} catch (err) {
+		log.error('heartbeat: web_status:{instanceName} stop failed: {error}', {
+			instanceName,
+			error: err instanceof Error ? err.message : String(err),
+		})
+	}
 }

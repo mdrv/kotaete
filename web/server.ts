@@ -14,7 +14,12 @@
  */
 
 import { createServer } from 'node:http'
+<<<<<<< HEAD
 import { getDb } from './src/lib/server/surreal'
+||||||| parent of 6e96c47 (Add web_status heartbeat with 15s interval)
+=======
+import { stopHeartbeat } from './src/lib/server/surreal'
+>>>>>>> 6e96c47 (Add web_status heartbeat with 15s interval)
 import { KotaeteWsServer } from './src/lib/server/ws-handler'
 
 // Dynamic import because the build output doesn't exist until `bun run build`
@@ -67,11 +72,16 @@ async function markWebStopped(): Promise<void> {
 // Graceful shutdown
 async function shutdown(reason: string) {
 	console.log(`[server] shutting down (${reason})`)
+<<<<<<< HEAD
 	if (heartbeatTimer) {
 		clearInterval(heartbeatTimer)
 		heartbeatTimer = null
 	}
 	await markWebStopped()
+||||||| parent of 6e96c47 (Add web_status heartbeat with 15s interval)
+=======
+	await stopHeartbeat()
+>>>>>>> 6e96c47 (Add web_status heartbeat with 15s interval)
 	await wsServer.close()
 	httpServer.close(() => {
 		console.log('[server] closed')

@@ -112,6 +112,8 @@ src/
 
 SvelteKit 2 + Svelte 5 + Vite 8, adapter-node.
 
+**Important:** Server-side features (SurrealDB connection, web_status heartbeat, WebSocket) must work in **both** `vite dev` and production (`bun run server.ts`). Code that only runs in `server.ts` will be skipped during dev. Place shared server-side logic in `src/lib/server/` modules that load on first API/hook request, not in `server.ts` directly.
+
 ```
 web/
 ├── server.ts                  # Production HTTP server + WebSocket (KotaeteWsServer)
