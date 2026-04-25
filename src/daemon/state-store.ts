@@ -320,6 +320,7 @@ export class DaemonStateStore {
 		try {
 			await db.query(
 				`UPSERT daemon_status:only SET status = $status, last_heartbeat_at = time::now(), pid = $pid, started_at = started_at ?? time::now()`,
+				{ status, pid: process.pid },
 			)
 			DaemonStateStore.STATUS_LOG.debug`heartbeat written: status=${status}`
 		} catch (err) {
