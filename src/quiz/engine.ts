@@ -408,6 +408,12 @@ export class QuizEngine {
 		// Phase B: mid-question with time remaining
 		if (checkpoint.acceptingAnswers) {
 			const remainingMs = checkpoint.deadlineAtMs - Date.now()
+			log.debug('resume: phase B candidate', {
+				remainingMs,
+				questionIndex: checkpoint.index,
+				roundIndex: checkpoint.roundIndex,
+				warningAlreadySent: checkpoint.warningAlreadySent,
+			})
 			if (remainingMs > 0) {
 				const question = this.currentQuestion()
 				if (question) {
@@ -435,9 +441,9 @@ export class QuizEngine {
 						})
 					}
 
+					const warningDelayMs = timeoutMs - QUESTION_WARNING_LEAD_MS
 					// Arm warning timer if not already sent
 					if (!checkpoint.warningAlreadySent) {
-						const warningDelayMs = timeoutMs - QUESTION_WARNING_LEAD_MS
 						if (warningDelayMs > 0) {
 							state.warningToken = setTimeout(() => {
 								void this.handleQuestionWarning(currentToken).catch((error: unknown) => {
@@ -455,6 +461,12 @@ export class QuizEngine {
 							}
 						})
 					}, timeoutMs)
+					log.debug('resume: timers re-armed', {
+						questionNo: question.number,
+						token: currentToken,
+						timeoutMs,
+						hasWarningTimer: warningDelayMs > 0,
+					})
 
 					await this.persistCheckpoint(state)
 					return
@@ -469,7 +481,10 @@ export class QuizEngine {
 		}
 
 		// Phase A: never started a question (index === -1)
-		log.info('resume: quiz not started yet, running from scratch')
+		log.info('resume: phase A (not started), running from schedule', {
+			firstQuestionIndex: checkpoint.index,
+			roundIndex: checkpoint.roundIndex,
+		})
 		const firstRound = rounds[0]
 		if (!firstRound) {
 			throw new Error('[quiz] no round plan available')
@@ -507,6 +522,23 @@ export class QuizEngine {
 			byCanonicalLid.set(canonicalLid, member)
 		}
 
+		log.info('run: initializing quiz engine state', {
+			groupId,
+			members: members.length,
+			questions: bundle.questions.length,
+			hasSeason: !!bundle.season,
+			noCooldown: opts?.noCooldown ?? false,
+			quizDir: bundle.directory,
+		})
+
+		if (this.eventLogger) {
+			log.debug('run: creating event logger session', {
+				groupId,
+				seasonId: bundle.season?.id ?? null,
+				totalQuestions: bundle.questions.length,
+			})
+		}
+
 		const loggerSessionId = this.eventLogger
 			? await this.eventLogger.createSession({
 				groupId,
@@ -519,6 +551,10 @@ export class QuizEngine {
 				return null
 			}) ?? null
 			: null
+
+		if (loggerSessionId) {
+			log.info('run: event logger session created', { loggerSessionId, groupId })
+		}
 
 		this.state = {
 			bundle,
@@ -559,6 +595,12 @@ export class QuizEngine {
 		}))
 
 		if (this.seasonStore && bundle.season) {
+			log.debug('run: syncing season members', {
+				groupId,
+				seasonId: bundle.season.id ?? null,
+				seasonStart: !!bundle.season.start,
+				memberCount: members.length,
+			})
 			if (bundle.season.start) {
 				await this.seasonStore.resetGroup(groupId, bundle.season.id)
 			}
@@ -566,6 +608,7 @@ export class QuizEngine {
 		}
 
 		const introDelay = Math.max(0, bundle.introAt.getTime() - Date.now())
+		log.debug('run: waiting for intro', { introDelayMs: introDelay, introAt: bundle.introAt.toISOString() })
 		if (introDelay > 0) await this.sleep(introDelay)
 		if (!this.state?.active) return
 		await this.sender.sendText(
@@ -582,6 +625,11 @@ export class QuizEngine {
 			throw new Error('[quiz] no round plan available')
 		}
 		const firstRoundDelay = Math.max(0, firstRound.startAt.getTime() - Date.now())
+		log.debug('run: waiting for first round', {
+			firstRoundDelayMs: firstRoundDelay,
+			firstRoundAt: firstRound.startAt.toISOString(),
+			roundEmoji: firstRound.emoji,
+		})
 		if (firstRoundDelay > 0) await this.sleep(firstRoundDelay)
 		const state = this.state
 		if (!state?.active) return
@@ -891,6 +939,13 @@ export class QuizEngine {
 		const progress = this.getQuestionProgress(question)
 		const timeoutMs = question.isSpecialStage ? GOD_STAGE_TIMEOUT_MS : QUESTION_TIMEOUT_MS
 		state.deadlineAtMs = Date.now() + timeoutMs
+		log.debug('moveToNextQuestion: armed question timing', {
+			questionNo: question.number,
+			specialStage: question.isSpecialStage,
+			timeoutMs,
+			deadlineAtMs: state.deadlineAtMs,
+			tokenBeforeIncrement: state.questionToken,
+		})
 		const cooldownEntries = !question.isSpecialStage && state.cooldowns.size > 0
 			? this.buildCooldownEntries(state)
 			: null
@@ -905,6 +960,10 @@ export class QuizEngine {
 		state.questionToken += 1
 		const currentToken = state.questionToken
 		state.acceptingAnswers = true
+		log.debug('moveToNextQuestion: checkpointing before send', {
+			questionNo: question.number,
+			token: currentToken,
+		})
 		await this.persistCheckpoint(state)
 
 		if (question.imagePath) {
@@ -954,6 +1013,12 @@ export class QuizEngine {
 				}
 			})
 		}, timeoutMs)
+		log.debug('moveToNextQuestion: timers armed', {
+			questionNo: question.number,
+			token: currentToken,
+			timeoutMs,
+			hasWarningTimer: warningDelayMs > 0,
+		})
 	}
 
 	private claimCurrentQuestion(state: RunnerState): boolean {
@@ -1245,6 +1310,11 @@ export class QuizEngine {
 		const state = this.state
 		log.debug(`finishQuiz: state=${!!state} active=${state?.active} sid=${state?.loggerSessionId ?? 'none'}`)
 		if (!state) return
+		log.info('finishQuiz: finalizing quiz session', {
+			groupId: state.groupId,
+			participants: state.pointsByMid.size,
+			hasSeason: !!state.bundle.season,
+		})
 		state.active = false
 		state.acceptingAnswers = false
 		this.clearAllTimers(state)
@@ -1264,6 +1334,7 @@ export class QuizEngine {
 		}
 
 		const rows = this.currentScoreRows(state)
+		log.debug('finishQuiz: sending final scoreboard', { rows: rows.length })
 
 		await this.sender.sendText(
 			state.groupId,
@@ -1283,6 +1354,10 @@ export class QuizEngine {
 
 		// Season end: send special congratulation messages
 		if (season.end) {
+			log.info('finishQuiz: processing season end scoreboard', {
+				groupId: state.groupId,
+				seasonId: season.id ?? null,
+			})
 			const seasonPoints = await this.seasonStore.getPointsAsync(state.groupId, season.id)
 			const seasonMembers = await this.seasonStore.getMembersAsync(state.groupId, season.id)
 			const seasonReachedAt = await this.seasonStore.getReachedAtAsync(state.groupId, season.id)
@@ -1308,6 +1383,7 @@ export class QuizEngine {
 				.map((row) => ({ member: row.member, points: row.points }))
 
 			if (seasonRows.length > 0) {
+				log.debug('finishQuiz: season rows computed', { rows: seasonRows.length })
 				const top3 = seasonRows.slice(0, 3)
 
 				// Generate and send scoreboard image for top 7
@@ -1341,6 +1417,7 @@ export class QuizEngine {
 				// Send others message only when there are participants beyond top 3
 				const othersMessage = formatSeasonOthersMessage(seasonRows)
 				if (othersMessage) {
+					log.debug('finishQuiz: sending season others message')
 					await this.sender.sendText(state.groupId, othersMessage, { linkPreview: false })
 				}
 			}
