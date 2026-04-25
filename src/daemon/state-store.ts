@@ -319,8 +319,7 @@ export class DaemonStateStore {
 		const db = this.ensureDb()
 		try {
 			await db.query(
-				`UPDATE daemon_status:only SET status = $status, last_heartbeat_at = time::now(), pid = $pid, started_at = started_at ?? time::now()`,
-				{ status, pid: process.pid },
+				`UPSERT daemon_status:only SET status = $status, last_heartbeat_at = time::now(), pid = $pid, started_at = started_at ?? time::now()`,
 			)
 			DaemonStateStore.STATUS_LOG.debug`heartbeat written: status=${status}`
 		} catch (err) {
@@ -332,7 +331,7 @@ export class DaemonStateStore {
 		const db = this.ensureDb()
 		try {
 			await db.query(
-				`UPDATE daemon_status:only SET status = 'stopped', last_heartbeat_at = time::now()`,
+				`UPSERT daemon_status:only SET status = 'stopped', last_heartbeat_at = time::now()`
 			)
 		} catch (err) {
 			DaemonStateStore.STATUS_LOG.error`markDaemonStopped FAILED: ${err}`
