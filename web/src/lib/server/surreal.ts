@@ -173,13 +173,13 @@ export async function getDb(): Promise<Surreal> {
  * Update web_status heartbeat record for this instance.
  */
 async function updateWebStatus(instance: Surreal, status: string): Promise<void> {
-	log.debug('heartbeat: updating web_status:{instanceName} status={status}', { instanceName, status })
+	log.trace('heartbeat: updating web_status:{instanceName} status={status}', { instanceName, status })
 	try {
 		const [result] = await instance.query(
 			`UPSERT $id SET status = $status, last_heartbeat_at = time::now(), pid = $pid, started_at = started_at ?? time::now()`,
 			{ id: new RecordId('web_status', instanceName), status, pid: process.pid },
 		)
-		log.debug('heartbeat: web_status:{instanceName} updated', { instanceName, result: JSON.stringify(result) })
+		log.trace('heartbeat: web_status:{instanceName} updated', { instanceName, result: JSON.stringify(result) })
 	} catch (err) {
 		log.error('heartbeat: web_status:{instanceName} failed: {error}', {
 			instanceName,
