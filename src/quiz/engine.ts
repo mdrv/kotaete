@@ -37,6 +37,7 @@ import { awardCorrectPoints, awardWrongPoints } from './scoring.ts'
 import type { SeasonStoreLike } from './season-store.ts'
 
 import type { QuizEventLogger } from './event-logger.ts'
+import { upsertMembers } from './event-logger.ts'
 const log = getLogger(['kotaete', 'quiz'])
 
 type SenderPort = {
@@ -633,6 +634,8 @@ export class QuizEngine {
 			}
 			await this.seasonStore.setGroupMembers(groupId, members, bundle.season.id)
 		}
+		// Sync centralized members table
+		await upsertMembers(members)
 
 		const introDelay = Math.max(0, bundle.introAt.getTime() - Date.now())
 		log.debug('run: waiting for intro', { introDelayMs: introDelay, introAt: bundle.introAt.toISOString() })
@@ -774,9 +777,6 @@ export class QuizEngine {
 						eventType: 'cooldown',
 						questionNo: question.number,
 						memberMid: member.mid,
-						memberKananame: member.kananame,
-						memberNickname: member.nickname,
-						memberClassgroup: member.classgroup,
 						data: { cooldownUntilMs: cooldownUntil },
 					})
 				}
@@ -1145,8 +1145,8 @@ export class QuizEngine {
 
 			if (this.sid) {
 				const totalPts = state.pointsByMid.get(member.mid) ?? 0
-				this.el?.upsertLiveScore(this.sid, member, totalPts)
-				this.el?.upsertMemberState(this.sid, member, {
+				this.el?.upsertLiveScore(this.sid, member.mid, totalPts)
+				this.el?.upsertMemberState(this.sid, member.mid, {
 					cooldownUntil: !question.isSpecialStage ? new Date(Date.now() + COOLDOWN_MS) : null,
 				})
 				this.el?.logEvent(this.sid, {
@@ -1155,9 +1155,6 @@ export class QuizEngine {
 					eventType: 'answer_correct',
 					questionNo: question.number,
 					memberMid: member.mid,
-					memberKananame: member.kananame,
-					memberNickname: member.nickname,
-					memberClassgroup: member.classgroup,
 					data: {
 						matchedAnswer,
 						gained,
@@ -1233,9 +1230,6 @@ export class QuizEngine {
 					eventType: 'special_duplicate',
 					questionNo: question.number,
 					memberMid: member.mid,
-					memberKananame: member.kananame,
-					memberNickname: member.nickname,
-					memberClassgroup: member.classgroup,
 				})
 			}
 			return
@@ -1271,8 +1265,8 @@ export class QuizEngine {
 
 		if (this.sid) {
 			const totalPts = state.pointsByMid.get(member.mid) ?? 0
-			this.el?.upsertLiveScore(this.sid, member, totalPts)
-			this.el?.upsertMemberState(this.sid, member, {
+			this.el?.upsertLiveScore(this.sid, member.mid, totalPts)
+			this.el?.upsertMemberState(this.sid, member.mid, {
 				wrongRemaining: remain - 1,
 			})
 			this.el?.logEvent(this.sid, {
@@ -1280,10 +1274,7 @@ export class QuizEngine {
 				...(state.bundle.season?.id ? { seasonId: state.bundle.season.id } : {}),
 				eventType: 'answer_wrong',
 				questionNo: question.number,
-				memberMid: member.mid,
-				memberKananame: member.kananame,
-				memberNickname: member.nickname,
-				memberClassgroup: member.classgroup,
+					memberMid: member.mid,
 				data: {
 					answerText: incoming.text.trim(),
 					gained,

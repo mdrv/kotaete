@@ -15,6 +15,9 @@
 	// ── State ──────────────────────────────────────────────
 	let session = $state<QuizSession | null>(null)
 	let scores = $state<LiveScore[]>([])
+	let memberCache = $state<
+		Map<string, { kananame: string; nickname: string; classgroup: string }>
+	>(new Map())
 	let events = $state<QuizEvent[]>([])
 	let seasonScores = $state<SeasonScore[]>([])
 	let seasonInfo = $state<{ id: string; caption: string | null } | null>(null)
@@ -96,7 +99,10 @@
 			}
 			const cgDiff = classgroupCompare(a.member_classgroup, b.member_classgroup)
 			if (cgDiff !== 0) return cgDiff
-			return (a.member_kananame ?? '').localeCompare(b.member_kananame ?? '', 'ja')
+			return (a.member_kananame ?? '').localeCompare(
+				b.member_kananame ?? '',
+				'ja',
+			)
 		})
 	)
 
@@ -107,7 +113,10 @@
 			const bRa = b.reached_at
 			const cgDiff = classgroupCompare(a.member_classgroup, b.member_classgroup)
 			if (cgDiff !== 0) return cgDiff
-			return (a.member_name ?? '').localeCompare(b.member_name ?? '', 'ja')
+			return (a.member_kananame ?? '').localeCompare(
+				b.member_kananame ?? '',
+				'ja',
+			)
 		})
 		return showZeroPts
 			? sorted.slice(0, 30)
@@ -408,10 +417,15 @@
 			case 'quiz_event':
 				if (action === 'CREATE') {
 					if (!matchesSession(record)) break
+					const member = memberCache.get(record.member_mid as string)
 					const normEvent = {
 						...record,
 						id: normalizeRecordId(record.id),
 						session_id: normalizeRecordId(record.session_id),
+						member_kananame: member?.kananame ?? record.member_kananame ?? null,
+						member_nickname: member?.nickname ?? record.member_nickname ?? null,
+						member_classgroup: member?.classgroup ?? record.member_classgroup
+							?? null,
 					}
 					events = [normEvent as unknown as QuizEvent, ...events].slice(0, 20)
 					// Fallback: refresh scores via REST on quiz events
@@ -426,10 +440,17 @@
 						mid: record.member_mid,
 						points: record.points,
 					})
+					const scoreMember = memberCache.get(record.member_mid as string)
 					const normScore = {
 						...record,
 						id: normalizeRecordId(record.id),
 						session_id: normalizeRecordId(record.session_id),
+						member_kananame: scoreMember?.kananame ?? record.member_kananame
+							?? '',
+						member_nickname: scoreMember?.nickname ?? record.member_nickname
+							?? '',
+						member_classgroup: scoreMember?.classgroup
+							?? record.member_classgroup ?? '',
 					} as unknown as LiveScore
 					const idx = scores.findIndex((s) => s.id === normScore.id)
 					if (idx >= 0) {
@@ -443,10 +464,15 @@
 				if (action === 'CREATE' || action === 'UPDATE') {
 					if (!matchesSession(record)) break
 					const mid = record.member_mid as string
+					const stateMember = memberCache.get(mid)
 					const normState = {
 						...record,
 						id: normalizeRecordId(record.id),
 						session_id: normalizeRecordId(record.session_id),
+						member_kananame: stateMember?.kananame ?? record.member_kananame
+							?? '',
+						member_nickname: stateMember?.nickname ?? record.member_nickname
+							?? '',
 					} as unknown as LiveMemberStateType
 					const next = new Map(memberStates)
 					next.set(mid, normState)
@@ -469,26 +495,14 @@
 						mid: record.mid,
 						points: record.points,
 					})
-					const normSeasonScore = {
-						...record,
-						id: normalizeRecordId(record.id),
-						member_mid: record.mid,
-						member_name: record.kananame,
-						member_classgroup: record.classgroup,
-					} as unknown as SeasonScore
-					// Only update if this matches the currently viewed season
-					if (seasonInfo && normSeasonScore.season_id === seasonInfo.id) {
-						const idx = seasonScores.findIndex((s) =>
-							s.id === normSeasonScore.id
-						)
-						if (idx >= 0) {
-							seasonScores = seasonScores.map((
-								s,
-								i,
-							) => (i === idx ? normSeasonScore : s))
-						} else {
-							seasonScores = [...seasonScores, normSeasonScore]
-						}
+					// Reload full season scores from REST (joins member data from members table)
+					if (seasonInfo && record.season_id === seasonInfo.id) {
+						loadSeasonScores(seasonInfo.id)
+					}
+				}
+				if (action === 'DELETE') {
+					if (seasonInfo && record.season_id === seasonInfo.id) {
+						loadSeasonScores(seasonInfo.id)
 					}
 				}
 				break
@@ -530,6 +544,16 @@
 			)
 			const data = await res.json()
 			seasonScores = data.scores ?? []
+			// Populate member cache from season scores
+			for (const s of seasonScores) {
+				if (s.member_mid && s.member_kananame) {
+					memberCache.set(s.member_mid, {
+						kananame: s.member_kananame,
+						nickname: s.member_nickname ?? '',
+						classgroup: s.member_classgroup ?? '',
+					})
+				}
+			}
 		} catch (e) {
 			console.error('Failed to load season scores:', e)
 			seasonScores = []
@@ -543,6 +567,14 @@
 			seasonInfo = { id: s.season_id, caption: s.caption }
 			loadSeasonScores(s.season_id)
 		}
+	}
+
+	function findAnimByName(elem: HTMLElement, name: string) {
+		// get all the active animations on this element
+		const anims = elem.getAnimations()
+		// return the first one with the expected animationName
+		console.log(anims)
+		return anims.find((anim) => anim.id === name)
 	}
 
 	// ── Data Loading ───────────────────────────────────────
@@ -563,6 +595,18 @@
 					: 'dark'
 			}
 			applyTheme(theme)
+
+			const span1: HTMLSpanElement = document.querySelector('.wa-dot')!
+			const span2: HTMLSpanElement = document.querySelector('.live-dot')!
+			span1?.addEventListener('animationstart', (evt: AnimationEvent) => {
+				if (evt.animationName === 'pulse') {
+					const ani1 = findAnimByName(span1, 'pulse')
+					const ani2 = findAnimByName(span2, 'pulse')
+					if (ani1 && ani2) {
+						ani1.startTime = ani2.startTime
+					}
+				}
+			})
 		}
 		try {
 			const [activeRes, seasonsRes] = await Promise.all([
@@ -587,6 +631,16 @@
 					if (ms.member_mid) msMap.set(ms.member_mid, ms)
 				}
 				memberStates = msMap
+			}
+			// Build member cache from REST data (for enriching WS updates)
+			for (const s of (activeData.scores ?? []) as LiveScore[]) {
+				if (s.member_mid && s.member_kananame) {
+					memberCache.set(s.member_mid, {
+						kananame: s.member_kananame,
+						nickname: s.member_nickname,
+						classgroup: s.member_classgroup,
+					})
+				}
 			}
 			seasons = seasonsData
 
@@ -675,20 +729,18 @@
 		</div>
 		<div class='header-right'>
 			{#if connected && viewers > 0}
-				<span class='viewer-count' title={`${viewers} online`}>👥 {
+				<span class='viewer-count' title={`${viewers} online`}>🐱 {
 						viewers
 					}</span>
 			{/if}
 			<span class='live-dot' class:connected></span>
-			<span class='status-text'>{connected ? 'DB' : 'Connecting...'}</span>
+			<span class='status-text'>DB</span>
 			<span
 				class='wa-dot'
 				class:online={botOnline === true}
 				class:offline={botOnline === false}
 			></span>
-			<span class='status-text'>{
-				botOnline === null ? 'WA ...' : botOnline ? 'WA' : 'WA'
-			}</span>
+			<span class='status-text'>WA</span>
 			<span class='separator'>·</span>
 			<button class='theme-toggle' onclick={toggleTheme} title='Toggle theme'>
 				{#if theme === 'dark'}
@@ -785,8 +837,11 @@
 						<div class='result-title'>Quiz Finished!</div>
 						{#if sortedScores.length > 0}
 							<p class='finished-subtitle'>
-										🏆 {sortedScores[0].points}pts — {
-											memberDisplay(sortedScores[0].member_kananame, sortedScores[0].member_classgroup)
+								🏆 {sortedScores[0].points}pts — {
+									memberDisplay(
+										sortedScores[0].member_kananame,
+										sortedScores[0].member_classgroup,
+									)
 								}
 							</p>
 						{/if}
@@ -831,7 +886,9 @@
 									class='member-name'
 									title={score.member_nickname ?? undefined}
 								>
-									{memberDisplay(score.member_kananame, score.member_classgroup)}
+									{
+										memberDisplay(score.member_kananame, score.member_classgroup)
+									}
 								</span>
 								{#if cooldownSec > 0 && displayMode !== 'finished'}
 									<span
@@ -891,9 +948,9 @@
 								<span class='rank'>{i + 1}</span>
 								<span
 									class='member-name'
-									title={score.member_name ?? undefined}
+									title={score.member_nickname ?? undefined}
 								>{
-									memberDisplay(score.member_name, score.member_classgroup)
+									memberDisplay(score.member_kananame, score.member_classgroup)
 								}</span>
 								<span class='points'>{score.points} 🌸</span>
 							</div>
@@ -1074,9 +1131,8 @@
 
 	.live-dot.connected {
 		background: var(--accent-green);
-		animation: pulse 2s ease-in-out infinite;
+		animation: pulse 5s ease-in-out infinite;
 	}
-
 
 	.separator {
 		color: var(--text-secondary);
@@ -1097,12 +1153,13 @@
 
 	.wa-dot.online {
 		background: var(--accent-green);
-		animation: pulse 2s ease-in-out infinite;
+		animation: pulse 5s ease-in-out infinite;
 	}
 
 	.wa-dot.offline {
 		background: var(--accent-red, #ef4444);
 	}
+
 	@keyframes pulse {
 		0%,
 		100% {
@@ -1121,6 +1178,7 @@
 
 	.viewer-count {
 		font-size: 0.7rem;
+		font-weight: bold;
 		color: var(--text-secondary);
 		background: var(--surface-2);
 		padding: 0.15rem 0.45rem;

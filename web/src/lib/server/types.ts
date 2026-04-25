@@ -54,7 +54,9 @@ export interface SeasonScore {
 	id: string
 	season_id: string
 	member_mid: string
-	member_name: string
+	member_kananame: string
+	member_nickname: string
 	member_classgroup: string
 	points: number
+	reached_at: string | null
 }

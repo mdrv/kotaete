@@ -80,14 +80,14 @@ export async function GET({ url }: { url: URL }) {
 			const sid = new RecordId('quiz_session', session.id)
 			console.log(`[active] querying live_score with sid=`, sid)
 			const [scoreResults] = await db.query(
-				'SELECT * FROM live_score WHERE session_id = $sid ORDER BY points DESC',
+				`SELECT live_score.id, live_score.session_id, live_score.member_mid, live_score.points, live_score.reached_at, members.kananame as member_kananame, members.nickname as member_nickname, members.classgroup as member_classgroup FROM live_score JOIN members ON live_score.member_mid = members.mid WHERE live_score.session_id = $sid ORDER BY live_score.points DESC`,
 				{ sid },
 			).collect<[LiveScore[]]>()
 			scores = scoreResults.map((s) => normalizeSession(s as any) as LiveScore)
 
 			// Also fetch member states for cooldown display
 			const [msResults] = await db.query(
-				'SELECT * FROM live_member_state WHERE session_id = $sid',
+				`SELECT live_member_state.id, live_member_state.session_id, live_member_state.member_mid, live_member_state.cooldown_until, live_member_state.wrong_remaining, members.kananame as member_kananame, members.nickname as member_nickname FROM live_member_state JOIN members ON live_member_state.member_mid = members.mid WHERE live_member_state.session_id = $sid`,
 				{ sid },
 			).collect<[LiveMemberStateType[]]>()
 			memberStateList = msResults.map((s) => normalizeSession(s as any) as LiveMemberStateType)

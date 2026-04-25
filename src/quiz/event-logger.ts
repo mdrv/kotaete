@@ -26,6 +26,14 @@ export interface QuizEventLoggerOptions {
 }
 
 const SCHEMA_QUERIES = [
+	// Members (centralized identity — single source of truth)
+	`DEFINE TABLE OVERWRITE members SCHEMAFULL`,
+	`DEFINE FIELD OVERWRITE mid ON members TYPE string`,
+	`DEFINE FIELD OVERWRITE kananame ON members TYPE string`,
+	`DEFINE FIELD OVERWRITE nickname ON members TYPE string`,
+	`DEFINE FIELD OVERWRITE classgroup ON members TYPE string`,
+	`DEFINE INDEX OVERWRITE members_mid_unique ON members COLUMNS mid UNIQUE`,
+
 	// Quiz session (mutable state projection)
 	`DEFINE TABLE OVERWRITE quiz_session SCHEMAFULL`,
 	`DEFINE FIELD OVERWRITE group_id ON quiz_session TYPE string`,
@@ -51,9 +59,6 @@ const SCHEMA_QUERIES = [
 	`DEFINE FIELD OVERWRITE event_type ON quiz_event TYPE string`,
 	`DEFINE FIELD OVERWRITE question_no ON quiz_event TYPE option<number>`,
 	`DEFINE FIELD OVERWRITE member_mid ON quiz_event TYPE option<string>`,
-	`DEFINE FIELD OVERWRITE member_kananame ON quiz_event TYPE option<string>`,
-	`DEFINE FIELD OVERWRITE member_nickname ON quiz_event TYPE option<string>`,
-	`DEFINE FIELD OVERWRITE member_classgroup ON quiz_event TYPE option<string>`,
 	`DEFINE FIELD OVERWRITE data ON quiz_event TYPE option<object> FLEXIBLE`,
 	`DEFINE FIELD OVERWRITE created_at ON quiz_event TYPE datetime DEFAULT time::now()`,
 	`DEFINE INDEX OVERWRITE idx_quiz_event_session ON quiz_event COLUMNS session_id`,
@@ -63,9 +68,6 @@ const SCHEMA_QUERIES = [
 	`DEFINE TABLE OVERWRITE live_score SCHEMAFULL`,
 	`DEFINE FIELD OVERWRITE session_id ON live_score TYPE record<quiz_session>`,
 	`DEFINE FIELD OVERWRITE member_mid ON live_score TYPE string`,
-	`DEFINE FIELD OVERWRITE member_kananame ON live_score TYPE string`,
-	`DEFINE FIELD OVERWRITE member_nickname ON live_score TYPE string`,
-	`DEFINE FIELD OVERWRITE member_classgroup ON live_score TYPE string`,
 	`DEFINE FIELD OVERWRITE points ON live_score TYPE number DEFAULT 0`,
 	`DEFINE FIELD OVERWRITE reached_at ON live_score TYPE option<datetime>`,
 	`DEFINE INDEX OVERWRITE idx_live_score_session ON live_score COLUMNS session_id`,
@@ -75,8 +77,6 @@ const SCHEMA_QUERIES = [
 	`DEFINE TABLE OVERWRITE live_member_state SCHEMAFULL`,
 	`DEFINE FIELD OVERWRITE session_id ON live_member_state TYPE record<quiz_session>`,
 	`DEFINE FIELD OVERWRITE member_mid ON live_member_state TYPE string`,
-	`DEFINE FIELD OVERWRITE member_kananame ON live_member_state TYPE string`,
-	`DEFINE FIELD OVERWRITE member_nickname ON live_member_state TYPE string`,
 	`DEFINE FIELD OVERWRITE cooldown_until ON live_member_state TYPE option<datetime>`,
 	`DEFINE FIELD OVERWRITE wrong_remaining ON live_member_state TYPE option<number>`,
 	`DEFINE INDEX OVERWRITE idx_lms_session ON live_member_state COLUMNS session_id`,
@@ -148,12 +148,14 @@ export class QuizEventLogger {
 			await db.query(q)
 		}
 
-		// Migration: remove old member_name field (replaced by member_kananame + member_nickname)
+		// Migration: remove old member identity fields (moved to members table)
 		for (const table of ['quiz_event', 'live_score', 'live_member_state']) {
-			try {
-				await db.query(`REMOVE FIELD IF EXISTS member_name ON ${table}`)
-			} catch {
-				// Field may already be removed — ignore
+			for (const field of ['member_name', 'member_kananame', 'member_nickname', 'member_classgroup']) {
+				try {
+					await db.query(`REMOVE FIELD IF EXISTS ${field} ON ${table}`)
+				} catch {
+					// Field may already be removed — ignore
+				}
 			}
 		}
 
@@ -272,15 +274,12 @@ export class QuizEventLogger {
 		eventType: string
 		questionNo?: number
 		memberMid?: string
-		memberKananame?: string
-		memberNickname?: string
-		memberClassgroup?: string
 		data?: Record<string, unknown>
 	}): void {
 		this.chain(async () => {
 			const db = this.ensureDb()
 			await db.query(
-				`CREATE quiz_event SET session_id = $sid, group_id = $gid, season_id = $season_id ?? NONE, event_type = $etype, question_no = $qno ?? NONE, member_mid = $mmid ?? NONE, member_kananame = $mkana ?? NONE, member_nickname = $mnick ?? NONE, member_classgroup = $mcg ?? NONE, data = $data ?? NONE`,
+				`CREATE quiz_event SET session_id = $sid, group_id = $gid, season_id = $season_id ?? NONE, event_type = $etype, question_no = $qno ?? NONE, member_mid = $mmid ?? NONE, data = $data ?? NONE`,
 				{
 					sid: toRid(sessionId),
 					gid: opts.groupId,
@@ -288,9 +287,6 @@ export class QuizEventLogger {
 					etype: opts.eventType,
 					qno: opts.questionNo ?? null,
 					mmid: opts.memberMid ?? null,
-					mkana: opts.memberKananame ?? null,
-					mnick: opts.memberNickname ?? null,
-					mcg: opts.memberClassgroup ?? null,
 					data: opts.data ?? null,
 				},
 			)
@@ -299,31 +295,21 @@ export class QuizEventLogger {
 
 	// ── Live score ──
 
-	upsertLiveScore(sessionId: string, member: {
-		mid: string
-		kananame: string
-		nickname: string
-		classgroup: string
-	}, points: number): void {
+	upsertLiveScore(sessionId: string, memberMid: string, points: number): void {
 		this.chain(async () => {
 			const db = this.ensureDb()
 			const reachedExpr = points > 0 ? `reached_at = time::now()` : `reached_at = $existing[0].reached_at`
 			await db.query(
 				`LET $existing = (SELECT points, reached_at FROM live_score WHERE session_id = $sid AND member_mid = $mid LIMIT 1);
 				IF $existing = [] {
-					CREATE live_score SET session_id = $sid, member_mid = $mid, points = $points, reached_at = <datetime>${
-					points > 0 ? 'time::now()' : 'NONE'
-				}, member_kananame = $kananame, member_nickname = $nickname, member_classgroup = $classgroup;
+					CREATE live_score SET session_id = $sid, member_mid = $mid, points = $points, reached_at = <datetime>${points > 0 ? 'time::now()' : 'NONE'};
 				} ELSE {
-					UPDATE live_score SET points = $points, ${reachedExpr}, member_kananame = $kananame, member_nickname = $nickname, member_classgroup = $classgroup WHERE session_id = $sid AND member_mid = $mid;
+					UPDATE live_score SET points = $points, ${reachedExpr} WHERE session_id = $sid AND member_mid = $mid;
 				}`,
 				{
 					sid: toRid(sessionId),
-					mid: member.mid,
+					mid: memberMid,
 					points,
-					kananame: member.kananame,
-					nickname: member.nickname,
-					classgroup: member.classgroup,
 				},
 			)
 		}, 'upsertLiveScore')
@@ -341,12 +327,7 @@ export class QuizEventLogger {
 
 	// ── Live member state ──
 
-	upsertMemberState(sessionId: string, member: {
-		mid: string
-		kananame: string
-		nickname: string
-		classgroup: string
-	}, opts: {
+	upsertMemberState(sessionId: string, memberMid: string, opts: {
 		cooldownUntil?: Date | null
 		wrongRemaining?: number
 	}): void {
@@ -358,15 +339,13 @@ export class QuizEventLogger {
 			await db.query(
 				`LET $existing = (SELECT id FROM live_member_state WHERE session_id = $sid AND member_mid = $mid LIMIT 1);
 				IF $existing = [] {
-					CREATE live_member_state SET session_id = $sid, member_mid = $mid, member_kananame = $kananame, member_nickname = $nickname${cdFragment}, wrong_remaining = $wr;
+					CREATE live_member_state SET session_id = $sid, member_mid = $mid${cdFragment}, wrong_remaining = $wr;
 				} ELSE {
-					UPDATE live_member_state SET member_kananame = $kananame, member_nickname = $nickname${cdFragment}, wrong_remaining = $wr WHERE session_id = $sid AND member_mid = $mid;
+					UPDATE live_member_state SET ${cdFragment}${cdFragment && ', '}wrong_remaining = $wr WHERE session_id = $sid AND member_mid = $mid;
 				}`,
 				{
 					sid: toRid(sessionId),
-					mid: member.mid,
-					kananame: member.kananame,
-					nickname: member.nickname,
+					mid: memberMid,
 					wr: opts.wrongRemaining ?? undefined,
 				},
 			)
@@ -381,5 +360,25 @@ export class QuizEventLogger {
 				{ sid: toRid(sessionId) },
 			)
 		}, 'deleteMemberStates')
+	}
+}
+
+// ── Centralized members table ──
+
+export interface MemberIdentity {
+	mid: string
+	kananame: string
+	nickname: string
+	classgroup: string
+}
+
+/** Upsert a batch of members into the centralized members table. */
+export async function upsertMembers(members: ReadonlyArray<MemberIdentity>, options?: QuizEventLoggerOptions): Promise<void> {
+	const db = await getDb(options)
+	for (const m of members) {
+		await db.query(
+			`UPSERT $id SET mid = $mid, kananame = $kananame, nickname = $nickname, classgroup = $classgroup`,
+			{ id: { id: m.mid, table: 'members' }, mid: m.mid, kananame: m.kananame, nickname: m.nickname, classgroup: m.classgroup },
+		)
 	}
 }

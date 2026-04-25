@@ -58,19 +58,19 @@ const SCHEMA_QUERIES = [
 	`DEFINE FIELD OVERWRITE mid ON season_score TYPE string`,
 	`DEFINE FIELD OVERWRITE points ON season_score TYPE number DEFAULT 0`,
 	`DEFINE FIELD OVERWRITE reached_at ON season_score TYPE option<number>`,
-	`DEFINE FIELD OVERWRITE nickname ON season_score TYPE string`,
-	`DEFINE FIELD OVERWRITE kananame ON season_score TYPE string`,
-	`DEFINE FIELD OVERWRITE classgroup ON season_score TYPE string`,
 	`DEFINE INDEX OVERWRITE season_score_unique ON season_score COLUMNS season_id, mid UNIQUE`,
+	`DEFINE TABLE OVERWRITE members SCHEMAFULL`,
+	`DEFINE FIELD OVERWRITE mid ON members TYPE string`,
+	`DEFINE FIELD OVERWRITE kananame ON members TYPE string`,
+	`DEFINE FIELD OVERWRITE nickname ON members TYPE string`,
+	`DEFINE FIELD OVERWRITE classgroup ON members TYPE string`,
+	`DEFINE INDEX OVERWRITE members_mid_unique ON members COLUMNS mid UNIQUE`,
 ] as const
 
 type ScoreRow = {
 	mid: string
 	points: number
 	reached_at?: number | null
-	nickname: string
-	kananame: string
-	classgroup: string
 }
 
 export class SeasonStore {
@@ -183,14 +183,9 @@ export class SeasonStore {
 
 	async getMembersAsync(key: string, seasonId?: string): Promise<ReadonlyArray<NMember>> {
 		const db = this.ensureDb()
-		const sid = seasonId ?? (await this.resolveSeasonId(key))
-		if (!sid) return []
-
-		const results = await db.query<[Array<ScoreRow>]>(
-			`SELECT mid, nickname, kananame, classgroup FROM season_score WHERE season_id = $sid`,
-			{ sid },
+		const results = await db.query<[Array<{ mid: string; kananame: string; nickname: string; classgroup: string }>]>(
+			`SELECT mid, kananame, nickname, classgroup FROM members`,
 		)
-
 		return (results[0] ?? []).map((row): NMember => ({
 			mid: row.mid,
 			nickname: row.nickname ?? '',
@@ -231,26 +226,18 @@ export class SeasonStore {
 		const db = this.ensureDb()
 		const sid = seasonId ?? (await this.resolveOrCreateSeasonId(key))
 		const now = Date.now()
-		const memberMap = new Map(members.map((m) => [m.mid, m]))
 
-		return this.chain(async () => {
+	return this.chain(async () => {
 			for (const [mid, points] of pointsByMid.entries()) {
-				const member = memberMap.get(mid)
-				const nickname = member?.nickname ?? ''
-				const kananame = member?.kananame ?? ''
-				const classgroup = member?.classgroup ?? ''
-
 				if (points > 0) {
-					// Use SurrealQL for atomic upsert
 					await db.query(
 						`LET $existing = (SELECT points FROM season_score WHERE season_id = $sid AND mid = $mid LIMIT 1);
-						LET $current = $existing[0].points ?? 0;
 						IF $existing = [] {
-							CREATE season_score SET season_id = $sid, mid = $mid, points = $delta, reached_at = $now, nickname = $nickname, kananame = $kananame, classgroup = $classgroup;
+							CREATE season_score SET season_id = $sid, mid = $mid, points = $delta, reached_at = $now;
 						} ELSE {
-							UPDATE season_score SET points = ($current + $delta), reached_at = $now, nickname = $nickname, kananame = $kananame, classgroup = $classgroup WHERE season_id = $sid AND mid = $mid;
+							UPDATE season_score SET points = ($existing[0].points + $delta), reached_at = $now WHERE season_id = $sid AND mid = $mid;
 						}`,
-						{ sid, mid, delta: points, now, nickname, kananame, classgroup },
+						{ sid, mid, delta: points, now },
 					)
 				}
 			}
@@ -277,7 +264,7 @@ export class SeasonStore {
 		const sid = seasonId ?? (await this.resolveOrCreateSeasonId(key))
 
 		return this.chain(async () => {
-			// Ensure season record exists — use upsert via LET/IF
+			// Ensure season record exists
 			await db.query(
 				`LET $existing = (SELECT id FROM season WHERE season_id = $sid LIMIT 1);
 				IF $existing = [] {
@@ -293,11 +280,9 @@ export class SeasonStore {
 				await db.query(
 					`LET $has = (SELECT id FROM season_score WHERE season_id = $sid AND mid = $mid LIMIT 1);
 					IF $has = [] {
-						CREATE season_score SET season_id = $sid, mid = $mid, points = 0, nickname = $nickname, kananame = $kananame, classgroup = $classgroup;
-					} ELSE {
-						UPDATE season_score MERGE { nickname: $nickname, kananame: $kananame, classgroup: $classgroup } WHERE season_id = $sid AND mid = $mid;
+						CREATE season_score SET season_id = $sid, mid = $mid, points = 0;
 					}`,
-					{ sid, mid: m.mid, nickname: m.nickname, kananame: m.kananame, classgroup: m.classgroup },
+					{ sid, mid: m.mid },
 				)
 			}
 		})
@@ -341,7 +326,9 @@ export class SeasonStore {
 				IF $new <= 0 {
 					DELETE FROM season_score WHERE season_id = $sid AND mid = $mid;
 				} ELSE IF $existing = [] {
-					CREATE season_score SET season_id = $sid, mid = $mid, points = $new, reached_at = $now, nickname = '', kananame = '', classgroup = '';
+					CREATE season_score SET season_id = $sid, mid = $mid, points = $new, reached_at = $now;
+				} ELSE {
+					CREATE season_score SET season_id = $sid, mid = $mid, points = $new, reached_at = $now;
 				} ELSE {
 					UPDATE season_score SET points = $new, reached_at = $now WHERE season_id = $sid AND mid = $mid;
 				}`,
@@ -368,7 +355,7 @@ export class SeasonStore {
 			await db.query(
 				`LET $existing = (SELECT id FROM season_score WHERE season_id = $sid AND mid = $mid LIMIT 1);
 				IF $existing = [] {
-					CREATE season_score SET season_id = $sid, mid = $mid, points = $points, reached_at = $now, nickname = '', kananame = '', classgroup = '';
+					CREATE season_score SET season_id = $sid, mid = $mid, points = $points, reached_at = $now;
 				} ELSE {
 					UPDATE season_score SET points = $points, reached_at = $now WHERE season_id = $sid AND mid = $mid;
 				}`,
