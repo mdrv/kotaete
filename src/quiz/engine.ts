@@ -881,15 +881,17 @@ export class QuizEngine {
 			state.bundle.messageTemplates,
 			cooldownEntries,
 		)
+		// Set token + checkpoint BEFORE sending so crash recovery picks up the right state
+		state.questionToken += 1
+		const currentToken = state.questionToken
+		state.acceptingAnswers = true
+		await this.persistCheckpoint(state)
+
 		if (question.imagePath) {
 			state.questionMessageKey = await this.sender.sendImageWithCaption(state.groupId, question.imagePath, caption)
 		} else {
 			state.questionMessageKey = await this.sender.sendText(state.groupId, caption, { linkPreview: false })
 		}
-
-		state.questionToken += 1
-		const currentToken = state.questionToken
-		state.acceptingAnswers = true
 
 		if (this.sid) {
 			this.el?.updateSessionState(this.sid, {
@@ -932,8 +934,6 @@ export class QuizEngine {
 				}
 			})
 		}, timeoutMs)
-
-		await this.persistCheckpoint(state)
 	}
 
 	private claimCurrentQuestion(state: RunnerState): boolean {
