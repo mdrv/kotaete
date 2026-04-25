@@ -128,6 +128,7 @@ export class DaemonStateStore {
 				const createdAt = new Date(job.createdAt)
 				const introAt = job.introAt ? new Date(job.introAt) : null
 				const firstRoundAt = job.firstRoundAt ? new Date(job.firstRoundAt) : null
+				const membersFile = job.membersFile
 				await db.query(
 					`LET $existing = (SELECT id FROM daemon_job WHERE job_id = $jobId LIMIT 1);
 					IF $existing = [] {
@@ -136,7 +137,6 @@ export class DaemonStateStore {
 							sources = $sources,
 							group_id = $groupId,
 							quiz_dir = $quizDir,
-							members_file = $membersFile,
 							no_cooldown = $noCooldown,
 							no_schedule = $noSchedule,
 							no_generation = $noGeneration,
@@ -148,7 +148,6 @@ export class DaemonStateStore {
 							sources = $sources,
 							group_id = $groupId,
 							quiz_dir = $quizDir,
-							members_file = $membersFile,
 							no_cooldown = $noCooldown,
 							no_schedule = $noSchedule,
 							no_generation = $noGeneration,
@@ -162,7 +161,6 @@ export class DaemonStateStore {
 						sources: job.sources,
 						groupId: job.groupId,
 						quizDir: job.quizDir,
-						membersFile: job.membersFile,
 						noCooldown: job.noCooldown,
 						noSchedule: job.noSchedule,
 						noGeneration: job.noGeneration,
@@ -171,6 +169,17 @@ export class DaemonStateStore {
 						firstRoundAt,
 					},
 				)
+
+				if (membersFile === null) {
+					await db.query(`UPDATE daemon_job UNSET members_file WHERE job_id = $jobId`, {
+						jobId: job.jobId,
+					})
+				} else {
+					await db.query(`UPDATE daemon_job SET members_file = $membersFile WHERE job_id = $jobId`, {
+						jobId: job.jobId,
+						membersFile,
+					})
+				}
 			}
 
 			const currentIds = jobs.map((j) => j.jobId)
