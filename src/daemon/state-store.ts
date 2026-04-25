@@ -3,6 +3,7 @@ import type { QuizStateCheckpoint } from '../quiz/checkpoint.ts'
 import { quizStateCheckpointSchema } from '../quiz/checkpoint.ts'
 import type { SurrealOptions } from '../utils/surreal.ts'
 import { getDb } from '../utils/surreal.ts'
+import { getLogger } from '../logger.ts'
 
 export type DaemonJobStatus = 'queued' | 'running' | 'finishing' | 'done'
 
@@ -312,27 +313,29 @@ export class DaemonStateStore {
 	}
 
 	// ── Daemon status heartbeat ──
+	private static readonly STATUS_LOG = getLogger(['kotaete', 'state-store', 'daemon-status'])
 
 	async updateDaemonStatus(status: string): Promise<void> {
 		const db = this.ensureDb()
-		await this.chain(async () => {
+		try {
 			await db.query(
-				`IF (SELECT count() FROM daemon_status:only GROUP ALL).count > 0 {
-					UPDATE daemon_status:only MERGE { status: $status, last_heartbeat_at: time::now(), pid: $pid }
-				} ELSE {
-					CREATE daemon_status:only SET status = $status, last_heartbeat_at = time::now(), pid = $pid, started_at = time::now()
-				}`,
+				`UPDATE daemon_status:only SET status = $status, last_heartbeat_at = time::now(), pid = $pid, started_at = started_at ?? time::now()`,
 				{ status, pid: process.pid },
 			)
-		})
+			DaemonStateStore.STATUS_LOG.debug`heartbeat written: status=${status}`
+		} catch (err) {
+			DaemonStateStore.STATUS_LOG.error`heartbeat FAILED: ${err}`
+		}
 	}
 
 	async markDaemonStopped(): Promise<void> {
 		const db = this.ensureDb()
-		await this.chain(async () => {
+		try {
 			await db.query(
 				`UPDATE daemon_status:only SET status = 'stopped', last_heartbeat_at = time::now()`,
 			)
-		})
+		} catch (err) {
+			DaemonStateStore.STATUS_LOG.error`markDaemonStopped FAILED: ${err}`
+		}
 	}
 }
