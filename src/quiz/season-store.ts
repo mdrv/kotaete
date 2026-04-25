@@ -59,12 +59,12 @@ const SCHEMA_QUERIES = [
 	`DEFINE FIELD OVERWRITE points ON season_score TYPE number DEFAULT 0`,
 	`DEFINE FIELD OVERWRITE reached_at ON season_score TYPE option<number>`,
 	`DEFINE INDEX OVERWRITE season_score_unique ON season_score COLUMNS season_id, mid UNIQUE`,
-	`DEFINE TABLE OVERWRITE members SCHEMAFULL`,
-	`DEFINE FIELD OVERWRITE mid ON members TYPE string`,
-	`DEFINE FIELD OVERWRITE kananame ON members TYPE string`,
-	`DEFINE FIELD OVERWRITE nickname ON members TYPE string`,
-	`DEFINE FIELD OVERWRITE classgroup ON members TYPE string`,
-	`DEFINE INDEX OVERWRITE members_mid_unique ON members COLUMNS mid UNIQUE`,
+	`DEFINE TABLE OVERWRITE member SCHEMAFULL`,
+	`DEFINE FIELD OVERWRITE mid ON member TYPE string`,
+	`DEFINE FIELD OVERWRITE kananame ON member TYPE string`,
+	`DEFINE FIELD OVERWRITE nickname ON member TYPE string`,
+	`DEFINE FIELD OVERWRITE classgroup ON member TYPE string`,
+	`DEFINE INDEX OVERWRITE member_mid_unique ON member COLUMNS mid UNIQUE`,
 ] as const
 
 type ScoreRow = {
@@ -184,7 +184,7 @@ export class SeasonStore {
 	async getMembersAsync(key: string, seasonId?: string): Promise<ReadonlyArray<NMember>> {
 		const db = this.ensureDb()
 		const results = await db.query<[Array<{ mid: string; kananame: string; nickname: string; classgroup: string }>]>(
-			`SELECT mid, kananame, nickname, classgroup FROM members`,
+			`SELECT mid, kananame, nickname, classgroup FROM member`,
 		)
 		return (results[0] ?? []).map((row): NMember => ({
 			mid: row.mid,

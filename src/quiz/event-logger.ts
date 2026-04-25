@@ -26,13 +26,13 @@ export interface QuizEventLoggerOptions {
 }
 
 const SCHEMA_QUERIES = [
-	// Members (centralized identity — single source of truth)
-	`DEFINE TABLE OVERWRITE members SCHEMAFULL`,
-	`DEFINE FIELD OVERWRITE mid ON members TYPE string`,
-	`DEFINE FIELD OVERWRITE kananame ON members TYPE string`,
-	`DEFINE FIELD OVERWRITE nickname ON members TYPE string`,
-	`DEFINE FIELD OVERWRITE classgroup ON members TYPE string`,
-	`DEFINE INDEX OVERWRITE members_mid_unique ON members COLUMNS mid UNIQUE`,
+	// Member (centralized identity — single source of truth)
+	`DEFINE TABLE OVERWRITE member SCHEMAFULL`,
+	`DEFINE FIELD OVERWRITE mid ON member TYPE string`,
+	`DEFINE FIELD OVERWRITE kananame ON member TYPE string`,
+	`DEFINE FIELD OVERWRITE nickname ON member TYPE string`,
+	`DEFINE FIELD OVERWRITE classgroup ON member TYPE string`,
+	`DEFINE INDEX OVERWRITE member_mid_unique ON member COLUMNS mid UNIQUE`,
 
 	// Quiz session (mutable state projection)
 	`DEFINE TABLE OVERWRITE quiz_session SCHEMAFULL`,
@@ -148,7 +148,7 @@ export class QuizEventLogger {
 			await db.query(q)
 		}
 
-		// Migration: remove old member identity fields (moved to members table)
+		// Migration: remove old member identity fields (moved to member table)
 		for (const table of ['quiz_event', 'live_score', 'live_member_state']) {
 			for (const field of ['member_name', 'member_kananame', 'member_nickname', 'member_classgroup']) {
 				try {
@@ -378,7 +378,7 @@ export async function upsertMembers(members: ReadonlyArray<MemberIdentity>, opti
 	for (const m of members) {
 		await db.query(
 			`UPSERT $id SET mid = $mid, kananame = $kananame, nickname = $nickname, classgroup = $classgroup`,
-			{ id: { id: m.mid, table: 'members' }, mid: m.mid, kananame: m.kananame, nickname: m.nickname, classgroup: m.classgroup },
+			{ id: { id: m.mid, table: 'member' }, mid: m.mid, kananame: m.kananame, nickname: m.nickname, classgroup: m.classgroup },
 		)
 	}
 }
