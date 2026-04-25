@@ -322,7 +322,7 @@ export class DaemonStateStore {
 				`UPSERT daemon_status:only SET status = $status, last_heartbeat_at = time::now(), pid = $pid, started_at = started_at ?? time::now()`,
 				{ status, pid: process.pid },
 			)
-			DaemonStateStore.STATUS_LOG.debug`heartbeat written: status=${status}`
+			DaemonStateStore.STATUS_LOG.trace`heartbeat written: status=${status}`
 		} catch (err) {
 			DaemonStateStore.STATUS_LOG.error`heartbeat FAILED: ${err}`
 		}
