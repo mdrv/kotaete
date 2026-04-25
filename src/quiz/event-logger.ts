@@ -302,7 +302,9 @@ export class QuizEventLogger {
 			await db.query(
 				`LET $existing = (SELECT points, reached_at FROM live_score WHERE session_id = $sid AND member_mid = $mid LIMIT 1);
 				IF $existing = [] {
-					CREATE live_score SET session_id = $sid, member_mid = $mid, points = $points, reached_at = <datetime>${points > 0 ? 'time::now()' : 'NONE'};
+					CREATE live_score SET session_id = $sid, member_mid = $mid, points = $points, reached_at = <datetime>${
+					points > 0 ? 'time::now()' : 'NONE'
+				};
 				} ELSE {
 					UPDATE live_score SET points = $points, ${reachedExpr} WHERE session_id = $sid AND member_mid = $mid;
 				}`,
@@ -341,7 +343,9 @@ export class QuizEventLogger {
 				IF $existing = [] {
 					CREATE live_member_state SET session_id = $sid, member_mid = $mid${cdFragment}, wrong_remaining = $wr;
 				} ELSE {
-					UPDATE live_member_state SET ${cdFragment}${cdFragment && ', '}wrong_remaining = $wr WHERE session_id = $sid AND member_mid = $mid;
+					UPDATE live_member_state SET ${cdFragment}${
+					cdFragment && ', '
+				}wrong_remaining = $wr WHERE session_id = $sid AND member_mid = $mid;
 				}`,
 				{
 					sid: toRid(sessionId),
@@ -373,12 +377,21 @@ export interface MemberIdentity {
 }
 
 /** Upsert a batch of members into the centralized members table. */
-export async function upsertMembers(members: ReadonlyArray<MemberIdentity>, options?: QuizEventLoggerOptions): Promise<void> {
+export async function upsertMembers(
+	members: ReadonlyArray<MemberIdentity>,
+	options?: QuizEventLoggerOptions,
+): Promise<void> {
 	const db = await getDb(options)
 	for (const m of members) {
 		await db.query(
 			`UPSERT $id SET mid = $mid, kananame = $kananame, nickname = $nickname, classgroup = $classgroup`,
-			{ id: { id: m.mid, table: 'member' }, mid: m.mid, kananame: m.kananame, nickname: m.nickname, classgroup: m.classgroup },
+			{
+				id: new RecordId('member', m.mid),
+				mid: m.mid,
+				kananame: m.kananame,
+				nickname: m.nickname,
+				classgroup: m.classgroup,
+			},
 		)
 	}
 }
