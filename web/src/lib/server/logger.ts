@@ -20,7 +20,7 @@ export async function initWebLogger() {
 						return `${hh}:${mm}`
 					},
 				}),
-			})
+			}),
 		},
 		loggers: [
 			{ category: ['logtape', 'meta'], lowestLevel: 'warning', sinks: ['console'] },

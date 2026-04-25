@@ -5,7 +5,9 @@ export async function GET() {
 	try {
 		const db = await getDb()
 
-		const [status] = await db.query<[{ status: string; last_heartbeat_at: string | null; started_at: string | null; pid: number | null }[]]>(
+		const [status] = await db.query<
+			[{ status: string; last_heartbeat_at: string | null; started_at: string | null; pid: number | null }[]]
+		>(
 			`SELECT status, last_heartbeat_at, started_at, pid FROM daemon_status:only`,
 		)
 

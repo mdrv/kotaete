@@ -28,7 +28,7 @@ export interface SurrealOptions {
  */
 function subscribeLifecycle(instance: Surreal, label: string): void {
 	instance.subscribe('connected', (version) => {
-		log.info(`${label} connected (v${version})`)
+		log.info(`${label} connected (${version})`)
 	})
 	instance.subscribe('disconnected', () => {
 		log.warning(`${label} disconnected`)

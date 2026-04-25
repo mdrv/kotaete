@@ -52,7 +52,9 @@
 		return 'idle'
 	})
 
-	let isGodStage = $derived(events.some((e) => e.event_type === 'god_stage_announced'))
+	let isGodStage = $derived(
+		events.some((e) => e.event_type === 'god_stage_announced'),
+	)
 
 	let winnerInfo = $derived.by(() => {
 		const e = events[0]
@@ -680,8 +682,14 @@
 					}</span>
 			{/if}
 			<span class='separator'>·</span>
-			<span class='bot-dot' class:online={botOnline === true} class:offline={botOnline === false}></span>
-			<span class='status-text'>{botOnline === null ? 'BOT ...' : botOnline ? 'BOT' : 'BOT ✗'}</span>
+			<span
+				class='bot-dot'
+				class:online={botOnline === true}
+				class:offline={botOnline === false}
+			></span>
+			<span class='status-text'>{
+				botOnline === null ? 'BOT ...' : botOnline ? 'BOT' : 'BOT ✗'
+			}</span>
 			<button class='theme-toggle' onclick={toggleTheme} title='Toggle theme'>
 				{#if theme === 'dark'}
 					<svg
@@ -791,7 +799,9 @@
 						{:else if seasonInfo}
 							<div class='result-emoji'>🏆</div>
 							<p class='result-title'>{seasonInfo.caption ?? 'Season'}</p>
-							<p class='finished-subtitle'>No active quiz right now — check the season standings!</p>
+							<p class='finished-subtitle'>
+								No active quiz right now — check the season standings!
+							</p>
 						{:else}
 							<div class='result-emoji'>🎬</div>
 							<p>No active quiz</p>
@@ -817,11 +827,18 @@
 							: ''}
 							<div class='score-row'>
 								<span class='rank'>{i + 1}</span>
-								<span class='member-name' title={score.member_name ?? undefined}>
+								<span
+									class='member-name'
+									title={score.member_name ?? undefined}
+								>
 									{memberDisplay(score.member_name, score.member_classgroup)}
 								</span>
 								{#if cooldownSec > 0 && displayMode !== 'finished'}
-									<span class='cooldown-badge' class:dimmed={isGodStage} title={isGodStage ? 'Cooldown (not active during GOD stage)' : 'Cooldown'}>⏳ {cooldownText}</span>
+									<span
+										class='cooldown-badge'
+										class:dimmed={isGodStage}
+										title={isGodStage ? 'Cooldown (not active during GOD stage)' : 'Cooldown'}
+									>⏳ {cooldownText}</span>
 								{/if}
 								<span class='points'>{score.points} 🌸</span>
 							</div>
@@ -872,7 +889,10 @@
 						{#each topSeasonScores as score, i (score.id)}
 							<div class='score-row'>
 								<span class='rank'>{i + 1}</span>
-								<span class='member-name' title={score.member_name ?? undefined}>{
+								<span
+									class='member-name'
+									title={score.member_name ?? undefined}
+								>{
 									memberDisplay(score.member_name, score.member_classgroup)
 								}</span>
 								<span class='points'>{score.points} 🌸</span>
