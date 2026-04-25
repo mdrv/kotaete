@@ -711,7 +711,8 @@
 							<span class='question-label'>Q{session?.current_question}</span>
 							<span
 								class='timer'
-								class:timer-warning={timeRemaining < 30 && timeRemaining > 0}
+								class:timer-warning={timeRemaining < 600 && timeRemaining >= 30}
+								class:timer-caution={timeRemaining < 30 && timeRemaining > 0}
 							>
 								{countdownText}
 							</span>
@@ -1136,6 +1137,10 @@
 	}
 
 	.timer-warning {
+		color: var(--accent-orange);
+	}
+
+	.timer-caution {
 		color: var(--accent-red);
 		animation: pulse 1s ease-in-out infinite;
 	}
