@@ -22,7 +22,7 @@ import { WhatsAppClient } from '../whatsapp/client.ts'
 import type { OutgoingMessageKey, WhatsAppProvider } from '../whatsapp/types.ts'
 import { parseWhatsAppProvider } from '../whatsapp/types.ts'
 import { type JobStatus, relayRequestSchema, type RelayResponse } from './protocol.ts'
-import { DaemonStateStore } from './state-store.ts'
+import { type DaemonJobStatus, DaemonStateStore } from './state-store.ts'
 
 type DaemonRuntimeOptions = {
 	socketPath?: string
@@ -538,6 +538,8 @@ export class DaemonRuntime {
 				createdAt: job.meta.createdAt.toISOString(),
 				introAt: job.meta.introAt?.toISOString() ?? null,
 				firstRoundAt: job.meta.firstRoundAt?.toISOString() ?? null,
+				status: (job.engine.isActivelyRunning() ? 'running' : (job.engine.isRunning() ? 'queued' : 'done')) as DaemonJobStatus,
+				lastHeartbeatAt: new Date().toISOString(),
 			}))
 			await this.stateStore.syncJobs(jobs)
 		}
@@ -593,7 +595,23 @@ export class DaemonRuntime {
 	// ---------------------------------------------------------------------------
 
 	private async recoverJobs(): Promise<void> {
+		// P0-3: Startup integrity check
+		try {
+			const issues = await this.stateStore.validateConsistency()
+			if (issues.length > 0) {
+				for (const issue of issues) {
+					log.warning(`consistency: ${issue.description}`)
+				}
+			}
+		} catch (error) {
+			log.warning(`consistency check failed: ${error instanceof Error ? error.message : String(error)}`)
+		}
+
 		const entries = await this.stateStore.listJobs()
+
+		if (entries.length > 0) {
+			log.info('recover_begin', { jobCount: entries.length })
+		}
 
 		let recovered = 0
 		for (const entry of entries) {
@@ -628,7 +646,8 @@ export class DaemonRuntime {
 					? undefined
 					: { noCooldown: entry.noCooldown }
 
-				const jobId = this.generateJobId()
+				// Reuse original job ID so checkpoints stay keyed by the same ID
+				const jobId = entry.jobId
 				const engine = this.createEngineForJob(jobId)
 				const introAt = entry.introAt ? new Date(entry.introAt) : quizBundle.introAt
 				const firstRoundAt = entry.firstRoundAt
@@ -637,6 +656,11 @@ export class DaemonRuntime {
 
 				// Try to load a checkpoint from the original job ID for state recovery
 				const checkpoint = await this.loadCheckpoint(entry.jobId)
+				log.info('recover_checkpoint_loaded', {
+					jobId: entry.jobId,
+					hasCheckpoint: !!checkpoint,
+					...(checkpoint ? { index: checkpoint.index, acceptingAnswers: checkpoint.acceptingAnswers, rev: checkpoint.rev } : {}),
+				})
 				const jobRecord: JobRecord = {
 					id: jobId,
 					engine,
@@ -662,9 +686,7 @@ export class DaemonRuntime {
 
 				recovered += 1
 				log.info(
-					`recovered job ${jobId} for group ${resolvedGroupId} (original id ${entry.jobId}${
-						checkpoint ? ', has checkpoint' : ''
-					})`,
+					`recovered job ${jobId} for group ${resolvedGroupId}${checkpoint ? ' (resuming from checkpoint)' : ''}`,
 				)
 			} catch (error) {
 				log.error(
@@ -675,6 +697,7 @@ export class DaemonRuntime {
 
 		if (recovered > 0) {
 			log.info(`daemon state recovery: ${recovered} job(s) recovered`)
+			log.info('recover_done', { recovered, total: entries.length })
 		}
 	}
 
@@ -907,6 +930,8 @@ export class DaemonRuntime {
 			// Recover persisted jobs unless fresh mode
 			if (!this.fresh) {
 				await this.recoverJobs()
+				// Sync any state changes from recovery (e.g. checkpoint re-saves) to SurrealDB
+				await this.persistState()
 			}
 
 			const server = createServer((socket) => {

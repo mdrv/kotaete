@@ -28,6 +28,12 @@ export type QuizStateCheckpoint = {
 
 	// SurrealDB session to reuse on resume (preserves live dashboard data)
 	loggerSessionId: string | null
+
+	// Monotonic revision counter — incremented on each checkpoint save
+	rev: number
+
+	// What triggered this checkpoint save
+	source: 'question_send' | 'correct_answer' | 'timeout' | 'resume'
 }
 
 export const quizStateCheckpointSchema = z.object({
@@ -48,4 +54,6 @@ export const quizStateCheckpointSchema = z.object({
 	cooldownWarningSent: z.array(z.string()),
 	warningAlreadySent: z.boolean(),
 	loggerSessionId: z.string().nullable().optional().default(null),
+	rev: z.number().default(0),
+	source: z.enum(['question_send', 'correct_answer', 'timeout', 'resume']).optional().default('question_send'),
 })

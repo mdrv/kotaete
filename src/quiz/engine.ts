@@ -81,6 +81,9 @@ type RunnerState = {
 	totalNormalQuestions: number
 	roundStartToken: Timer | null
 	finishedNotified: boolean
+	quizFinalized: boolean
+	checkpointRev: number
+	checkpointSource: 'question_send' | 'correct_answer' | 'timeout' | 'resume'
 	warningSentForToken: number
 }
 
@@ -167,6 +170,8 @@ export class QuizEngine {
 	private readonly eventLogger: QuizEventLogger | null
 	private readonly saveSvg: boolean
 	private readonly saveCheckpoint: ((checkpoint: QuizStateCheckpoint) => void | Promise<void>) | null
+	private checkpointSaveCount = 0
+	private checkpointFailCount = 0
 
 	constructor(
 		private readonly sender: SenderPort,
@@ -198,6 +203,7 @@ export class QuizEngine {
 	}
 
 	private exportCheckpoint(state: RunnerState): QuizStateCheckpoint {
+		state.checkpointRev += 1
 		return {
 			version: 1,
 			updatedAt: new Date().toISOString(),
@@ -218,6 +224,8 @@ export class QuizEngine {
 			cooldownWarningSent: [...state.cooldownWarningSent],
 			warningAlreadySent: state.warningSentForToken === state.questionToken && state.acceptingAnswers,
 			loggerSessionId: state.loggerSessionId,
+			rev: state.checkpointRev,
+			source: state.checkpointSource,
 		}
 	}
 
@@ -233,11 +241,19 @@ export class QuizEngine {
 			questionToken: state.questionToken,
 			sessionId: checkpoint.loggerSessionId,
 		})
+		const startMs = Date.now()
 		try {
 			await this.saveCheckpoint(checkpoint)
-			log.info('persistCheckpoint: saved successfully')
+			const latencyMs = Date.now() - startMs
+			this.checkpointSaveCount++
+			this.checkpointFailCount = 0
+			log.info('persistCheckpoint: saved successfully', { latencyMs, totalSaves: this.checkpointSaveCount })
 		} catch (error) {
-			log.warning(`checkpoint save failed: ${error instanceof Error ? error.message : String(error)}`)
+			this.checkpointFailCount++
+			log.warning(`checkpoint save failed (attempt ${this.checkpointFailCount}): ${error instanceof Error ? error.message : String(error)}`)
+			if (this.checkpointFailCount >= 3) {
+				log.error('checkpoint save has failed 3+ times in a row — crash recovery may be compromised')
+			}
 		}
 	}
 
@@ -372,6 +388,9 @@ export class QuizEngine {
 			totalNormalQuestions: bundle.questions.filter((q) => !q.isSpecialStage).length,
 			roundStartToken: null,
 			finishedNotified: false,
+			quizFinalized: false,
+			checkpointRev: checkpoint.rev,
+			checkpointSource: 'resume',
 			warningSentForToken: -1,
 		}
 
@@ -468,7 +487,8 @@ export class QuizEngine {
 						hasWarningTimer: warningDelayMs > 0,
 					})
 
-					await this.persistCheckpoint(state)
+				state.checkpointSource = 'resume'
+				await this.persistCheckpoint(state)
 					return
 				}
 			}
@@ -584,6 +604,9 @@ export class QuizEngine {
 			totalNormalQuestions: bundle.questions.filter((q) => !q.isSpecialStage).length,
 			roundStartToken: null,
 			finishedNotified: false,
+			quizFinalized: false,
+			checkpointRev: 0,
+			checkpointSource: 'question_send',
 			warningSentForToken: -1,
 		}
 
@@ -964,6 +987,7 @@ export class QuizEngine {
 			questionNo: question.number,
 			token: currentToken,
 		})
+		state.checkpointSource = 'question_send'
 		await this.persistCheckpoint(state)
 
 		if (question.imagePath) {
@@ -1149,6 +1173,7 @@ export class QuizEngine {
 				)
 			}
 
+			state.checkpointSource = 'correct_answer'
 			await this.persistCheckpoint(state)
 		}
 
@@ -1260,7 +1285,8 @@ export class QuizEngine {
 			})
 		}
 
-		await this.persistCheckpoint(state)
+			state.checkpointSource = 'question_send'
+			await this.persistCheckpoint(state)
 	}
 
 	private async handleTimeout(token: number): Promise<void> {
@@ -1310,6 +1336,11 @@ export class QuizEngine {
 		const state = this.state
 		log.debug(`finishQuiz: state=${!!state} active=${state?.active} sid=${state?.loggerSessionId ?? 'none'}`)
 		if (!state) return
+		if (state.quizFinalized) {
+			log.debug('finishQuiz: already finalized, skipping')
+			return
+		}
+		state.quizFinalized = true
 		log.info('finishQuiz: finalizing quiz session', {
 			groupId: state.groupId,
 			participants: state.pointsByMid.size,

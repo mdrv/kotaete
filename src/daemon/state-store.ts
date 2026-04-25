@@ -4,6 +4,9 @@ import { quizStateCheckpointSchema } from '../quiz/checkpoint.ts'
 import type { SurrealOptions } from '../utils/surreal.ts'
 import { getDb } from '../utils/surreal.ts'
 
+
+export type DaemonJobStatus = 'queued' | 'running' | 'finishing' | 'done'
+
 export type DaemonJobState = {
 	jobId: string
 	sources: string[]
@@ -16,6 +19,8 @@ export type DaemonJobState = {
 	createdAt: string
 	introAt: string | null
 	firstRoundAt: string | null
+	status: DaemonJobStatus
+	lastHeartbeatAt: string | null
 }
 
 type DaemonJobRow = {
@@ -30,6 +35,8 @@ type DaemonJobRow = {
 	created_at: string | Date
 	intro_at?: string | Date | null
 	first_round_at?: string | Date | null
+	status?: string
+	last_heartbeat_at?: string | Date | null
 }
 
 type DaemonCheckpointRow = {
@@ -49,13 +56,24 @@ const SCHEMA_QUERIES = [
 	`DEFINE FIELD OVERWRITE created_at ON daemon_job TYPE datetime`,
 	`DEFINE FIELD OVERWRITE intro_at ON daemon_job TYPE option<datetime>`,
 	`DEFINE FIELD OVERWRITE first_round_at ON daemon_job TYPE option<datetime>`,
+	`DEFINE FIELD OVERWRITE status ON daemon_job TYPE string DEFAULT 'queued'`,
+	`DEFINE FIELD OVERWRITE last_heartbeat_at ON daemon_job TYPE option<datetime>`,
+	`DEFINE INDEX OVERWRITE daemon_job_id_unique ON daemon_job COLUMNS job_id UNIQUE`,
 	`DEFINE INDEX OVERWRITE daemon_job_id_unique ON daemon_job COLUMNS job_id UNIQUE`,
 	`DEFINE TABLE OVERWRITE daemon_checkpoint SCHEMAFULL`,
 	`DEFINE FIELD OVERWRITE job_id ON daemon_checkpoint TYPE string`,
+	`DEFINE FIELD OVERWRITE rev ON daemon_checkpoint TYPE number DEFAULT 0`,
+	`DEFINE FIELD OVERWRITE source ON daemon_checkpoint TYPE string DEFAULT 'resume'`,
 	`DEFINE FIELD OVERWRITE checkpoint ON daemon_checkpoint TYPE object FLEXIBLE`,
 	`DEFINE FIELD OVERWRITE updated_at ON daemon_checkpoint TYPE datetime DEFAULT time::now()`,
 	`DEFINE INDEX OVERWRITE daemon_checkpoint_job_id_unique ON daemon_checkpoint COLUMNS job_id UNIQUE`,
 ] as const
+
+export type ConsistencyIssue = {
+	type: 'orphaned_checkpoint' | 'mid_question_checkpoint'
+	jobId: string
+	description: string
+}
 
 export class DaemonStateStore {
 	private db: Surreal | null = null
@@ -95,10 +113,54 @@ export class DaemonStateStore {
 		})
 	}
 
+	/**
+	 * Validate consistency between daemon_job and daemon_checkpoint tables.
+	 * Returns issues found (empty array = clean).
+	 */
+	async validateConsistency(): Promise<ConsistencyIssue[]> {
+		const db = this.ensureDb()
+		const issues: ConsistencyIssue[] = []
+
+		const jobResult = await db.query<[DaemonJobRow[]]>(`SELECT job_id FROM daemon_job`)
+		const checkpointResult = await db.query<[{ job_id: string; checkpoint: { acceptingAnswers?: boolean } }[]]>(`SELECT job_id, checkpoint FROM daemon_checkpoint`)
+
+		const jobIds = new Set((jobResult[0] ?? []).map((r) => r.job_id))
+		const checkpoints = checkpointResult[0] ?? []
+
+		// Orphaned checkpoints — clean up automatically
+		const orphanIds: string[] = []
+		for (const cp of checkpoints) {
+			if (!jobIds.has(cp.job_id)) {
+				issues.push({
+					type: 'orphaned_checkpoint',
+					jobId: cp.job_id,
+					description: `Checkpoint exists for job ${cp.job_id} but no matching daemon_job row — cleaning up`,
+				})
+				orphanIds.push(cp.job_id)
+			}
+		}
+		if (orphanIds.length > 0) {
+			await db.query(`DELETE FROM daemon_checkpoint WHERE job_id IN $ids`, { ids: orphanIds })
+		}
+
+		// Mid-question checkpoints that may be stale
+		for (const cp of checkpoints) {
+			if (cp.checkpoint?.acceptingAnswers === true) {
+				issues.push({
+					type: 'mid_question_checkpoint',
+					jobId: cp.job_id,
+					description: `Job ${cp.job_id} has checkpoint with acceptingAnswers=true (may need time-bound verification on recovery)`,
+				})
+			}
+		}
+
+		return issues
+	}
+
 	async listJobs(): Promise<DaemonJobState[]> {
 		const db = this.ensureDb()
 		const result = await db.query<[DaemonJobRow[]]>(
-			`SELECT job_id, sources, group_id, quiz_dir, members_file, no_cooldown, no_schedule, no_generation, created_at, intro_at, first_round_at
+			`SELECT job_id, sources, group_id, quiz_dir, members_file, no_cooldown, no_schedule, no_generation, created_at, intro_at, first_round_at, status, last_heartbeat_at
 			 FROM daemon_job
 			 ORDER BY first_round_at ASC, created_at ASC`,
 		)
@@ -117,6 +179,10 @@ export class DaemonStateStore {
 				: null,
 			firstRoundAt: row.first_round_at
 				? (row.first_round_at instanceof Date ? row.first_round_at.toISOString() : String(row.first_round_at))
+				: null,
+			status: (row.status as DaemonJobStatus) ?? 'queued',
+			lastHeartbeatAt: row.last_heartbeat_at
+				? (row.last_heartbeat_at instanceof Date ? row.last_heartbeat_at.toISOString() : String(row.last_heartbeat_at))
 				: null,
 		}))
 	}
@@ -196,13 +262,13 @@ export class DaemonStateStore {
 		const db = this.ensureDb()
 		await this.chain(async () => {
 			await db.query(
-				`LET $existing = (SELECT id FROM daemon_checkpoint WHERE job_id = $jobId LIMIT 1);
+				`LET $existing = (SELECT id, rev FROM daemon_checkpoint WHERE job_id = $jobId LIMIT 1);
 				IF $existing = [] {
-					CREATE daemon_checkpoint SET job_id = $jobId, checkpoint = $checkpoint, updated_at = time::now();
-				} ELSE {
-					UPDATE daemon_checkpoint SET checkpoint = $checkpoint, updated_at = time::now() WHERE job_id = $jobId;
-				}`,
-				{ jobId, checkpoint },
+					CREATE daemon_checkpoint SET job_id = $jobId, rev = $rev, source = $source, checkpoint = $checkpoint, updated_at = time::now();
+				} ELSE IF $existing[0].rev < $rev {
+					UPDATE daemon_checkpoint SET rev = $rev, source = $source, checkpoint = $checkpoint, updated_at = time::now() WHERE job_id = $jobId;
+				};`,
+				{ jobId, rev: checkpoint.rev, source: checkpoint.source, checkpoint },
 			)
 		})
 	}
@@ -222,6 +288,16 @@ export class DaemonStateStore {
 		const db = this.ensureDb()
 		await this.chain(async () => {
 			await db.query(`DELETE FROM daemon_checkpoint WHERE job_id = $jobId`, { jobId })
+		})
+	}
+
+	async updateJobStatus(jobId: string, status: DaemonJobStatus): Promise<void> {
+		const db = this.ensureDb()
+		await this.chain(async () => {
+			await db.query(
+				`UPDATE daemon_job SET status = $status, last_heartbeat_at = time::now() WHERE job_id = $jobId`,
+				{ jobId, status },
+			)
 		})
 	}
 }
