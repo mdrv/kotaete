@@ -22,7 +22,8 @@ export interface QuizEvent {
 	event_type: string
 	question_no: number | null
 	member_mid: string | null
-	member_name: string | null
+	member_kananame: string | null
+	member_nickname: string | null
 	member_classgroup: string | null
 	data: Record<string, unknown>
 	created_at: string
@@ -32,7 +33,8 @@ export interface LiveScore {
 	id: string
 	session_id: string
 	member_mid: string
-	member_name: string
+	member_kananame: string
+	member_nickname: string
 	member_classgroup: string
 	points: number
 	reached_at: string | null
@@ -42,7 +44,8 @@ export interface LiveMemberState {
 	id: string
 	session_id: string
 	member_mid: string
-	member_name: string
+	member_kananame: string
+	member_nickname: string
 	cooldown_until: string | null
 	wrong_remaining: number | null
 }

@@ -774,7 +774,8 @@ export class QuizEngine {
 						eventType: 'cooldown',
 						questionNo: question.number,
 						memberMid: member.mid,
-						memberName: member.kananame,
+						memberKananame: member.kananame,
+						memberNickname: member.nickname,
 						memberClassgroup: member.classgroup,
 						data: { cooldownUntilMs: cooldownUntil },
 					})
@@ -1154,7 +1155,8 @@ export class QuizEngine {
 					eventType: 'answer_correct',
 					questionNo: question.number,
 					memberMid: member.mid,
-					memberName: member.kananame,
+					memberKananame: member.kananame,
+					memberNickname: member.nickname,
 					memberClassgroup: member.classgroup,
 					data: {
 						matchedAnswer,
@@ -1231,7 +1233,8 @@ export class QuizEngine {
 					eventType: 'special_duplicate',
 					questionNo: question.number,
 					memberMid: member.mid,
-					memberName: member.kananame,
+					memberKananame: member.kananame,
+					memberNickname: member.nickname,
 					memberClassgroup: member.classgroup,
 				})
 			}
@@ -1278,7 +1281,8 @@ export class QuizEngine {
 				eventType: 'answer_wrong',
 				questionNo: question.number,
 				memberMid: member.mid,
-				memberName: member.kananame,
+				memberKananame: member.kananame,
+				memberNickname: member.nickname,
 				memberClassgroup: member.classgroup,
 				data: {
 					answerText: incoming.text.trim(),

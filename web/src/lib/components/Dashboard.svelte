@@ -59,7 +59,7 @@
 	let winnerInfo = $derived.by(() => {
 		const e = events[0]
 		if (!e || e.event_type !== 'answer_correct') return null
-		const name = e.member_name ?? '???'
+		const name = e.member_kananame ?? '???'
 		const cg = e.member_classgroup
 		const displayName = cg ? `${name} (${cg})` : name
 		const pts = (e.data.totalGained as number) ?? (e.data.gained as number) ?? 0
@@ -96,7 +96,7 @@
 			}
 			const cgDiff = classgroupCompare(a.member_classgroup, b.member_classgroup)
 			if (cgDiff !== 0) return cgDiff
-			return (a.member_name ?? '').localeCompare(b.member_name ?? '', 'ja')
+			return (a.member_kananame ?? '').localeCompare(b.member_kananame ?? '', 'ja')
 		})
 	)
 
@@ -163,7 +163,7 @@
 	}
 
 	function formatEvent(evt: QuizEvent): { text: string; color: string } {
-		const name = memberDisplay(evt.member_name, evt.member_classgroup)
+		const name = memberDisplay(evt.member_kananame, evt.member_classgroup)
 		const qNo = evt.question_no
 
 		switch (evt.event_type) {
@@ -473,7 +473,7 @@
 						...record,
 						id: normalizeRecordId(record.id),
 						member_mid: record.mid,
-						member_name: record.nickname || record.kananame,
+						member_name: record.kananame,
 						member_classgroup: record.classgroup,
 					} as unknown as SeasonScore
 					// Only update if this matches the currently viewed season
@@ -785,8 +785,8 @@
 						<div class='result-title'>Quiz Finished!</div>
 						{#if sortedScores.length > 0}
 							<p class='finished-subtitle'>
-								🏆 {sortedScores[0].points}pts — {
-									memberDisplay(sortedScores[0].member_name, sortedScores[0].member_classgroup)
+										🏆 {sortedScores[0].points}pts — {
+											memberDisplay(sortedScores[0].member_kananame, sortedScores[0].member_classgroup)
 								}
 							</p>
 						{/if}
@@ -829,9 +829,9 @@
 								<span class='rank'>{i + 1}</span>
 								<span
 									class='member-name'
-									title={score.member_name ?? undefined}
+									title={score.member_nickname ?? undefined}
 								>
-									{memberDisplay(score.member_name, score.member_classgroup)}
+									{memberDisplay(score.member_kananame, score.member_classgroup)}
 								</span>
 								{#if cooldownSec > 0 && displayMode !== 'finished'}
 									<span
