@@ -52,7 +52,7 @@ const SCHEMA_QUERIES = [
 	`DEFINE INDEX OVERWRITE daemon_job_id_unique ON daemon_job COLUMNS job_id UNIQUE`,
 	`DEFINE TABLE OVERWRITE daemon_checkpoint SCHEMAFULL`,
 	`DEFINE FIELD OVERWRITE job_id ON daemon_checkpoint TYPE string`,
-	`DEFINE FIELD OVERWRITE checkpoint ON daemon_checkpoint FLEXIBLE TYPE object`,
+	`DEFINE FIELD OVERWRITE checkpoint ON daemon_checkpoint TYPE object FLEXIBLE`,
 	`DEFINE FIELD OVERWRITE updated_at ON daemon_checkpoint TYPE datetime DEFAULT time::now()`,
 	`DEFINE INDEX OVERWRITE daemon_checkpoint_job_id_unique ON daemon_checkpoint COLUMNS job_id UNIQUE`,
 ] as const

@@ -26,7 +26,7 @@ const SCHEMA_QUERIES = [
 	`DEFINE TABLE OVERWRITE plugin_manifest SCHEMAFULL`,
 	`DEFINE FIELD OVERWRITE name ON plugin_manifest TYPE string`,
 	`DEFINE FIELD OVERWRITE source_path ON plugin_manifest TYPE string`,
-	`DEFINE FIELD OVERWRITE args ON plugin_manifest FLEXIBLE TYPE object`,
+	`DEFINE FIELD OVERWRITE args ON plugin_manifest TYPE object FLEXIBLE`,
 	`DEFINE FIELD OVERWRITE enabled_at ON plugin_manifest TYPE datetime`,
 	`DEFINE FIELD OVERWRITE updated_at ON plugin_manifest TYPE datetime DEFAULT time::now()`,
 	`DEFINE INDEX OVERWRITE plugin_manifest_name_unique ON plugin_manifest COLUMNS name UNIQUE`,
