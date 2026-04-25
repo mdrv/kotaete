@@ -20,6 +20,8 @@
 	let seasonInfo = $state<{ id: string; caption: string | null } | null>(null)
 	let seasons = $state<{ season_id: string; caption: string | null }[]>([])
 	let connected = $state(false)
+	let botOnline = $state<boolean | null>(null) // null = not yet checked
+	let botStatusInterval: ReturnType<typeof setInterval> | null = null
 	let viewers = $state(0)
 	let timeRemaining = $state(0)
 	let imageError = $state(false)
@@ -602,6 +604,20 @@
 			console.error('Failed to load initial data:', e)
 		}
 
+		// ── Bot status polling ──
+		async function checkBotStatus() {
+			try {
+				const res = await fetch('/api/bot-status')
+				const data = await res.json()
+				botOnline = data.online ?? false
+			} catch {
+				botOnline = false
+			}
+		}
+
+		checkBotStatus()
+		botStatusInterval = setInterval(checkBotStatus, 30_000)
+
 		disconnectFn = connectLive({
 			onEvent(table, action, record) {
 				connected = true
@@ -624,6 +640,7 @@
 	onDestroy(() => {
 		disconnectFn?.()
 		if (scoreRefreshTimer) clearTimeout(scoreRefreshTimer)
+		if (botStatusInterval) clearInterval(botStatusInterval)
 	})
 </script>
 
@@ -660,6 +677,9 @@
 						viewers
 					}</span>
 			{/if}
+			<span class='separator'>·</span>
+			<span class='bot-dot' class:online={botOnline === true} class:offline={botOnline === false}></span>
+			<span class='status-text'>{botOnline === null ? 'BOT ...' : botOnline ? 'BOT' : 'BOT ✗'}</span>
 			<button class='theme-toggle' onclick={toggleTheme} title='Toggle theme'>
 				{#if theme === 'dark'}
 					<svg
@@ -1033,6 +1053,30 @@
 		animation: pulse 2s ease-in-out infinite;
 	}
 
+
+	.separator {
+		color: var(--text-secondary);
+		font-size: 0.75rem;
+		opacity: 0.4;
+	}
+
+	.bot-dot {
+		width: 8px;
+		height: 8px;
+		border-radius: 50%;
+		background: var(--text-secondary);
+		display: inline-block;
+		flex-shrink: 0;
+	}
+
+	.bot-dot.online {
+		background: var(--accent-green);
+		animation: pulse 2s ease-in-out infinite;
+	}
+
+	.bot-dot.offline {
+		background: var(--accent-red, #ef4444);
+	}
 	@keyframes pulse {
 		0%,
 		100% {

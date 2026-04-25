@@ -270,6 +270,7 @@ export class DaemonRuntime {
 	private readonly seasonStore = new SeasonStore()
 	private eventLogger: QuizEventLogger | null = null
 	private saveSvg = false
+	private heartbeatTimer: ReturnType<typeof setInterval> | null = null
 
 	constructor(options: DaemonRuntimeOptions = {}) {
 		this.socketPath = expandHome(options.socketPath ?? DEFAULT_SOCKET_PATH)
@@ -941,6 +942,13 @@ export class DaemonRuntime {
 				await this.persistState()
 			}
 
+			// Start periodic heartbeat for web dashboard daemon status
+			await this.stateStore.updateDaemonStatus('running')
+			this.heartbeatTimer = setInterval(() => {
+				void this.stateStore.updateDaemonStatus('running')
+			}, 30_000)
+			log.info('daemon heartbeat started (30s interval)')
+
 			const server = createServer((socket) => {
 				let acc = ''
 				socket.on('data', (chunk) => {
@@ -1394,6 +1402,11 @@ export class DaemonRuntime {
 
 		const shutdown = async () => {
 			log.info('Shutting down daemon...')
+			if (this.heartbeatTimer) {
+				clearInterval(this.heartbeatTimer)
+				this.heartbeatTimer = null
+			}
+			await this.stateStore.markDaemonStopped()
 			await this.pluginManager.shutdown()
 			await this.wa.stop()
 			await new Promise<void>((resolve) => {

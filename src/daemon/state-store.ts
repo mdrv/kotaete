@@ -60,12 +60,20 @@ const SCHEMA_QUERIES = [
 	`DEFINE INDEX OVERWRITE daemon_job_id_unique ON daemon_job COLUMNS job_id UNIQUE`,
 	`DEFINE INDEX OVERWRITE daemon_job_id_unique ON daemon_job COLUMNS job_id UNIQUE`,
 	`DEFINE TABLE OVERWRITE daemon_checkpoint SCHEMAFULL`,
+	`DEFINE TABLE OVERWRITE daemon_checkpoint SCHEMAFULL`,
 	`DEFINE FIELD OVERWRITE job_id ON daemon_checkpoint TYPE string`,
 	`DEFINE FIELD OVERWRITE rev ON daemon_checkpoint TYPE number DEFAULT 0`,
 	`DEFINE FIELD OVERWRITE source ON daemon_checkpoint TYPE string DEFAULT 'resume'`,
 	`DEFINE FIELD OVERWRITE checkpoint ON daemon_checkpoint TYPE object FLEXIBLE`,
 	`DEFINE FIELD OVERWRITE updated_at ON daemon_checkpoint TYPE datetime DEFAULT time::now()`,
 	`DEFINE INDEX OVERWRITE daemon_checkpoint_job_id_unique ON daemon_checkpoint COLUMNS job_id UNIQUE`,
+
+	// Daemon status singleton (heartbeat)
+	`DEFINE TABLE OVERWRITE daemon_status SCHEMAFULL`,
+	`DEFINE FIELD OVERWRITE status ON daemon_status TYPE string DEFAULT 'starting'`,
+	`DEFINE FIELD OVERWRITE last_heartbeat_at ON daemon_status TYPE option<datetime>`,
+	`DEFINE FIELD OVERWRITE started_at ON daemon_status TYPE datetime DEFAULT time::now()`,
+	`DEFINE FIELD OVERWRITE pid ON daemon_status TYPE number`,
 ] as const
 
 export type ConsistencyIssue = {
@@ -299,6 +307,27 @@ export class DaemonStateStore {
 			await db.query(
 				`UPDATE daemon_job SET status = $status, last_heartbeat_at = time::now() WHERE job_id = $jobId`,
 				{ jobId, status },
+			)
+		})
+	}
+
+	// ── Daemon status heartbeat ──
+
+	async updateDaemonStatus(status: string): Promise<void> {
+		const db = this.ensureDb()
+		await this.chain(async () => {
+			await db.query(
+				`UPDATE daemon_status:only MERGE { status: $status, last_heartbeat_at: time::now(), pid: $pid }`,
+				{ status, pid: process.pid },
+			)
+		})
+	}
+
+	async markDaemonStopped(): Promise<void> {
+		const db = this.ensureDb()
+		await this.chain(async () => {
+			await db.query(
+				`UPDATE daemon_status:only SET status = 'stopped', last_heartbeat_at = time::now()`,
 			)
 		})
 	}
