@@ -15,9 +15,9 @@ export async function GET({ params }: { params: { id: string } }) {
 			mid as member_mid,
 			points,
 			reached_at,
-			(SELECT kananame FROM members WHERE mid = $parent.mid LIMIT 1)[0].kananame as member_kananame,
-			(SELECT nickname FROM members WHERE mid = $parent.mid LIMIT 1)[0].nickname as member_nickname,
-			(SELECT classgroup FROM members WHERE mid = $parent.mid LIMIT 1)[0].classgroup as member_classgroup
+			(SELECT kananame FROM member WHERE mid = $parent.mid LIMIT 1)[0].kananame as member_kananame,
+			(SELECT nickname FROM member WHERE mid = $parent.mid LIMIT 1)[0].nickname as member_nickname,
+			(SELECT classgroup FROM member WHERE mid = $parent.mid LIMIT 1)[0].classgroup as member_classgroup
 			FROM season_score WHERE season_score.season_id = $sid ORDER BY points DESC`,
 			{ sid: id as string },
 		).collect<[SeasonScore[]]>()

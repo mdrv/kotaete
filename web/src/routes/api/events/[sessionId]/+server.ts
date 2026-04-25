@@ -25,9 +25,9 @@ export async function GET({ params }: { params: { sessionId: string } }) {
 			member_mid,
 			data,
 			created_at,
-			(SELECT kananame FROM members WHERE mid = $parent.member_mid LIMIT 1)[0].kananame as member_kananame,
-			(SELECT nickname FROM members WHERE mid = $parent.member_mid LIMIT 1)[0].nickname as member_nickname,
-			(SELECT classgroup FROM members WHERE mid = $parent.member_mid LIMIT 1)[0].classgroup as member_classgroup
+			(SELECT kananame FROM member WHERE mid = $parent.member_mid LIMIT 1)[0].kananame as member_kananame,
+			(SELECT nickname FROM member WHERE mid = $parent.member_mid LIMIT 1)[0].nickname as member_nickname,
+			(SELECT classgroup FROM member WHERE mid = $parent.member_mid LIMIT 1)[0].classgroup as member_classgroup
 			FROM quiz_event
 			WHERE session_id = $sid
 			ORDER BY created_at DESC

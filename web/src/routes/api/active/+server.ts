@@ -86,9 +86,9 @@ export async function GET({ url }: { url: URL }) {
 				member_mid,
 				points,
 				reached_at,
-				(SELECT kananame FROM members WHERE mid = $parent.member_mid LIMIT 1)[0].kananame as member_kananame,
-				(SELECT nickname FROM members WHERE mid = $parent.member_mid LIMIT 1)[0].nickname as member_nickname,
-				(SELECT classgroup FROM members WHERE mid = $parent.member_mid LIMIT 1)[0].classgroup as member_classgroup
+				(SELECT kananame FROM member WHERE mid = $parent.member_mid LIMIT 1)[0].kananame as member_kananame,
+				(SELECT nickname FROM member WHERE mid = $parent.member_mid LIMIT 1)[0].nickname as member_nickname,
+				(SELECT classgroup FROM member WHERE mid = $parent.member_mid LIMIT 1)[0].classgroup as member_classgroup
 				FROM live_score
 				WHERE session_id = $sid
 				ORDER BY points DESC`,
@@ -104,8 +104,8 @@ export async function GET({ url }: { url: URL }) {
 				member_mid,
 				cooldown_until,
 				wrong_remaining,
-				(SELECT kananame FROM members WHERE mid = $parent.member_mid LIMIT 1)[0].kananame as member_kananame,
-				(SELECT nickname FROM members WHERE mid = $parent.member_mid LIMIT 1)[0].nickname as member_nickname
+				(SELECT kananame FROM member WHERE mid = $parent.member_mid LIMIT 1)[0].kananame as member_kananame,
+				(SELECT nickname FROM member WHERE mid = $parent.member_mid LIMIT 1)[0].nickname as member_nickname
 				FROM live_member_state
 				WHERE session_id = $sid`,
 				{ sid },
