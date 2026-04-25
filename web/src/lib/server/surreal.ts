@@ -1,4 +1,4 @@
-import { Surreal } from 'surrealdb'
+import { RecordId, Surreal } from 'surrealdb'
 import { getLogger } from './logger'
 
 const log = getLogger(['kotaete', 'web', 'surreal'])
@@ -176,8 +176,8 @@ async function updateWebStatus(instance: Surreal, status: string): Promise<void>
 	log.debug('heartbeat: updating web_status:{instanceName} status={status}', { instanceName, status })
 	try {
 		const [result] = await instance.query(
-			`UPSERT web_status:$recordId SET status = $status, last_heartbeat_at = time::now(), pid = $pid, started_at = started_at ?? time::now()`,
-			{ recordId: instanceName, status, pid: process.pid },
+			`UPSERT $id SET status = $status, last_heartbeat_at = time::now(), pid = $pid, started_at = started_at ?? time::now()`,
+			{ id: new RecordId('web_status', instanceName), status, pid: process.pid },
 		)
 		log.debug('heartbeat: web_status:{instanceName} updated', { instanceName, result: JSON.stringify(result) })
 	} catch (err) {
@@ -200,8 +200,8 @@ export async function stopHeartbeat(): Promise<void> {
 	log.info('heartbeat: marking web_status:{instanceName} stopped', { instanceName })
 	try {
 		await current.query(
-			`UPSERT web_status:$recordId SET status = 'stopped', last_heartbeat_at = time::now()`,
-			{ recordId: instanceName },
+			`UPSERT $id SET status = 'stopped', last_heartbeat_at = time::now()`,
+			{ id: new RecordId('web_status', instanceName) },
 		)
 	} catch (err) {
 		log.error('heartbeat: web_status:{instanceName} stop failed: {error}', {
