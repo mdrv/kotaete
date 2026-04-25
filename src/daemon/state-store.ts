@@ -125,6 +125,9 @@ export class DaemonStateStore {
 		const db = this.ensureDb()
 		await this.chain(async () => {
 			for (const job of jobs) {
+				const createdAt = new Date(job.createdAt)
+				const introAt = job.introAt ? new Date(job.introAt) : null
+				const firstRoundAt = job.firstRoundAt ? new Date(job.firstRoundAt) : null
 				await db.query(
 					`LET $existing = (SELECT id FROM daemon_job WHERE job_id = $jobId LIMIT 1);
 					IF $existing = [] {
@@ -137,7 +140,7 @@ export class DaemonStateStore {
 							no_cooldown = $noCooldown,
 							no_schedule = $noSchedule,
 							no_generation = $noGeneration,
-							created_at = <datetime>$createdAt,
+							created_at = $createdAt,
 							intro_at = $introAt,
 							first_round_at = $firstRoundAt;
 					} ELSE {
@@ -149,7 +152,7 @@ export class DaemonStateStore {
 							no_cooldown = $noCooldown,
 							no_schedule = $noSchedule,
 							no_generation = $noGeneration,
-							created_at = <datetime>$createdAt,
+							created_at = $createdAt,
 							intro_at = $introAt,
 							first_round_at = $firstRoundAt
 						WHERE job_id = $jobId;
@@ -163,9 +166,9 @@ export class DaemonStateStore {
 						noCooldown: job.noCooldown,
 						noSchedule: job.noSchedule,
 						noGeneration: job.noGeneration,
-						createdAt: job.createdAt,
-						introAt: job.introAt,
-						firstRoundAt: job.firstRoundAt,
+						createdAt,
+						introAt,
+						firstRoundAt,
 					},
 				)
 			}
