@@ -765,11 +765,9 @@ export class QuizEngine {
 		}
 		const rounds = buildRoundPlan(state.bundle)
 		const activeRound = rounds[state.roundIndex]
-		log.debug(
-			`moveToNextQuestion: index=${state.index} roundIdx=${state.roundIndex} roundQIdx=${state.roundQuestionIndex} activeRound=${!!activeRound}`,
-		)
+		log.debug(`moveToNextQuestion: idx=${state.index} roundIdx=${state.roundIndex} roundQIdx=${state.roundQuestionIndex} activeRound=${!!activeRound}`)
 		if (!activeRound) {
-			log.debug(`moveToNextQuestion: no activeRound → finishQuiz`)
+			log.debug('moveToNextQuestion: no activeRound, calling finishQuiz')
 			await this.finishQuiz()
 			return
 		}
@@ -784,9 +782,9 @@ export class QuizEngine {
 		if (state.roundQuestionIndex >= activeRound.questions.length) {
 			const nextRoundIndex = state.roundIndex + 1
 			const nextRound = rounds[nextRoundIndex]
-			log.debug(`moveToNextQuestion: round done, nextRoundIdx=${nextRoundIndex} hasNextRound=${!!nextRound}`)
+			log.debug(`moveToNextQuestion: round done, nextRoundIdx=${nextRoundIndex} hasNext=${!!nextRound}`)
 			if (!nextRound) {
-				log.debug(`moveToNextQuestion: no next round → finishQuiz`)
+				log.debug('moveToNextQuestion: no next round, calling finishQuiz')
 				await this.finishQuiz()
 				return
 			}
@@ -973,9 +971,7 @@ export class QuizEngine {
 
 	private async handleQuestionWarning(token: number): Promise<void> {
 		const state = this.state
-		log.debug(
-			`handleQuestionWarning: token=${token} state.active=${state?.active} questionToken=${state?.questionToken} acceptingAnswers=${state?.acceptingAnswers}`,
-		)
+		log.debug(`handleQuestionWarning: token=${token} active=${state?.active} qToken=${state?.questionToken} accepting=${state?.acceptingAnswers}`)
 		if (!state?.active) return
 		if (token !== state.questionToken) return
 		if (!state.acceptingAnswers) return
@@ -1183,9 +1179,7 @@ export class QuizEngine {
 	private async handleTimeout(token: number): Promise<void> {
 		const state = this.state
 		const question = this.currentQuestion()
-		log.debug(
-			`handleTimeout: token=${token} state.active=${state?.active} hasQuestion=${!!question} questionToken=${state?.questionToken} acceptingAnswers=${state?.acceptingAnswers}`,
-		)
+		log.debug(`handleTimeout: token=${token} active=${state?.active} hasQ=${!!question} qToken=${state?.questionToken} accepting=${state?.acceptingAnswers}`)
 		if (!state?.active || !question) return
 		if (token !== state.questionToken) return
 		if (!state.acceptingAnswers) return
@@ -1195,7 +1189,7 @@ export class QuizEngine {
 			state.warningToken = null
 		}
 		state.timeoutToken = null
-		log.debug(`handleTimeout: proceeding for q${question.number}, sid=${this.sid}, hasEl=${!!this.el}`)
+		log.debug(`handleTimeout: proceeding q${question.number} sid=${this.sid} hasEl=${!!this.el}`)
 
 		if (this.sid) {
 			this.el?.logEvent(this.sid, {
@@ -1218,9 +1212,7 @@ export class QuizEngine {
 
 		const explanation = formatExplanation(question, this.getQuestionProgress(question), state.bundle.messageTemplates)
 		if (explanation) await this.sender.sendText(state.groupId, explanation, { linkPreview: false })
-		log.debug(
-			`handleTimeout: message sent, calling moveToNextQuestion (index=${state.index} roundQIdx=${state.roundQuestionIndex})`,
-		)
+		log.debug(`handleTimeout: msg sent, moveToNextQuestion idx=${state.index} roundQIdx=${state.roundQuestionIndex}`)
 
 		await this.moveToNextQuestion()
 	}

@@ -193,7 +193,7 @@ export class QuizEventLogger {
 		acceptingAnswers?: boolean
 		deadlineAt?: Date | null
 	}): void {
-		this.log.debug(`updateSessionState: sid=${sessionId} opts=${JSON.stringify(opts)}`)
+		this.log.debug(`updateSessionState: sid=${sessionId} q=${opts?.currentQuestion} r=${opts?.currentRound} accept=${opts?.acceptingAnswers} dl=${opts?.deadlineAt ?? 'none'}`)
 		this.chain(async () => {
 			const db = this.ensureDb()
 			const sets: string[] = []
@@ -209,7 +209,7 @@ export class QuizEventLogger {
 			}
 			if (sets.length === 0) return
 			const query = `UPDATE $sid MERGE { ${sets.join(', ')} }`
-			this.log.debug(`updateSessionState: query=${query} sid_rid=${String(toRid(sessionId))}`)
+			this.log.debug(`updateSessionState: sets=[${sets.join(', ')}] sidRid=${String(toRid(sessionId))}`)
 			await db.query(
 				query,
 				{ sid: toRid(sessionId) },
