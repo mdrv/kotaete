@@ -17,12 +17,9 @@
  */
 
 import { createServer } from 'node:http'
-<<<<<<< HEAD
+import { RecordId } from 'surrealdb'
 import { getDb } from './src/lib/server/surreal'
-||||||| parent of 6e96c47 (Add web_status heartbeat with 15s interval)
-=======
 import { stopHeartbeat } from './src/lib/server/surreal'
->>>>>>> 6e96c47 (Add web_status heartbeat with 15s interval)
 import { KotaeteWsServer } from './src/lib/server/ws-handler'
 
 // Dynamic import because the build output doesn't exist until `bun run build`
@@ -49,8 +46,8 @@ async function updateWebStatus(status: string): Promise<void> {
 	try {
 		const db = await getDb()
 		const [result] = await db.query(
-			`UPSERT web_status:$recordId SET status = $status, last_heartbeat_at = time::now(), pid = $pid, started_at = started_at ?? time::now()`,
-			{ recordId: instanceName, status, pid: process.pid },
+			`UPSERT $id SET status = $status, last_heartbeat_at = time::now(), pid = $pid, started_at = started_at ?? time::now()`,
+			{ $id: new RecordId('web_status', instanceName), status, pid: process.pid },
 		)
 		console.log(`[heartbeat] web_status:${instanceName} updated`, result)
 	} catch (err) {
@@ -58,33 +55,10 @@ async function updateWebStatus(status: string): Promise<void> {
 	}
 }
 
-async function markWebStopped(): Promise<void> {
-	console.log(`[heartbeat] marking web_status:${instanceName} stopped`)
-	try {
-		const db = await getDb()
-		await db.query(
-			`UPSERT web_status:$recordId SET status = 'stopped', last_heartbeat_at = time::now()`,
-			{ recordId: instanceName },
-		)
-		console.log(`[heartbeat] web_status:${instanceName} marked stopped`)
-	} catch (err) {
-		console.error(`[heartbeat] web_status:${instanceName} stop failed:`, err)
-	}
-}
-
 // Graceful shutdown
 async function shutdown(reason: string) {
 	console.log(`[server] shutting down (${reason})`)
-<<<<<<< HEAD
-	if (heartbeatTimer) {
-		clearInterval(heartbeatTimer)
-		heartbeatTimer = null
-	}
-	await markWebStopped()
-||||||| parent of 6e96c47 (Add web_status heartbeat with 15s interval)
-=======
 	await stopHeartbeat()
->>>>>>> 6e96c47 (Add web_status heartbeat with 15s interval)
 	await wsServer.close()
 	httpServer.close(() => {
 		console.log('[server] closed')
