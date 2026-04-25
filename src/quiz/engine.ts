@@ -166,7 +166,7 @@ export class QuizEngine {
 	private readonly onFinished: (() => void) | null
 	private readonly eventLogger: QuizEventLogger | null
 	private readonly saveSvg: boolean
-	private readonly saveCheckpoint: ((checkpoint: QuizStateCheckpoint) => void) | null
+	private readonly saveCheckpoint: ((checkpoint: QuizStateCheckpoint) => void | Promise<void>) | null
 
 	constructor(
 		private readonly sender: SenderPort,
@@ -176,7 +176,7 @@ export class QuizEngine {
 			onFinished?: () => void
 			eventLogger?: QuizEventLogger
 			saveSvg?: boolean
-			saveCheckpoint?: (checkpoint: QuizStateCheckpoint) => void
+			saveCheckpoint?: (checkpoint: QuizStateCheckpoint) => void | Promise<void>
 		},
 	) {
 		this.sleep = opts?.sleep ?? ((ms) => Bun.sleep(ms))
@@ -221,10 +221,10 @@ export class QuizEngine {
 		}
 	}
 
-	private persistCheckpoint(state: RunnerState): void {
+	private async persistCheckpoint(state: RunnerState): Promise<void> {
 		if (!this.saveCheckpoint) return
 		try {
-			this.saveCheckpoint(this.exportCheckpoint(state))
+			await this.saveCheckpoint(this.exportCheckpoint(state))
 		} catch (error) {
 			log.warning(`checkpoint save failed: ${error instanceof Error ? error.message : String(error)}`)
 		}
@@ -438,7 +438,7 @@ export class QuizEngine {
 						})
 					}, timeoutMs)
 
-					this.persistCheckpoint(state)
+					await this.persistCheckpoint(state)
 					return
 				}
 			}
@@ -933,7 +933,7 @@ export class QuizEngine {
 			})
 		}, timeoutMs)
 
-		this.persistCheckpoint(state)
+		await this.persistCheckpoint(state)
 	}
 
 	private claimCurrentQuestion(state: RunnerState): boolean {
@@ -1062,7 +1062,7 @@ export class QuizEngine {
 				)
 			}
 
-			this.persistCheckpoint(state)
+			await this.persistCheckpoint(state)
 		}
 
 		if (!question.isSpecialStage) state.cooldowns.set(member.mid, Date.now() + COOLDOWN_MS)
@@ -1173,7 +1173,7 @@ export class QuizEngine {
 			})
 		}
 
-		this.persistCheckpoint(state)
+		await this.persistCheckpoint(state)
 	}
 
 	private async handleTimeout(token: number): Promise<void> {

@@ -436,9 +436,7 @@ export class DaemonRuntime {
 			},
 			...(this.eventLogger ? { eventLogger: this.eventLogger } : {}),
 			...(this.saveSvg ? { saveSvg: true } : {}),
-			saveCheckpoint: (checkpoint) => {
-				void this.persistCheckpoint(jobId, checkpoint)
-			},
+			saveCheckpoint: (checkpoint) => this.persistCheckpoint(jobId, checkpoint),
 		})
 	}
 
