@@ -54,8 +54,6 @@ const SCHEMA_QUERIES = [
 	`DEFINE FIELD OVERWRITE member_kananame ON quiz_event TYPE option<string>`,
 	`DEFINE FIELD OVERWRITE member_nickname ON quiz_event TYPE option<string>`,
 	`DEFINE FIELD OVERWRITE member_classgroup ON quiz_event TYPE option<string>`,
-	`DEFINE FIELD OVERWRITE member_name ON quiz_event TYPE option<string>`,
-	`DEFINE FIELD OVERWRITE member_classgroup ON quiz_event TYPE option<string>`,
 	`DEFINE FIELD OVERWRITE data ON quiz_event TYPE option<object> FLEXIBLE`,
 	`DEFINE FIELD OVERWRITE created_at ON quiz_event TYPE datetime DEFAULT time::now()`,
 	`DEFINE INDEX OVERWRITE idx_quiz_event_session ON quiz_event COLUMNS session_id`,
@@ -68,8 +66,6 @@ const SCHEMA_QUERIES = [
 	`DEFINE FIELD OVERWRITE member_kananame ON live_score TYPE string`,
 	`DEFINE FIELD OVERWRITE member_nickname ON live_score TYPE string`,
 	`DEFINE FIELD OVERWRITE member_classgroup ON live_score TYPE string`,
-	`DEFINE FIELD OVERWRITE member_name ON live_score TYPE string`,
-	`DEFINE FIELD OVERWRITE member_classgroup ON live_score TYPE string`,
 	`DEFINE FIELD OVERWRITE points ON live_score TYPE number DEFAULT 0`,
 	`DEFINE FIELD OVERWRITE reached_at ON live_score TYPE option<datetime>`,
 	`DEFINE INDEX OVERWRITE idx_live_score_session ON live_score COLUMNS session_id`,
@@ -81,7 +77,6 @@ const SCHEMA_QUERIES = [
 	`DEFINE FIELD OVERWRITE member_mid ON live_member_state TYPE string`,
 	`DEFINE FIELD OVERWRITE member_kananame ON live_member_state TYPE string`,
 	`DEFINE FIELD OVERWRITE member_nickname ON live_member_state TYPE string`,
-	`DEFINE FIELD OVERWRITE member_name ON live_member_state TYPE string`,
 	`DEFINE FIELD OVERWRITE cooldown_until ON live_member_state TYPE option<datetime>`,
 	`DEFINE FIELD OVERWRITE wrong_remaining ON live_member_state TYPE option<number>`,
 	`DEFINE INDEX OVERWRITE idx_lms_session ON live_member_state COLUMNS session_id`,
@@ -151,6 +146,15 @@ export class QuizEventLogger {
 
 		for (const q of SCHEMA_QUERIES) {
 			await db.query(q)
+		}
+
+		// Migration: remove old member_name field (replaced by member_kananame + member_nickname)
+		for (const table of ['quiz_event', 'live_score', 'live_member_state']) {
+			try {
+				await db.query(`REMOVE FIELD IF EXISTS member_name ON ${table}`)
+			} catch {
+				// Field may already be removed — ignore
+			}
 		}
 
 		this.db = db
