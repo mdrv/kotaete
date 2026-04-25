@@ -960,6 +960,7 @@
 			{/if}
 		</div>
 	</div>
+	<footer class='footer'>© 2026 NIPBANB</footer>
 </div>
 
 <style>
@@ -1466,5 +1467,12 @@
 	.toggle-btn:hover {
 		color: var(--text-primary);
 		border-color: rgba(255, 255, 255, 0.2);
+	}
+
+	.footer {
+		text-align: center;
+		padding: 12px 0;
+		color: var(--text-muted);
+		font-size: 0.75rem;
 	}
 </style>
