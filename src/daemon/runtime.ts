@@ -358,6 +358,7 @@ export class DaemonRuntime {
 		this.jobs.delete(jobId)
 		this.advanceQueue(groupId)
 		await this.persistState()
+		await this.stateStore.updateJobStatus(jobId, 'done')
 		await this.deleteCheckpoint(jobId)
 	}
 
@@ -499,6 +500,7 @@ export class DaemonRuntime {
 				checkpoint ? ' (resuming from checkpoint)' : ''
 			}`,
 		)
+		void this.stateStore.updateJobStatus(nextJobId, 'running')
 
 		if (checkpoint) {
 			// Resume from checkpoint — saves quiz state after crash
@@ -680,6 +682,7 @@ export class DaemonRuntime {
 				}
 				this.jobs.set(jobId, jobRecord)
 				const position = this.addToQueue(jobId, resolvedGroupId)
+				void this.stateStore.updateJobStatus(jobId, 'queued')
 				if (position === 0) {
 					this.advanceQueue(resolvedGroupId)
 				}
@@ -1339,6 +1342,7 @@ export class DaemonRuntime {
 							}
 							this.jobs.set(jobId, jobRecord)
 							const queuePosition = this.addToQueue(jobId, resolvedGroupId)
+							void this.stateStore.updateJobStatus(jobId, 'queued')
 							if (queuePosition === 0) {
 								this.advanceQueue(resolvedGroupId)
 							}

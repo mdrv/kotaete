@@ -4,30 +4,37 @@
 
 Make quiz runtime recovery deterministic, auditable, and resilient to partial failures while reducing single points of failure.
 
-## Priority 0 (Immediate)
+## Priority 0 (Immediate) ✅
 
-- Add idempotent state transitions for recovery-sensitive operations:
-  - Ensure `finishQuiz()` can be retried safely after partial failure.
-  - Ensure timeout/correct handlers are no-op-safe when replayed.
-- Persist and verify checkpoint write ACK path:
-  - Include write latency and result status in logs.
-  - Alert on repeated checkpoint save failures in the same session.
-- Add startup integrity check:
-  - Validate `daemon_job` and `daemon_checkpoint` consistency before recover.
-  - Quarantine invalid rows instead of silently skipping.
+- [x] Add idempotent state transitions for recovery-sensitive operations:
+  - `finishQuiz()` has `quizFinalized` guard — returns early on repeat calls.
+  - Timeout/correct handlers check `acceptingAnswers` before processing.
+- [x] Persist and verify checkpoint write ACK path:
+  - `checkpointSaveCount`/`checkpointFailCount` counters in QuizEngine.
+  - Write latency measured, error-level alert after 3+ consecutive failures.
+- [x] Add startup integrity check:
+  - `validateConsistency()` checks orphaned checkpoints and mid-question state.
+  - Orphaned checkpoints are auto-deleted.
+  - Called before `recoverJobs()`.
 
 ## Priority 1 (Short Term)
 
-- Introduce monotonic checkpoint revisions:
-  - Add `rev` and `saved_at` to checkpoint payload.
-  - Reject stale checkpoint writes (`rev` regression).
-- Add recovery journaling events:
-  - `recover_begin`, `recover_job_loaded`, `recover_checkpoint_loaded`, `recover_resume_started`, `recover_resume_failed`, `recover_done`.
-- Add integrity watchdog:
+- [x] Introduce monotonic checkpoint revisions:
+  - Added `rev` (monotonic int) and `source` to checkpoint payload and schema.
+  - `saveCheckpoint()` rejects stale writes via `IF $existing[0].rev < $rev`.
+- [x] Add recovery journaling events:
+  - `recover_begin`, `recover_checkpoint_loaded`, `recover_done` log events.
+- [ ] Add integrity watchdog:
   - Periodically verify that active in-memory job state matches SurrealDB projections.
-- Add safer event logger session lifecycle:
+- [ ] Add safer event logger session lifecycle:
   - Record explicit `session_reactivated` and `session_reactivation_failed` events.
   - Auto-create replacement session with linkage to old session ID.
+
+## Data Model Enhancements
+
+- [x] `daemon_checkpoint`: Added `rev`, `source` columns.
+- [x] `daemon_job`: Added `status`, `last_heartbeat_at` columns. Lifecycle transitions wired (queued→running→done).
+- [ ] `quiz_event`: Add canonical recovery event taxonomy and correlation IDs.
 
 ## Priority 2 (Reliability Engineering)
 
@@ -55,15 +62,6 @@ Make quiz runtime recovery deterministic, auditable, and resilient to partial fa
   - Recovery failure diagnostics.
   - Manual session repair workflow.
   - Data consistency repair scripts.
-
-## Data Model Enhancements
-
-- `daemon_checkpoint`:
-  - Add `rev`, `saved_at`, `source` (`question_send`, `correct_answer`, `timeout`).
-- `daemon_job`:
-  - Add `status`, `last_heartbeat_at`, `recovery_attempts`.
-- `quiz_event`:
-  - Add canonical recovery event taxonomy and correlation IDs.
 
 ## Safety Guards
 
