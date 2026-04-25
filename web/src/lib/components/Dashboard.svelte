@@ -631,7 +631,7 @@
 	<!-- ── Header ── -->
 	<header class='header'>
 		<div class='header-left'>
-			<h1 class='title'>🏆 Kotaete Live</h1>
+			<h1 class='title'>🏆 NIPBANG Kotaete</h1>
 			{#if seasons.length > 0}
 				<select
 					class='badge-select'
@@ -798,7 +798,7 @@
 											cooldownText
 										}</span>
 								{/if}
-								<span class='points'>{score.points}pts</span>
+								<span class='points'>{score.points} 🌸</span>
 							</div>
 						{/each}
 					</div>
@@ -839,7 +839,7 @@
 								class='toggle-btn'
 								onclick={() => (showZeroPts = !showZeroPts)}
 							>
-								{showZeroPts ? 'Hide' : 'Show'} 0pts
+								{showZeroPts ? 'Hide' : 'Show'} 0 🌸
 							</button>
 						</div>
 					</div>
@@ -850,7 +850,7 @@
 								<span class='member-name'>{
 									memberDisplay(score.member_name, score.member_classgroup)
 								}</span>
-								<span class='points'>{score.points}pts</span>
+								<span class='points'>{score.points} 🌸</span>
 							</div>
 						{/each}
 					</div>

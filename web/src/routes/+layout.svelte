@@ -3,7 +3,7 @@
 </script>
 
 <svelte:head>
-	<title>Kotaete Live</title>
+	<title>NIPBANG Kotaete</title>
 	<meta name='description' content='NIPBANG Kotaete — Live Quiz Spectator' />
 </svelte:head>
 
