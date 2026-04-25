@@ -1,16 +1,19 @@
 /**
  * Production server wrapper for adapter-node with WebSocket support.
  *
+ * ⚠️ This file is NOT used during `vite dev` — only runs via `bun run server.ts`.
+ * Server-side features (heartbeat, SurrealDB, WebSocket) live in src/lib/server/
+ * so they work in both dev and production.
+ *
  * Usage:
  *   bun run build
  *   bun run server.ts
  *
  * Environment variables (same as adapter-node):
- *   PORT           - Port to listen on (default: 3000)
- *   HOST           - Host to bind (default: 0.0.0.0)
- *   SOCKET_PATH    - Unix socket path (overrides PORT/HOST)
- *   ORIGIN         - Public URL origin (e.g., https://kotaete.nipbang.id)
- *   INSTANCE_NAME  - Instance name for web_status record ID (default: 'default')
+ *   PORT          - Port to listen on (default: 3000)
+ *   HOST          - Host to bind (default: 0.0.0.0)
+ *   SOCKET_PATH   - Unix socket path (overrides PORT/HOST)
+ *   ORIGIN        - Public URL origin (e.g., https://kotaete.nipbang.id)
  */
 
 import { createServer } from 'node:http'
