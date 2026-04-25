@@ -227,7 +227,7 @@ export class SeasonStore {
 		const sid = seasonId ?? (await this.resolveOrCreateSeasonId(key))
 		const now = Date.now()
 
-	return this.chain(async () => {
+		return this.chain(async () => {
 			for (const [mid, points] of pointsByMid.entries()) {
 				if (points > 0) {
 					await db.query(

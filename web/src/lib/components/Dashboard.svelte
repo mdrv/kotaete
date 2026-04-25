@@ -667,9 +667,11 @@
 			try {
 				const res = await fetch('/api/bot-status')
 				const data = await res.json()
-				botOnline = data.online ?? false
+				botOnline = data.daemon?.online ?? false
+				connected = data.web?.online ?? false
 			} catch {
 				botOnline = false
+				connected = false
 			}
 		}
 
@@ -741,6 +743,7 @@
 				class:offline={botOnline === false}
 			></span>
 			<span class='status-text'>WA</span>
+			<span class='status-text'>DB</span>
 			<span class='separator'>·</span>
 			<button class='theme-toggle' onclick={toggleTheme} title='Toggle theme'>
 				{#if theme === 'dark'}

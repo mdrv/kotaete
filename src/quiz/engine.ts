@@ -1274,7 +1274,7 @@ export class QuizEngine {
 				...(state.bundle.season?.id ? { seasonId: state.bundle.season.id } : {}),
 				eventType: 'answer_wrong',
 				questionNo: question.number,
-					memberMid: member.mid,
+				memberMid: member.mid,
 				data: {
 					answerText: incoming.text.trim(),
 					gained,

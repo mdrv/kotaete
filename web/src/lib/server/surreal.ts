@@ -109,6 +109,20 @@ async function establishConnection(): Promise<Surreal> {
 				namespace: SURREAL_NAMESPACE,
 				database: SURREAL_DATABASE,
 			})
+
+			// Ensure web_status table exists (only created by daemon init otherwise)
+			try {
+				await instance.query(`DEFINE TABLE OVERWRITE web_status SCHEMAFULL`)
+				await instance.query(`DEFINE FIELD OVERWRITE status ON web_status TYPE string DEFAULT 'starting'`)
+				await instance.query(`DEFINE FIELD OVERWRITE last_heartbeat_at ON web_status TYPE option<datetime>`)
+				await instance.query(`DEFINE FIELD OVERWRITE started_at ON web_status TYPE datetime DEFAULT time::now()`)
+				await instance.query(`DEFINE FIELD OVERWRITE pid ON web_status TYPE number`)
+			} catch (err) {
+				log.warning('surreal:web failed to define web_status schema: {error}', {
+					error: err instanceof Error ? err.message : String(err),
+				})
+			}
+
 			return instance
 		} catch (err) {
 			log.error('surreal:web connection attempt {attempt} failed, retrying...', {

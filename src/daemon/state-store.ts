@@ -1,9 +1,9 @@
 import { Surreal } from 'surrealdb'
+import { getLogger } from '../logger.ts'
 import type { QuizStateCheckpoint } from '../quiz/checkpoint.ts'
 import { quizStateCheckpointSchema } from '../quiz/checkpoint.ts'
 import type { SurrealOptions } from '../utils/surreal.ts'
 import { getDb } from '../utils/surreal.ts'
-import { getLogger } from '../logger.ts'
 
 export type DaemonJobStatus = 'queued' | 'running' | 'finishing' | 'done'
 
@@ -332,7 +332,7 @@ export class DaemonStateStore {
 		const db = this.ensureDb()
 		try {
 			await db.query(
-				`UPSERT daemon_status:only SET status = 'stopped', last_heartbeat_at = time::now()`
+				`UPSERT daemon_status:only SET status = 'stopped', last_heartbeat_at = time::now()`,
 			)
 		} catch (err) {
 			DaemonStateStore.STATUS_LOG.error`markDaemonStopped FAILED: ${err}`

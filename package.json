@@ -25,7 +25,7 @@
 		"fmt": "dprint fmt",
 		"fmt:check": "dprint check",
 		"typecheck": "bun tsc --noEmit",
-		"check": "bun run fmt:check && bun run typecheck",
+		"check": "bun run fmt:check && bun run typecheck && bun run --cwd web check",
 		"docs:dev": "cd docs/astro && bun run dev",
 		"docs:build": "cd docs/astro && bun run build"
 	},
