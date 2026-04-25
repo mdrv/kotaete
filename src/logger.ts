@@ -76,7 +76,7 @@ export async function initLogger(level: LogLevel = 'info', options?: InitLoggerO
 			},
 			loggers: [
 				{ category: ['logtape', 'meta'], lowestLevel: 'warning', sinks: ['console', 'file'] },
-				{ category: ['kotaete'], lowestLevel: 'debug', sinks: ['console', 'file'] },
+				{ category: ['kotaete'], lowestLevel: level, sinks: ['console', 'file'] },
 			],
 		})
 	} else {
