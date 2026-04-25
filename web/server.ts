@@ -17,8 +17,6 @@
  */
 
 import { createServer } from 'node:http'
-import { RecordId } from 'surrealdb'
-import { getDb } from './src/lib/server/surreal'
 import { stopHeartbeat } from './src/lib/server/surreal'
 import { KotaeteWsServer } from './src/lib/server/ws-handler'
 
@@ -28,7 +26,6 @@ const { handler } = await import('./build/handler.js')
 const port = Number(process.env.PORT ?? 3000)
 const host = process.env.HOST ?? '0.0.0.0'
 const socketPath = process.env.SOCKET_PATH
-const instanceName = process.env.INSTANCE_NAME ?? 'default'
 
 // Create HTTP server with SvelteKit handler
 const httpServer = createServer(handler)
@@ -36,24 +33,6 @@ const httpServer = createServer(handler)
 // Attach WebSocket server
 const wsServer = new KotaeteWsServer()
 wsServer.attachUpgrade(httpServer)
-
-// Web status heartbeat (15-second interval)
-const WEB_HEARTBEAT_INTERVAL = 15_000
-let heartbeatTimer: ReturnType<typeof setInterval> | null = null
-
-async function updateWebStatus(status: string): Promise<void> {
-	console.log(`[heartbeat] updating web_status:${instanceName} status=${status}`)
-	try {
-		const db = await getDb()
-		const [result] = await db.query(
-			`UPSERT $id SET status = $status, last_heartbeat_at = time::now(), pid = $pid, started_at = started_at ?? time::now()`,
-			{ $id: new RecordId('web_status', instanceName), status, pid: process.pid },
-		)
-		console.log(`[heartbeat] web_status:${instanceName} updated`, result)
-	} catch (err) {
-		console.error(`[heartbeat] web_status:${instanceName} failed:`, err)
-	}
-}
 
 // Graceful shutdown
 async function shutdown(reason: string) {
@@ -77,20 +56,10 @@ process.on('SIGINT', () => shutdown('SIGINT'))
 // Start listening
 if (socketPath) {
 	httpServer.listen(socketPath, () => {
-		console.log(`[server] instance: ${instanceName}`)
 		console.log(`[server] listening on ${socketPath}`)
-		void updateWebStatus('running')
-		heartbeatTimer = setInterval(() => {
-			void updateWebStatus('running')
-		}, WEB_HEARTBEAT_INTERVAL)
 	})
 } else {
 	httpServer.listen(port, host, () => {
-		console.log(`[server] instance: ${instanceName}`)
 		console.log(`[server] listening on http://${host}:${port}`)
-		void updateWebStatus('running')
-		heartbeatTimer = setInterval(() => {
-			void updateWebStatus('running')
-		}, WEB_HEARTBEAT_INTERVAL)
 	})
 }
