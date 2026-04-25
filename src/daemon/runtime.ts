@@ -405,15 +405,15 @@ export class DaemonRuntime {
 		})
 	}
 
-	private finishJob(jobId: string): void {
+	private async finishJob(jobId: string): Promise<void> {
 		const job = this.jobs.get(jobId)
 		if (!job) return
 		const groupId = job.meta.groupId
 		this.removeFromQueue(jobId, groupId)
 		this.jobs.delete(jobId)
 		this.advanceQueue(groupId)
-		void this.persistState().catch(() => undefined)
-		void this.deleteCheckpoint(jobId)
+		await this.persistState()
+		await this.deleteCheckpoint(jobId)
 	}
 
 	private createEngineForJob(jobId: string): QuizEngine {
@@ -431,8 +431,8 @@ export class DaemonRuntime {
 			},
 		}, {
 			seasonStore: this.seasonStore,
-			onFinished: () => {
-				this.finishJob(jobId)
+			onFinished: async () => {
+				await this.finishJob(jobId)
 			},
 			...(this.eventLogger ? { eventLogger: this.eventLogger } : {}),
 			...(this.saveSvg ? { saveSvg: true } : {}),
@@ -559,18 +559,18 @@ export class DaemonRuntime {
 			// Resume from checkpoint — saves quiz state after crash
 			void nextJob.engine
 				.resume(quizBundle, members, groupId, checkpoint, runOptions)
-				.catch((error: unknown) => {
+				.catch(async (error: unknown) => {
 					log.error(
 						`resumed job ${nextJobId} runtime failed: ${error instanceof Error ? error.message : String(error)}`,
 					)
-					this.finishJob(nextJobId)
+					await this.finishJob(nextJobId)
 				})
 		} else {
 			void nextJob.engine
 				.run(quizBundle, members, groupId, runOptions)
-				.catch((error: unknown) => {
+				.catch(async (error: unknown) => {
 					log.error(`queued job ${nextJobId} runtime failed: ${error instanceof Error ? error.message : String(error)}`)
-					this.finishJob(nextJobId)
+					await this.finishJob(nextJobId)
 				})
 		}
 	}
@@ -804,7 +804,7 @@ export class DaemonRuntime {
 		} else {
 			await job.engine.stopCurrentQuizWithFinal()
 		}
-		this.finishJob(jobId)
+		await this.finishJob(jobId)
 		return { stopped: true, silent: effectiveSilent }
 	}
 
@@ -1093,7 +1093,7 @@ export class DaemonRuntime {
 									if (!sampleBundle) {
 										sampleBundle = (engine as any).state?.bundle
 									}
-									this.finishJob(job.id)
+						await this.finishJob(job.id)
 								}
 								this.groupQueues.delete(groupId)
 								const seasonId = sampleBundle?.season?.id as string | undefined
@@ -1395,7 +1395,7 @@ export class DaemonRuntime {
 							if (queuePosition === 0) {
 								this.advanceQueue(resolvedGroupId)
 							}
-							void this.persistState().catch(() => undefined)
+					await this.persistState()
 
 							if (parsed.data.noSchedule) {
 								writeResponse(socket, {
@@ -1444,8 +1444,8 @@ export class DaemonRuntime {
 			await new Promise<void>((resolve) => {
 				this.server?.close(() => resolve())
 			})
-			await rm(this.socketPath, { force: true }).catch(() => undefined)
-			await this.releaseLock()
+		await this.persistState()
+		await this.releaseLock()
 			process.exit(0)
 		}
 
