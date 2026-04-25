@@ -4,7 +4,6 @@ import { quizStateCheckpointSchema } from '../quiz/checkpoint.ts'
 import type { SurrealOptions } from '../utils/surreal.ts'
 import { getDb } from '../utils/surreal.ts'
 
-
 export type DaemonJobStatus = 'queued' | 'running' | 'finishing' | 'done'
 
 export type DaemonJobState = {
@@ -122,7 +121,9 @@ export class DaemonStateStore {
 		const issues: ConsistencyIssue[] = []
 
 		const jobResult = await db.query<[DaemonJobRow[]]>(`SELECT job_id FROM daemon_job`)
-		const checkpointResult = await db.query<[{ job_id: string; checkpoint: { acceptingAnswers?: boolean } }[]]>(`SELECT job_id, checkpoint FROM daemon_checkpoint`)
+		const checkpointResult = await db.query<[{ job_id: string; checkpoint: { acceptingAnswers?: boolean } }[]]>(
+			`SELECT job_id, checkpoint FROM daemon_checkpoint`,
+		)
 
 		const jobIds = new Set((jobResult[0] ?? []).map((r) => r.job_id))
 		const checkpoints = checkpointResult[0] ?? []
@@ -149,7 +150,8 @@ export class DaemonStateStore {
 				issues.push({
 					type: 'mid_question_checkpoint',
 					jobId: cp.job_id,
-					description: `Job ${cp.job_id} has checkpoint with acceptingAnswers=true (may need time-bound verification on recovery)`,
+					description:
+						`Job ${cp.job_id} has checkpoint with acceptingAnswers=true (may need time-bound verification on recovery)`,
 				})
 			}
 		}

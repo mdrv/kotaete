@@ -1,6 +1,6 @@
 import { RecordId, Surreal } from 'surrealdb'
 import { getLogger } from '../logger.ts'
-import { getDb } from '../utils/surreal.ts'
+import { getConnectionStatus, getDb } from '../utils/surreal.ts'
 
 /** Parse a session ID string ('quiz_session:xxx' or plain 'xxx') into a RecordId. */
 function parseSessionRecordId(sessionId: string): RecordId {
@@ -96,17 +96,41 @@ export class QuizEventLogger {
 		return this.db
 	}
 
+	private static readonly RETRY_DELAYS = [500, 1_000, 2_000, 5_000]
+
 	private chain(fn: () => Promise<void>, label?: string): Promise<void> {
-		this.log.debug(`chain: queuing ${label ?? 'unknown'}`)
+		this.log.debug(`chain: queuing ${label ?? 'unknown'} [dbStatus=${getConnectionStatus() ?? 'n/a'}]`)
 		const run = async () => {
-			try {
-				this.log.debug(`chain: executing ${label ?? 'unknown'}`)
-				await fn()
-				this.log.debug(`chain: completed ${label ?? 'unknown'}`)
-			} catch (err) {
-				this.log.error(
-					`fire-and-forget write failed: ${label ?? 'unknown'}: ${err instanceof Error ? err.message : String(err)}`,
-				)
+			const dbStatus = getConnectionStatus() ?? 'n/a'
+			this.log.debug(`chain: executing ${label ?? 'unknown'} [dbStatus=${dbStatus}]`)
+
+			for (let attempt = 0; attempt <= QuizEventLogger.RETRY_DELAYS.length; attempt++) {
+				try {
+					await fn()
+					this.log.debug(`chain: completed ${label ?? 'unknown'} [attempt=${attempt + 1}]`)
+					return
+				} catch (err) {
+					const isLastAttempt = attempt >= QuizEventLogger.RETRY_DELAYS.length
+					const errMsg = err instanceof Error ? err.message : String(err)
+					const errName = err instanceof Error ? err.constructor.name : 'UnknownError'
+
+					if (isLastAttempt) {
+						this.log.error(
+							`chain: FAILED after ${attempt + 1} attempts: ${
+								label ?? 'unknown'
+							}: [${errName}] ${errMsg} [dbStatus=${dbStatus}]`,
+						)
+						return // don't throw — keep chain alive
+					}
+
+					const delay = QuizEventLogger.RETRY_DELAYS[attempt]
+					this.log.warning(
+						`chain: retry ${label ?? 'unknown'} in ${delay}ms (attempt ${
+							attempt + 1
+						}) [${errName}] ${errMsg} [dbStatus=${dbStatus}]`,
+					)
+					await new Promise((resolve) => setTimeout(resolve, delay))
+				}
 			}
 		}
 		this.queryChain = this.queryChain.then(run, run)
@@ -115,6 +139,7 @@ export class QuizEventLogger {
 
 	async init(): Promise<void> {
 		const db = await getDb(this.options)
+		this.log.info('event-logger initialized', { dbStatus: db.status })
 
 		for (const q of SCHEMA_QUERIES) {
 			await db.query(q)

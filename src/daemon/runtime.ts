@@ -540,7 +540,9 @@ export class DaemonRuntime {
 				createdAt: job.meta.createdAt.toISOString(),
 				introAt: job.meta.introAt?.toISOString() ?? null,
 				firstRoundAt: job.meta.firstRoundAt?.toISOString() ?? null,
-				status: (job.engine.isActivelyRunning() ? 'running' : (job.engine.isRunning() ? 'queued' : 'done')) as DaemonJobStatus,
+				status: (job.engine.isActivelyRunning()
+					? 'running'
+					: (job.engine.isRunning() ? 'queued' : 'done')) as DaemonJobStatus,
 				lastHeartbeatAt: new Date().toISOString(),
 			}))
 			await this.stateStore.syncJobs(jobs)
@@ -661,7 +663,9 @@ export class DaemonRuntime {
 				log.info('recover_checkpoint_loaded', {
 					jobId: entry.jobId,
 					hasCheckpoint: !!checkpoint,
-					...(checkpoint ? { index: checkpoint.index, acceptingAnswers: checkpoint.acceptingAnswers, rev: checkpoint.rev } : {}),
+					...(checkpoint
+						? { index: checkpoint.index, acceptingAnswers: checkpoint.acceptingAnswers, rev: checkpoint.rev }
+						: {}),
 				})
 				const jobRecord: JobRecord = {
 					id: jobId,

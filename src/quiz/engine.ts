@@ -250,7 +250,11 @@ export class QuizEngine {
 			log.info('persistCheckpoint: saved successfully', { latencyMs, totalSaves: this.checkpointSaveCount })
 		} catch (error) {
 			this.checkpointFailCount++
-			log.warning(`checkpoint save failed (attempt ${this.checkpointFailCount}): ${error instanceof Error ? error.message : String(error)}`)
+			log.warning(
+				`checkpoint save failed (attempt ${this.checkpointFailCount}): ${
+					error instanceof Error ? error.message : String(error)
+				}`,
+			)
 			if (this.checkpointFailCount >= 3) {
 				log.error('checkpoint save has failed 3+ times in a row — crash recovery may be compromised')
 			}
@@ -487,8 +491,8 @@ export class QuizEngine {
 						hasWarningTimer: warningDelayMs > 0,
 					})
 
-				state.checkpointSource = 'resume'
-				await this.persistCheckpoint(state)
+					state.checkpointSource = 'resume'
+					await this.persistCheckpoint(state)
 					return
 				}
 			}
@@ -1285,8 +1289,8 @@ export class QuizEngine {
 			})
 		}
 
-			state.checkpointSource = 'question_send'
-			await this.persistCheckpoint(state)
+		state.checkpointSource = 'question_send'
+		await this.persistCheckpoint(state)
 	}
 
 	private async handleTimeout(token: number): Promise<void> {
