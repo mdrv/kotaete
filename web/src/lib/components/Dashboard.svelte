@@ -674,23 +674,22 @@
 			{/if}
 		</div>
 		<div class='header-right'>
-			<span class='live-dot' class:connected></span>
-			<span class='status-text'>{connected ? 'DB' : 'Connecting...'}</span>
-			<span class='status-text'>{connected ? 'LIVE' : 'Connecting...'}</span>
 			{#if connected && viewers > 0}
 				<span class='viewer-count' title={`${viewers} online`}>👥 {
 						viewers
 					}</span>
 			{/if}
-			<span class='separator'>·</span>
+			<span class='live-dot' class:connected></span>
+			<span class='status-text'>{connected ? 'DB' : 'Connecting...'}</span>
 			<span
 				class='wa-dot'
 				class:online={botOnline === true}
 				class:offline={botOnline === false}
 			></span>
 			<span class='status-text'>{
-				botOnline === null ? 'WA ...' : botOnline ? 'WA' : 'WA ✗'
+				botOnline === null ? 'WA ...' : botOnline ? 'WA' : 'WA'
 			}</span>
+			<span class='separator'>·</span>
 			<button class='theme-toggle' onclick={toggleTheme} title='Toggle theme'>
 				{#if theme === 'dark'}
 					<svg
