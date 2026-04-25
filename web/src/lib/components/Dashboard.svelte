@@ -960,7 +960,7 @@
 			{/if}
 		</div>
 	</div>
-	<footer class='footer'>© 2026 NIPBANB</footer>
+	<footer class='footer'>© 2026 NIPBANG</footer>
 </div>
 
 <style>
