@@ -17,7 +17,21 @@ export async function GET({ params }: { params: { sessionId: string } }) {
 		const sid = new RecordId('quiz_session', key)
 
 		const [events] = await db.query(
-			`SELECT quiz_event.id, quiz_event.session_id, quiz_event.event_type, quiz_event.question_no, quiz_event.member_mid, quiz_event.data, quiz_event.created_at, members.kananame as member_kananame, members.nickname as member_nickname, members.classgroup as member_classgroup FROM quiz_event LEFT JOIN members ON quiz_event.member_mid = members.mid WHERE quiz_event.session_id = $sid ORDER BY quiz_event.created_at DESC LIMIT 50`,
+			`SELECT
+			id,
+			session_id,
+			event_type,
+			question_no,
+			member_mid,
+			data,
+			created_at,
+			(SELECT kananame FROM members WHERE mid = $parent.member_mid LIMIT 1)[0].kananame as member_kananame,
+			(SELECT nickname FROM members WHERE mid = $parent.member_mid LIMIT 1)[0].nickname as member_nickname,
+			(SELECT classgroup FROM members WHERE mid = $parent.member_mid LIMIT 1)[0].classgroup as member_classgroup
+			FROM quiz_event
+			WHERE session_id = $sid
+			ORDER BY created_at DESC
+			LIMIT 50`,
 			{ sid },
 		).collect<[QuizEvent[]]>()
 

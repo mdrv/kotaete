@@ -10,15 +10,15 @@ export async function GET({ params }: { params: { id: string } }) {
 
 		const [scores] = await db.query(
 			`SELECT
-				season_score.id,
-				season_score.season_id,
-				season_score.mid as member_mid,
-				season_score.points,
-				season_score.reached_at,
-				members.kananame as member_kananame,
-				members.nickname as member_nickname,
-				members.classgroup as member_classgroup
-			FROM season_score JOIN members ON season_score.mid = members.mid WHERE season_score.season_id = $sid ORDER BY season_score.points DESC`,
+			id,
+			season_id,
+			mid as member_mid,
+			points,
+			reached_at,
+			(SELECT kananame FROM members WHERE mid = $parent.mid LIMIT 1)[0].kananame as member_kananame,
+			(SELECT nickname FROM members WHERE mid = $parent.mid LIMIT 1)[0].nickname as member_nickname,
+			(SELECT classgroup FROM members WHERE mid = $parent.mid LIMIT 1)[0].classgroup as member_classgroup
+			FROM season_score WHERE season_score.season_id = $sid ORDER BY points DESC`,
 			{ sid: id as string },
 		).collect<[SeasonScore[]]>()
 
