@@ -32,8 +32,24 @@ export async function GET({ url }: { url: URL }) {
 		).collect<[QuizSession[]]>()
 
 		let sessions = running
+		console.log(
+			`[active] running query returned ${running.length} sessions`,
+			running.length > 0
+				? `id=${normalizeId((running[0] as any)?.id)} status=${(running[0] as any)?.status} season_id=${
+					(running[0] as any)?.season_id
+				}`
+				: '',
+		)
 		if (sessions.length === 0) {
 			// Fallback: return most recent session regardless of status
+			// Also try without season_id filter to see if it's a filtering issue
+			const [allRecent] = await db.query(
+				`SELECT * FROM quiz_session ORDER BY started_at DESC LIMIT 5`,
+			).collect<[QuizSession[]]>()
+			console.log(
+				`[active] all recent sessions (no filter):`,
+				allRecent.map((s: any) => ({ id: normalizeId(s.id), status: s.status, season_id: s.season_id })),
+			)
 			const [recent] = await db.query(
 				`SELECT * FROM quiz_session WHERE (season_id = NONE OR string::starts_with(season_id, $prefix)) ORDER BY started_at DESC LIMIT 1`,
 				{ prefix },
@@ -41,7 +57,11 @@ export async function GET({ url }: { url: URL }) {
 			sessions = recent
 			console.log(
 				`[active] no running sessions, fallback to recent:`,
-				recent.length > 0 ? `id=${normalizeId((recent[0] as any)?.id)} status=${(recent[0] as any)?.status}` : 'none',
+				recent.length > 0
+					? `id=${normalizeId((recent[0] as any)?.id)} status=${(recent[0] as any)?.status} season_id=${
+						(recent[0] as any)?.season_id
+					}`
+					: 'none',
 			)
 		}
 

@@ -104,9 +104,12 @@ export class QuizEventLogger {
 	}
 
 	private chain(fn: () => Promise<void>, label?: string): Promise<void> {
+		this.log.debug(`chain: queuing ${label ?? 'unknown'}`)
 		const run = async () => {
 			try {
+				this.log.debug(`chain: executing ${label ?? 'unknown'}`)
 				await fn()
+				this.log.debug(`chain: completed ${label ?? 'unknown'}`)
 			} catch (err) {
 				this.log.error(
 					`fire-and-forget write failed: ${label ?? 'unknown'}: ${err instanceof Error ? err.message : String(err)}`,
@@ -190,6 +193,7 @@ export class QuizEventLogger {
 		acceptingAnswers?: boolean
 		deadlineAt?: Date | null
 	}): void {
+		this.log.debug(`updateSessionState: sid=${sessionId} opts=${JSON.stringify(opts)}`)
 		this.chain(async () => {
 			const db = this.ensureDb()
 			const sets: string[] = []
@@ -204,17 +208,20 @@ export class QuizEventLogger {
 				}
 			}
 			if (sets.length === 0) return
+			const query = `UPDATE $sid MERGE { ${sets.join(', ')} }`
+			this.log.debug(`updateSessionState: query=${query} sid_rid=${String(toRid(sessionId))}`)
 			await db.query(
-				`UPDATE $sid MERGE { ${sets.join(', ')} }`,
+				query,
 				{ sid: toRid(sessionId) },
 			)
 		}, 'updateSessionState')
 	}
 
 	finishSession(sessionId: string, status?: string): void {
+		const finishStatus = status ?? 'finished'
+		this.log.debug(`finishSession: sid=${sessionId} status=${finishStatus}`)
 		this.chain(async () => {
 			const db = this.ensureDb()
-			const finishStatus = status ?? 'finished'
 			await db.query(
 				`UPDATE $sid SET status = $status, finished_at = time::now()`,
 				{ sid: toRid(sessionId), status: finishStatus },
@@ -288,7 +295,7 @@ export class QuizEventLogger {
 					UPDATE live_score SET points = $points, ${reachedExpr}, member_name = $name, member_classgroup = $classgroup WHERE session_id = $sid AND member_mid = $mid;
 				}`,
 				{
-				sid: toRid(sessionId),
+					sid: toRid(sessionId),
 					mid: member.mid,
 					points,
 					name,
@@ -333,7 +340,7 @@ export class QuizEventLogger {
 					UPDATE live_member_state SET member_name = $name${cdFragment}, wrong_remaining = $wr WHERE session_id = $sid AND member_mid = $mid;
 				}`,
 				{
-				sid: toRid(sessionId),
+					sid: toRid(sessionId),
 					mid: member.mid,
 					name,
 					wr: opts.wrongRemaining ?? undefined,
