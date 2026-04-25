@@ -28,13 +28,13 @@ export interface SurrealOptions {
  * Logs connect/disconnect/reconnect/error state transitions.
  * Triggers automatic reconnection on disconnect.
  */
-function subscribeLifecycle(instance: Surreal, label: string): void {
+function subscribeLifecycle(instance: Surreal, label: string, onDisconnect: () => void): void {
 	instance.subscribe('connected', (version) => {
 		log.info(`${label} connected (${version})`)
 	})
 	instance.subscribe('disconnected', () => {
 		log.warning(`${label} disconnected, scheduling reconnection...`)
-		scheduleReconnect(label)
+		onDisconnect()
 	})
 	instance.subscribe('reconnecting', () => {
 		log.warning(`${label} reconnecting...`)
@@ -45,40 +45,47 @@ function subscribeLifecycle(instance: Surreal, label: string): void {
 }
 
 /**
+ * Attempt to close a Surreal instance gracefully.
+ * Best-effort — errors are logged, not thrown.
+ */
+async function closeInstance(instance: Surreal): Promise<void> {
+	try {
+		await instance.close()
+	} catch (err) {
+		log.debug('surreal:main failed to close old instance: {error}', {
+			error: err instanceof Error ? err.message : String(err),
+		})
+	}
+}
+
+/**
  * Schedule a reconnection attempt with exponential backoff.
- * Retries infinitely with increasing delay (1s → 2s → 4s → 8s → 16s, capped at 30s).
+ * Delegates actual retry logic to establishConnection() (infinite retry loop).
+ * Closes the old instance and resets singleton state before reconnecting.
  */
 function scheduleReconnect(label: string): void {
 	if (reconnectScheduled) return
 	reconnectScheduled = true
 
-	let attempt = 0
-	const maxDelay = 30_000 // 30 seconds cap
+	const oldDb = db
+	db = null
+	connecting = null
 
-	async function attemptReconnect(options?: SurrealOptions): Promise<void> {
-		const delay = Math.min(Math.pow(2, attempt) * 1000, maxDelay)
-		attempt++
+	// Close old instance in background (don't block reconnection)
+	if (oldDb) void closeInstance(oldDb)
 
-		log.debug(`${label} reconnecting in {delay}ms (attempt {attempt})`, { delay, attempt })
-		await new Promise((resolve) => setTimeout(resolve, delay))
+	log.debug(`${label} scheduling reconnection...`)
 
-		// Reset connection state and try again
-		db = null
-		connecting = null
-
-		try {
-			await getDb(options)
+	// establishConnection() retries infinitely, so getDb() won't reject
+	void getDb().then(
+		() => {
 			reconnectScheduled = false
-		} catch (err) {
-			log.error(`${label} reconnection attempt {attempt} failed, retrying...`, {
-				attempt,
-				error: err instanceof Error ? err.message : String(err),
-			})
-			await attemptReconnect(options)
-		}
-	}
-
-	void attemptReconnect()
+			log.info(`${label} reconnection successful`)
+		},
+		() => {
+			// Unreachable — establishConnection loops forever
+		},
+	)
 }
 
 /**
@@ -92,7 +99,7 @@ async function establishConnection(opts: SurrealOptions): Promise<Surreal> {
 	while (true) {
 		attempt++
 		const instance = new Surreal()
-		subscribeLifecycle(instance, 'surreal:main')
+		subscribeLifecycle(instance, 'surreal:main', () => scheduleReconnect('surreal:main'))
 
 		try {
 			log.debug('surreal:main connecting (attempt {attempt})', { attempt })
@@ -170,4 +177,5 @@ export async function healthCheck(): Promise<void> {
 export function resetDb(): void {
 	db = null
 	connecting = null
+	reconnectScheduled = false
 }
