@@ -22,9 +22,11 @@ export type QuizTunables = {
 		special: number
 	}
 	wrongAttempts: {
-		/** Number of wrong answers allowed per player per question (normal stage) */
-		maxCount: number
-		/** Emojis to show for each remaining wrong attempt (index 0 = first wrong, etc.) */
+		/** Max wrong answers per player per normal question */
+		maxAttempts: number
+		/** Max wrong answers per player per god/special question */
+		specialMaxAttempts: number
+		/** Emojis for each wrong answer (index 0 = first wrong, etc.) */
 		emojiStreak: ReadonlyArray<string>
 	}
 }

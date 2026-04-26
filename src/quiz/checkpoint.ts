@@ -20,7 +20,6 @@ export type QuizStateCheckpoint = {
 	questionPointsByMid: Record<string, number>
 	cooldowns: Record<string, number>
 	wrongStreak: Record<string, number>
-	attemptedSpecial: string[]
 	cooldownWarningSent: string[]
 
 	// Timer reconstruction
@@ -50,7 +49,6 @@ export const quizStateCheckpointSchema = z.object({
 	questionPointsByMid: z.record(z.string(), z.number()),
 	cooldowns: z.record(z.string(), z.number()),
 	wrongStreak: z.record(z.string(), z.number()),
-	attemptedSpecial: z.array(z.string()),
 	cooldownWarningSent: z.array(z.string()),
 	warningAlreadySent: z.boolean(),
 	loggerSessionId: z.string().nullable().optional().default(null),

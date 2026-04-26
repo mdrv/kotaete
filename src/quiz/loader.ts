@@ -320,11 +320,14 @@ function normalizeTunables(input?: QuizTunablesInput): QuizTunables {
 		points: { ...t.points, ...input?.points },
 		wrongAttempts: {
 			...t.wrongAttempts,
+			...(input?.wrongAttempts?.maxAttempts != null
+				? { maxAttempts: input.wrongAttempts.maxAttempts }
+				: {}),
+			...(input?.wrongAttempts?.specialMaxAttempts != null
+				? { specialMaxAttempts: input.wrongAttempts.specialMaxAttempts }
+				: {}),
 			...(input?.wrongAttempts?.emojiStreak != null
 				? { emojiStreak: input.wrongAttempts.emojiStreak }
-				: {}),
-			...(input?.wrongAttempts?.maxCount != null
-				? { maxCount: input.wrongAttempts.maxCount }
 				: {}),
 		},
 	}

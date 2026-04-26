@@ -36,9 +36,11 @@ export const QUIZ_TUNABLES = {
 		special: 15,
 	},
 	wrongAttempts: {
-		/** Number of wrong answers allowed per player per question (normal stage) */
-		maxCount: 2,
-		/** Emojis to show for each remaining wrong attempt (index 0 = first wrong, etc.) */
+		/** Max wrong answers per player per normal question (default: 3) */
+		maxAttempts: 3,
+		/** Max wrong answers per player per god/special question (default: 1) */
+		specialMaxAttempts: 1,
+		/** Emojis for each wrong answer (index 0 = first wrong, etc.) */
 		emojiStreak: ['2️⃣', '1️⃣', '🙈'] as ReadonlyArray<string>,
 	},
 } as const satisfies import('./types.ts').QuizTunables

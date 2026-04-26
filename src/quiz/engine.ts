@@ -55,7 +55,6 @@ type RunnerState = {
 	noCooldown: boolean
 	cooldownWarningSent: Set<string>
 	wrongStreak: Map<string, number>
-	attemptedSpecial: Set<string>
 	index: number
 	active: boolean
 	acceptingAnswers: boolean
@@ -210,7 +209,6 @@ export class QuizEngine {
 			questionPointsByMid: Object.fromEntries(state.questionPointsByMid),
 			cooldowns: Object.fromEntries(state.cooldowns),
 			wrongStreak: Object.fromEntries(state.wrongStreak),
-			attemptedSpecial: [...state.attemptedSpecial],
 			cooldownWarningSent: [...state.cooldownWarningSent],
 			warningAlreadySent: state.warningSentForToken === state.questionToken && state.acceptingAnswers,
 			loggerSessionId: state.loggerSessionId,
@@ -367,7 +365,6 @@ export class QuizEngine {
 			noCooldown: opts?.noCooldown ?? false,
 			cooldownWarningSent: new Set(checkpoint.cooldownWarningSent),
 			wrongStreak: new Map(Object.entries(checkpoint.wrongStreak)),
-			attemptedSpecial: new Set(checkpoint.attemptedSpecial),
 			index: checkpoint.index,
 			active: true,
 			acceptingAnswers: false,
@@ -587,7 +584,6 @@ export class QuizEngine {
 			noCooldown: opts?.noCooldown ?? false,
 			cooldownWarningSent: new Set(),
 			wrongStreak: new Map(),
-			attemptedSpecial: new Set(),
 			index: -1,
 			active: true,
 			acceptingAnswers: false,
@@ -732,18 +728,13 @@ export class QuizEngine {
 			`accept incoming: memberLid=${member.lid} q=${question.number} special=${question.isSpecialStage} accepting=${state.acceptingAnswers}`,
 		)
 
-		if (question.isSpecialStage && state.attemptedSpecial.has(memberKey)) {
-			log.debug(`special-stage duplicate attempt key=${memberKey} q=${question.number}`)
+		const maxAttempts = question.isSpecialStage
+			? state.bundle.tunables.wrongAttempts.specialMaxAttempts
+			: state.bundle.tunables.wrongAttempts.maxAttempts
+		const remain = state.wrongStreak.get(memberKey) ?? maxAttempts
+		if (remain <= 0) {
+			log.debug(`no more chance key=${memberKey} q=${question.number} attempts=${maxAttempts}`)
 			return
-		}
-
-		if (!question.isSpecialStage) {
-			const maxWrong = state.bundle.tunables.wrongAttempts.maxCount
-			const remain = state.wrongStreak.get(memberKey) ?? maxWrong
-			if (remain < 0) {
-				log.debug(`no more chance key=${memberKey} q=${question.number}`)
-				return
-			}
 		}
 
 		if (!question.isSpecialStage && !state.noCooldown) {
@@ -865,7 +856,6 @@ export class QuizEngine {
 		state.index += 1
 		state.roundQuestionIndex += 1
 		state.wrongStreak.clear()
-		state.attemptedSpecial.clear()
 		state.questionPointsByMid.clear()
 		state.cooldownWarningSent.clear()
 
@@ -1218,27 +1208,55 @@ export class QuizEngine {
 		if (!state.acceptingAnswers) return
 
 		if (question.isSpecialStage) {
-			state.attemptedSpecial.add(member.mid)
+			state.wrongStreak.set(
+				member.mid,
+				(state.wrongStreak.get(member.mid) ?? state.bundle.tunables.wrongAttempts.specialMaxAttempts) - 1,
+			)
 			await this.sender.react(state.groupId, incoming.key, REACTION_NO_MORE_CHANCE)
+
+			const gained = awardWrongPoints(state.bundle.tunables)
+			if (gained !== 0) {
+				state.pointsByMid.set(member.mid, (state.pointsByMid.get(member.mid) ?? 0) + gained)
+				state.scoreReachedAtByMid.set(member.mid, Date.now())
+				state.questionPointsByMid.set(
+					member.mid,
+					(state.questionPointsByMid.get(member.mid) ?? 0) + gained,
+				)
+				if (this.seasonStore && state.bundle.season) {
+					await this.seasonStore.addPoints(
+						state.groupId,
+						[...state.byLid.values()],
+						new Map([[member.mid, gained]]),
+						state.bundle.season.id,
+					)
+				}
+			}
 
 			if (this.state?.loggerSessionId) {
 				this.eventLogger?.logEvent(this.state.loggerSessionId, {
 					groupId: this.state.groupId,
 					...(this.state.bundle.season?.id ? { seasonId: this.state.bundle.season.id } : {}),
-					eventType: 'special_duplicate',
+					eventType: 'god_answer_wrong',
 					questionNo: question.number,
 					memberMid: member.mid,
+					data: { gained, answerText: incoming.text.trim() },
 				})
 			}
+
+			if (this.sid) {
+				const totalPts = state.pointsByMid.get(member.mid) ?? 0
+				this.el?.upsertLiveScore(this.sid, member.mid, totalPts)
+			}
+
 			return
 		}
 
 		const key = member.mid
-		const maxWrong = state.bundle.tunables.wrongAttempts.maxCount
-		const remain = state.wrongStreak.get(key) ?? maxWrong
-		if (remain < 0) return
+		const maxAttempts = state.bundle.tunables.wrongAttempts.maxAttempts
+		const remain = state.wrongStreak.get(key) ?? maxAttempts
+		if (remain <= 0) return
 
-		const gained = awardWrongPoints(state.bundle.tunables, question.isSpecialStage)
+		const gained = awardWrongPoints(state.bundle.tunables)
 		if (gained !== 0) {
 			state.pointsByMid.set(member.mid, (state.pointsByMid.get(member.mid) ?? 0) + gained)
 			state.scoreReachedAtByMid.set(member.mid, Date.now())
@@ -1257,7 +1275,7 @@ export class QuizEngine {
 		}
 
 		const emojiStreak = state.bundle.tunables.wrongAttempts.emojiStreak
-		const reaction = emojiStreak[emojiStreak.length - 1 - remain] ?? REACTION_NO_MORE_CHANCE
+		const reaction = emojiStreak[maxAttempts - remain] ?? REACTION_NO_MORE_CHANCE
 		await this.sender.react(state.groupId, incoming.key, reaction)
 		state.wrongStreak.set(key, remain - 1)
 

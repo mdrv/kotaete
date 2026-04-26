@@ -9,8 +9,7 @@ export function awardCorrectPoints(
 	return Math.max(0, tunables.points.normalCap - currentPointsForQuestion)
 }
 
-export function awardWrongPoints(tunables: QuizTunables, isSpecialStage: boolean): number {
-	if (isSpecialStage) return 0
+export function awardWrongPoints(tunables: QuizTunables, _isSpecialStage?: boolean): number {
 	return tunables.points.perWrong
 }
 

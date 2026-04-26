@@ -1320,7 +1320,6 @@ describe('checkpoint', () => {
 			questionPointsByMid: {},
 			cooldowns: {},
 			wrongStreak: {},
-			attemptedSpecial: [],
 			cooldownWarningSent: [],
 			warningAlreadySent: false,
 			loggerSessionId: null,

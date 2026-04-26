@@ -212,14 +212,7 @@
 					color: 'var(--accent-green)',
 				}
 			}
-			case 'special_duplicate': {
-				const answerText = evt.data.answerText as string | undefined
-				const suffix = answerText ? `${answerText}` : 'wrong answer'
-				return {
-					text: `🙈 ${name} — ${suffix}`,
-					color: 'var(--accent-orange)',
-				}
-			}
+			case 'god_answer_wrong':
 			case 'answer_wrong': {
 				const remaining = (evt.data.remainingChances as number) ?? 0
 				const emojis = ['🙈', '1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣']
@@ -329,7 +322,7 @@
 		const member = memberCache.get(record.member_mid as string)
 		const extractedCreatedAt = extractTimestamp(record.created_at)
 		const createdAt = extractedCreatedAt
-			&& !Number.isNaN(new Date(extractedCreatedAt).getTime())
+				&& !Number.isNaN(new Date(extractedCreatedAt).getTime())
 			? extractedCreatedAt
 			: new Date().toISOString()
 		return {
@@ -337,9 +330,12 @@
 			id: normalizeRecordId(record.id),
 			session_id: normalizeRecordId(record.session_id),
 			created_at: createdAt,
-			member_kananame: member?.kananame ?? (record.member_kananame as string | null) ?? null,
-			member_nickname: member?.nickname ?? (record.member_nickname as string | null) ?? null,
-			member_classgroup: member?.classgroup ?? (record.member_classgroup as string | null) ?? null,
+			member_kananame: member?.kananame
+				?? (record.member_kananame as string | null) ?? null,
+			member_nickname: member?.nickname
+				?? (record.member_nickname as string | null) ?? null,
+			member_classgroup: member?.classgroup
+				?? (record.member_classgroup as string | null) ?? null,
 		}
 	}
 
