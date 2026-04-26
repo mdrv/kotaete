@@ -1,8 +1,22 @@
 import { describe, expect, mock, test } from 'bun:test'
+import { QUIZ_TUNABLES } from '../constants.ts'
 import type { IncomingGroupMessage, NMember, QuizBundle } from '../types.ts'
 import type { SendTextOptions } from '../whatsapp/types.ts'
 import { QuizEngine } from './engine.ts'
 import { InMemorySeasonStore } from './season-store.ts'
+
+function makeTunables(): QuizBundle['tunables'] {
+	return {
+		timeout: { ...QUIZ_TUNABLES.timeout },
+		cooldown: { ...QUIZ_TUNABLES.cooldown },
+		points: { ...QUIZ_TUNABLES.points },
+		wrongAttempts: {
+			...QUIZ_TUNABLES.wrongAttempts,
+			emojiStreak: [...QUIZ_TUNABLES.wrongAttempts.emojiStreak],
+		},
+	}
+}
+
 function makeBundle(): QuizBundle {
 	const now = Date.now()
 	const questions = [
@@ -37,6 +51,7 @@ function makeBundle(): QuizBundle {
 		introNote: null,
 		outroNote: null,
 		messageTemplates: {},
+		tunables: makeTunables(),
 		questions,
 	}
 }
@@ -75,6 +90,7 @@ function makeBundleWithSpecial(): QuizBundle {
 		introNote: null,
 		outroNote: null,
 		messageTemplates: {},
+		tunables: makeTunables(),
 		questions,
 	}
 }
@@ -105,6 +121,7 @@ function makeSingleQuestionBundle(): QuizBundle {
 		introNote: null,
 		outroNote: null,
 		messageTemplates: {},
+		tunables: makeTunables(),
 		questions,
 	}
 }
@@ -137,6 +154,7 @@ function makeSingleQuestionKanjiBundle(): QuizBundle {
 		introNote: null,
 		outroNote: null,
 		messageTemplates: {},
+		tunables: makeTunables(),
 		questions,
 	}
 }
@@ -167,6 +185,7 @@ function makeSingleQuestionLongVowelBundle(): QuizBundle {
 		introNote: null,
 		outroNote: null,
 		messageTemplates: {},
+		tunables: makeTunables(),
 		questions,
 	}
 }
@@ -311,6 +330,7 @@ describe('QuizEngine behavior', () => {
 			introNote: null,
 			outroNote: null,
 			messageTemplates: {},
+			tunables: makeTunables(),
 			questions: [
 				{ number: 1, text: 'Q1', answers: ['abc'], explanation: '', imagePath: null, isSpecialStage: false },
 				{ number: 2, text: 'Q2', answers: ['abc'], explanation: '', imagePath: null, isSpecialStage: false },
@@ -448,6 +468,7 @@ describe('QuizEngine behavior', () => {
 			introNote: null,
 			outroNote: null,
 			messageTemplates: {},
+			tunables: makeTunables(),
 			questions: makeSingleQuestionBundle().questions,
 		}
 
@@ -530,6 +551,7 @@ describe('QuizEngine behavior', () => {
 			introNote: null,
 			outroNote: null,
 			messageTemplates: {},
+			tunables: makeTunables(),
 			questions: [
 				{
 					number: 1,
@@ -577,6 +599,7 @@ describe('QuizEngine behavior', () => {
 			introNote: null,
 			outroNote: null,
 			messageTemplates: {},
+			tunables: makeTunables(),
 			questions: [
 				{
 					number: 1,
@@ -640,6 +663,7 @@ describe('QuizEngine behavior', () => {
 			introNote: null,
 			outroNote: null,
 			messageTemplates: {},
+			tunables: makeTunables(),
 			questions: [
 				{
 					number: 1,
@@ -722,6 +746,7 @@ describe('QuizEngine behavior', () => {
 			introNote: null,
 			outroNote: null,
 			messageTemplates: {},
+			tunables: makeTunables(),
 			questions: [round1Question, round2Question],
 		}
 
@@ -797,6 +822,7 @@ describe('QuizEngine behavior', () => {
 			introNote: null,
 			outroNote: null,
 			messageTemplates: {},
+			tunables: makeTunables(),
 			questions: [q1, q2, q3, q4, q5],
 		}
 
@@ -839,6 +865,7 @@ describe('QuizEngine behavior', () => {
 			introNote: null,
 			outroNote: null,
 			messageTemplates: {},
+			tunables: makeTunables(),
 			questions: [q1, q2],
 		}
 
@@ -906,6 +933,7 @@ describe('QuizEngine behavior', () => {
 			introNote: null,
 			outroNote: null,
 			messageTemplates: {},
+			tunables: makeTunables(),
 			questions: [round1Question, round2Question],
 		}
 
@@ -958,6 +986,7 @@ function makeBundleWithSeason(
 		introNote: null,
 		outroNote: null,
 		messageTemplates: {},
+		tunables: makeTunables(),
 		questions,
 		// When season is provided (even without start/end), it enables accumulation
 		season: season !== undefined ? { ...season } : { start: false, end: false },
@@ -1129,6 +1158,7 @@ describe('season accumulation behavior', () => {
 			introNote: null,
 			outroNote: null,
 			messageTemplates: {},
+			tunables: makeTunables(),
 			questions: makeBundleWithSeason().questions,
 			season: null,
 		}
@@ -1163,6 +1193,7 @@ describe('season accumulation behavior', () => {
 				introNote: null,
 				outroNote: null,
 				messageTemplates: {},
+				tunables: makeTunables(),
 				questions,
 			}
 		}
