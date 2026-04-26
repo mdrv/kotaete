@@ -2,8 +2,7 @@ import { Surreal } from 'surrealdb'
 import { getLogger } from '../logger.ts'
 import type { QuizStateCheckpoint } from '../quiz/checkpoint.ts'
 import { quizStateCheckpointSchema } from '../quiz/checkpoint.ts'
-import type { SurrealOptions } from '../utils/surreal.ts'
-import { getDb } from '../utils/surreal.ts'
+import { getDb, refreshAuthIfNeeded, type SurrealOptions } from '../utils/surreal.ts'
 
 export type DaemonJobStatus = 'queued' | 'running' | 'finishing' | 'done'
 
@@ -87,6 +86,8 @@ export class DaemonStateStore {
 	private db: Surreal | null = null
 	private readonly options: SurrealOptions
 	private queryChain = Promise.resolve()
+	private heartbeatFailCount = 0
+	private static readonly HEARTBEAT_FAIL_THRESHOLD = 3
 
 	constructor(options?: SurrealOptions) {
 		this.options = options ?? {}
@@ -317,14 +318,27 @@ export class DaemonStateStore {
 
 	async updateDaemonStatus(status: string): Promise<void> {
 		const db = this.ensureDb()
+		await refreshAuthIfNeeded()
 		try {
 			await db.query(
 				`UPSERT daemon_status:only SET status = $status, last_heartbeat_at = time::now(), pid = $pid, started_at = started_at ?? time::now()`,
 				{ status, pid: process.pid },
 			)
 			DaemonStateStore.STATUS_LOG.trace`heartbeat written: status=${status}`
+			this.heartbeatFailCount = 0
 		} catch (err) {
-			DaemonStateStore.STATUS_LOG.error`heartbeat FAILED: ${err}`
+			this.heartbeatFailCount++
+			DaemonStateStore.STATUS_LOG
+				.error`heartbeat FAILED (${this.heartbeatFailCount}/${DaemonStateStore.HEARTBEAT_FAIL_THRESHOLD}): ${err}`
+			if (this.heartbeatFailCount >= DaemonStateStore.HEARTBEAT_FAIL_THRESHOLD) {
+				DaemonStateStore.STATUS_LOG.warning`${this.heartbeatFailCount} consecutive failures, refreshing DB connection`
+				this.heartbeatFailCount = 0
+				try {
+					this.db = await getDb(this.options)
+				} catch (reconnectErr) {
+					DaemonStateStore.STATUS_LOG.error`DB reconnect failed: ${reconnectErr}`
+				}
+			}
 		}
 	}
 

@@ -14,12 +14,57 @@ const {
 let db: Surreal | null = null
 let connecting: Promise<Surreal> | null = null
 let reconnectScheduled = false
+let tokenExpiresAt: number | null = null
+let authCredentials: { username: string; password: string } | null = null
 
 const HEARTBEAT_INTERVAL = 15_000
+const TOKEN_REFRESH_THRESHOLD = 5 * 60 * 1000 // 5 minutes
 const instanceName = process.env.INSTANCE_NAME ?? 'default'
 let heartbeatTimer: ReturnType<typeof setInterval> | null = null
 let heartbeatStarted = false
+let heartbeatFailCount = 0
+const HEARTBEAT_FAIL_THRESHOLD = 3
 
+/**
+ * Decode JWT exp claim from an access token.
+ * Returns expiry as ms timestamp, or null if not decodable.
+ */
+function decodeTokenExpiry(token: string): number | null {
+	try {
+		const parts = token.split('.')
+		if (parts.length !== 3) return null
+		const payloadPart = parts[1]
+		if (!payloadPart) return null
+		const payload = JSON.parse(atob(payloadPart))
+		return payload.exp ? payload.exp * 1000 : null
+	} catch {
+		return null
+	}
+}
+
+/**
+ * Check if the auth token is expiring soon and re-signin if needed.
+ * Called proactively before heartbeat writes to prevent session expiry.
+ */
+async function refreshAuthIfNeeded(instance: Surreal): Promise<void> {
+	if (!tokenExpiresAt || !authCredentials) return
+
+	const remaining = tokenExpiresAt - Date.now()
+	if (remaining > TOKEN_REFRESH_THRESHOLD) return
+
+	log.info('surreal:web token expiring in {remaining}ms, refreshing auth...', { remaining })
+	try {
+		const tokens = await instance.signin(authCredentials)
+		tokenExpiresAt = decodeTokenExpiry(tokens.access)
+		log.info('surreal:web token refreshed, expires at {expiresAt}', {
+			expiresAt: tokenExpiresAt ? new Date(tokenExpiresAt).toISOString() : 'unknown',
+		})
+	} catch (err) {
+		log.error('surreal:web token refresh failed: {error}', {
+			error: err instanceof Error ? err.message : String(err),
+		})
+	}
+}
 /**
  * Subscribe to SurrealDB connection lifecycle events.
  * Logs connect/disconnect/reconnect/error state transitions.
@@ -67,6 +112,7 @@ function scheduleReconnect(label: string): void {
 	const oldDb = db
 	db = null
 	connecting = null
+	tokenExpiresAt = null
 
 	// Close old instance in background (don't block reconnection)
 	if (oldDb) void closeInstance(oldDb)
@@ -101,9 +147,14 @@ async function establishConnection(): Promise<Surreal> {
 		try {
 			log.debug('surreal:web connecting (attempt {attempt})', { attempt })
 			await instance.connect(SURREAL_ENDPOINT)
-			await instance.signin({
+			const tokens = await instance.signin({
 				username: SURREAL_USERNAME,
 				password: SURREAL_PASSWORD,
+			})
+			authCredentials = { username: SURREAL_USERNAME, password: SURREAL_PASSWORD }
+			tokenExpiresAt = decodeTokenExpiry(tokens.access)
+			log.debug('surreal:web token expires at {expiresAt}', {
+				expiresAt: tokenExpiresAt ? new Date(tokenExpiresAt).toISOString() : 'unknown',
 			})
 			await instance.use({
 				namespace: SURREAL_NAMESPACE,
@@ -134,7 +185,9 @@ async function establishConnection(): Promise<Surreal> {
 				void updateWebStatus(instance, 'running')
 				heartbeatTimer = setInterval(() => {
 					const current = db
-					if (current) void updateWebStatus(current, 'running')
+					if (current) {
+						void refreshAuthIfNeeded(current).then(() => updateWebStatus(current, 'running'))
+					}
 				}, HEARTBEAT_INTERVAL)
 				log.info('surreal:web heartbeat started (instance={instanceName}, interval={interval}ms)', {
 					instanceName,
@@ -180,11 +233,22 @@ async function updateWebStatus(instance: Surreal, status: string): Promise<void>
 			{ id: new RecordId('web_status', instanceName), status, pid: process.pid },
 		)
 		log.trace('heartbeat: web_status:{instanceName} updated', { instanceName, result: JSON.stringify(result) })
+		heartbeatFailCount = 0
 	} catch (err) {
-		log.error('heartbeat: web_status:{instanceName} failed: {error}', {
+		heartbeatFailCount++
+		log.error('heartbeat: web_status:{instanceName} failed ({failCount}/{threshold}): {error}', {
 			instanceName,
+			failCount: heartbeatFailCount,
+			threshold: HEARTBEAT_FAIL_THRESHOLD,
 			error: err instanceof Error ? err.message : String(err),
 		})
+		if (heartbeatFailCount >= HEARTBEAT_FAIL_THRESHOLD) {
+			log.warning('heartbeat: {failCount} consecutive failures, triggering reconnection', {
+				failCount: heartbeatFailCount,
+			})
+			heartbeatFailCount = 0
+			scheduleReconnect('surreal:web')
+		}
 	}
 }
 
