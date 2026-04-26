@@ -1087,7 +1087,23 @@
 					<div class='card-header'>
 						<h2 class='card-title'>🏅 Season Scoreboard</h2>
 						<div class='header-right-group'>
-							{#if seasonInfo?.caption}
+							{#if seasons.length > 0}
+								<select
+									class='badge-select small'
+									bind:value={selectedSeasonId}
+									onchange={handleSeasonChange}
+								>
+									{#each seasons as s (s.season_id)}
+										<option value={s.season_id}>
+											{#if s.caption}
+												{s.caption}
+											{:else}
+												{s.season_id}
+											{/if}
+										</option>
+									{/each}
+								</select>
+							{:else if seasonInfo?.caption}
 								<span class='badge small'>{seasonInfo.caption}</span>
 							{/if}
 							<button
@@ -1269,6 +1285,12 @@
 	.badge-select:focus {
 		outline: 2px solid var(--accent-blue);
 		outline-offset: 1px;
+	}
+
+	.badge-select.small {
+		font-size: 0.65rem;
+		padding: 0.12rem 1.2rem 0.12rem 0.45rem;
+		background-position: right 0.35rem center;
 	}
 
 	.header-right {
