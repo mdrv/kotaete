@@ -17,7 +17,7 @@ NIPBANG Kotaete (`@mdrv/kotaete`) is a WhatsApp-based Japanese quiz bot. It runs
 ```bash
 bun run dev              # Run CLI
 bun run daemon           # Start daemon (default provider: wwebjs)
-bun run daemon:baileys   # Start daemon with Baileys provider (runs patch check first)
+bun run daemon:baileys   # Start daemon with Baileys provider
 bun run test             # bun test
 bun run check            # dprint format check + typecheck
 bun run fmt              # dprint format
@@ -262,14 +262,10 @@ export default defineConfig({
 
 ### Baileys (experimental)
 
-- Uses `@whiskeysockets/baileys` (pinned to `github:WhiskeySockets/Baileys#d077902`)
-- Auth: `~/.kotaete/auth/baileys/` (multi-file auth state)
-- **Postinstall patches** (`scripts/patch-baileys-linking.ts`): Modifies Baileys source to fix "couldn't link device" issue:
-  - `validate-connection.js`: `passive: true → false`, `lidDbMigrated: false → true`
-  - `socket.js`: `await noise.finishInit() → noise.finishInit()`
-- **makeInMemoryStore + getMessage callback:** Added to resolve "waiting for this message" / "Closing session" Signal protocol race conditions.
-- Dynamic import via `Function()` to avoid Bun bundling issues.
-- `daemon:baileys` script runs `baileys:patch:check` before starting.
+	- Uses `@whiskeysockets/baileys` (latest master, peerDependency)
+	- Auth: `~/.kotaete/auth/baileys/` (multi-file auth state)
+	- **makeInMemoryStore + getMessage callback:** Added to resolve "waiting for this message" / "Closing session" Signal protocol race conditions.
+	- Dynamic import via `Function()` to avoid Bun bundling issues.
 
 ## Testing
 

@@ -35,7 +35,6 @@
 		"@logtape/logtape": "^2.0.5",
 		"@logtape/pretty": "^2.0.5",
 		"@mdrv/id": "link:@mdrv/id",
-		"@whiskeysockets/baileys": "github:WhiskeySockets/Baileys#ca61ac1",
 		"pino": "^10.3.1",
 		"qrcode-terminal": "^0.12.0",
 		"surrealdb": "^2.0.3",
@@ -48,8 +47,10 @@
 		"dprint": "^0.54.0",
 		"typescript": "^6.0.3"
 	},
+	"peerDependencies": {
+		"@whiskeysockets/baileys": "github:WhiskeySockets/Baileys"
+	},
 	"trustedDependencies": [
-		"@whiskeysockets/baileys",
 		"dprint",
 		"protobufjs",
 		"puppeteer",
