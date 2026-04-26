@@ -264,6 +264,11 @@
 					text: qNo ? `⚡ Q${qNo} (神) asked` : '⚡ GOD STAGE asked',
 					color: 'var(--accent-red)',
 				}
+			case 'warning':
+				return {
+					text: evt.data.extraHint ? `💡 Q${evt.data.extraHint}` : `⚠️ Q${qNo} — Almost up!`,
+					color: 'var(--accent-orange)',
+				}
 			default:
 				return {
 					text: `📌 ${evt.event_type}`,
