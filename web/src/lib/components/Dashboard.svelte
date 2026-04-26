@@ -255,7 +255,7 @@
 				}
 			case 'cooldown':
 				return {
-					text: '🧊 Cooldown started',
+					text: `🧊 ${name} — cooldown message`,
 					color: 'var(--text-secondary)',
 				}
 			case 'special_duplicate':
@@ -524,6 +524,7 @@
 						member_nickname: stateMember?.nickname ?? record.member_nickname
 							?? '',
 					} as unknown as LiveMemberStateType
+					console.debug('[WS] member_state update:', { mid, cd: normState.cooldown_until, wr: normState.wrong_remaining })
 					const next = new Map(memberStates)
 					next.set(mid, normState)
 					memberStates = next
@@ -575,6 +576,22 @@
 		const interval = setInterval(update, 1000)
 		return () => clearInterval(interval)
 	})
+
+	// ── Debug: log memberStates changes ──
+	$effect(() => {
+		if (memberStates.size === 0) return
+		for (const [mid, ms] of memberStates) {
+			if (ms.cooldown_until) {
+				console.debug('[dashboard] memberState:', {
+					mid,
+					cd: ms.cooldown_until,
+					now,
+					diff: Math.ceil((new Date(ms.cooldown_until).getTime() - now) / 1000) + 's',
+				})
+			}
+		}
+	})
+
 
 	// ── Now Ticker (drives cooldown countdowns) ──
 	$effect(() => {
@@ -786,13 +803,13 @@
 					}</span>
 			{/if}
 			<span class='live-dot' class:connected></span>
-			<span class='status-text'>DB</span>
+			<span class='status-text' title='Database {connected ? 'online' : 'offline'}'>DB</span>
 			<span
 				class='wa-dot'
 				class:online={botOnline === true}
 				class:offline={botOnline === false}
 			></span>
-			<span class='status-text'>WA</span>
+			<span class='status-text' title='WhatsApp {botOnline ? 'online' : 'offline'}'>WA</span>
 			<span class='separator'>·</span>
 			<button class='theme-toggle' onclick={toggleTheme} title='Toggle theme'>
 				{#if theme === 'dark'}

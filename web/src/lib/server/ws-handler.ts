@@ -140,11 +140,22 @@ export class KotaeteWsServer {
 				;(async () => {
 					try {
 						for await (const message of sub) {
-							log.debug('live event', {
+							log.debug('live event: {table} {action} fields={fields}', {
 								table: tableName,
 								action: message.action,
 								recordId: String(message.recordId),
+								fields: tableName === 'live_member_state'
+									? Object.keys(message.value as object)
+									: undefined,
 							})
+							if (tableName === 'live_member_state') {
+								const val = message.value as Record<string, unknown>
+								log.info('member_state broadcast: mid={mid} cd={cd} wr={wr}', {
+									mid: val.member_mid,
+									cd: val.cooldown_until,
+									wr: val.wrong_remaining,
+								})
+							}
 							this.broadcast({
 								type: 'live',
 								table: tableName,

@@ -346,6 +346,12 @@ export class QuizEventLogger {
 			const wrFragment = updateWr ? `wrong_remaining = $wr` : ''
 			if (!cdFragment && !wrFragment) return
 			const setExtra = [cdFragment, wrFragment].filter(Boolean).join(', ')
+			this.log.debug('upsertMemberState: setExtra={setExtra} cd={cdVal} wr={wr} mid={mid}', {
+				setExtra,
+				cd: updateCd ? cdVal : undefined,
+				wr: updateWr ? opts.wrongRemaining : undefined,
+				mid: memberMid,
+			})
 			const params: Record<string, unknown> = {
 				sid: toRid(sessionId),
 				mid: memberMid,
