@@ -743,7 +743,6 @@
 				class:offline={botOnline === false}
 			></span>
 			<span class='status-text'>WA</span>
-			<span class='status-text'>DB</span>
 			<span class='separator'>·</span>
 			<button class='theme-toggle' onclick={toggleTheme} title='Toggle theme'>
 				{#if theme === 'dark'}
