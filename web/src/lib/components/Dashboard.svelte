@@ -265,7 +265,7 @@
 				}
 			case 'god_stage_asked':
 				return {
-					text: qNo ? `⚡ Q${qNo} (神)` : '⚡ GOD STAGE question',
+					text: qNo ? `⚡ Q${qNo} (神) asked` : '⚡ GOD STAGE asked',
 					color: 'var(--accent-red)',
 				}
 			default:
@@ -312,7 +312,12 @@
 						}
 						memberStates = msMap
 					}
-					console.debug('[refresh] updated scores:', scores.length, 'memberStates:', memberStates.size)
+					console.debug(
+						'[refresh] updated scores:',
+						scores.length,
+						'memberStates:',
+						memberStates.size,
+					)
 				} else {
 					console.debug('[refresh] no session from API (quiz not running?)')
 				}
@@ -532,7 +537,11 @@
 						member_nickname: stateMember?.nickname ?? record.member_nickname
 							?? '',
 					} as unknown as LiveMemberStateType
-					console.debug('[WS] member_state update:', { mid, cd: normState.cooldown_until, wr: normState.wrong_remaining })
+					console.debug('[WS] member_state update:', {
+						mid,
+						cd: normState.cooldown_until,
+						wr: normState.wrong_remaining,
+					})
 					const next = new Map(memberStates)
 					next.set(mid, normState)
 					memberStates = next
@@ -594,12 +603,12 @@
 					mid,
 					cd: ms.cooldown_until,
 					now,
-					diff: Math.ceil((new Date(ms.cooldown_until).getTime() - now) / 1000) + 's',
+					diff: Math.ceil((new Date(ms.cooldown_until).getTime() - now) / 1000)
+						+ 's',
 				})
 			}
 		}
 	})
-
 
 	// ── Now Ticker (drives cooldown countdowns) ──
 	$effect(() => {
@@ -811,13 +820,19 @@
 					}</span>
 			{/if}
 			<span class='live-dot' class:connected></span>
-			<span class='status-text' title='Database {connected ? 'online' : 'offline'}'>DB</span>
+			<span
+				class='status-text'
+				title="Database {connected ? 'online' : 'offline'}"
+			>DB</span>
 			<span
 				class='wa-dot'
 				class:online={botOnline === true}
 				class:offline={botOnline === false}
 			></span>
-			<span class='status-text' title='WhatsApp {botOnline ? 'online' : 'offline'}'>WA</span>
+			<span
+				class='status-text'
+				title="WhatsApp {botOnline ? 'online' : 'offline'}"
+			>WA</span>
 			<span class='separator'>·</span>
 			<button class='theme-toggle' onclick={toggleTheme} title='Toggle theme'>
 				{#if theme === 'dark'}
@@ -1004,7 +1019,13 @@
 					{:else}
 						{#each events as event (event.id)}
 							{@const formatted = formatEvent(event)}
-							{@const time = event.created_at ? new Date(event.created_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', hour12: false }) : ''}
+							{@const time = event.created_at
+							? new Date(event.created_at).toLocaleTimeString('id-ID', {
+								hour: '2-digit',
+								minute: '2-digit',
+								hour12: false,
+							})
+							: ''}
 							<div class='event-row' style='color: {formatted.color}'>
 								<span class='event-time'>{time}</span>
 								{formatted.text}

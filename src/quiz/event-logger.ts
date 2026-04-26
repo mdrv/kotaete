@@ -124,7 +124,7 @@ export class QuizEventLogger {
 								label ?? 'unknown'
 							}: [${errName}] ${errMsg} [dbStatus=${dbStatus}]`,
 						)
-					if (err instanceof Error) this.log.error(`chain: stack: ${err.stack ?? err.message}`)
+						if (err instanceof Error) this.log.error(`chain: stack: ${err.stack ?? err.message}`)
 						return // don't throw — keep chain alive
 					}
 

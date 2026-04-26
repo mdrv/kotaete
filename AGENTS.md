@@ -262,10 +262,10 @@ export default defineConfig({
 
 ### Baileys (experimental)
 
-	- Uses `@whiskeysockets/baileys` (latest master, peerDependency)
-	- Auth: `~/.kotaete/auth/baileys/` (multi-file auth state)
-	- **makeInMemoryStore + getMessage callback:** Added to resolve "waiting for this message" / "Closing session" Signal protocol race conditions.
-	- Dynamic import via `Function()` to avoid Bun bundling issues.
+    - Uses `@whiskeysockets/baileys` (latest master, peerDependency)
+    - Auth: `~/.kotaete/auth/baileys/` (multi-file auth state)
+    - **makeInMemoryStore + getMessage callback:** Added to resolve "waiting for this message" / "Closing session" Signal protocol race conditions.
+    - Dynamic import via `Function()` to avoid Bun bundling issues.
 
 ## Testing
 
