@@ -1594,6 +1594,7 @@
 
 	.cooldown-badge.dimmed {
 		opacity: 0.4;
+		background: #888;
 		text-decoration: line-through;
 	}
 
