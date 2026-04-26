@@ -289,6 +289,29 @@
 		return idx >= 0 ? s.slice(idx + 1) : s
 	}
 
+	function extractTimestamp(input: unknown): string | null {
+		if (typeof input === 'string') return input
+		if (input instanceof Date) return input.toISOString()
+		if (input && typeof input === 'object') {
+			const record = input as Record<string, unknown>
+			if (typeof record.$datetime === 'string') return record.$datetime
+			if (typeof record.value === 'string') return record.value
+		}
+		return null
+	}
+
+	function formatHm(input: unknown): string {
+		const raw = extractTimestamp(input)
+		if (!raw) return ''
+		const date = new Date(raw)
+		if (Number.isNaN(date.getTime())) return ''
+		return date.toLocaleTimeString('id-ID', {
+			hour: '2-digit',
+			minute: '2-digit',
+			hour12: false,
+		})
+	}
+
 	// ── Score Refresh (REST fallback when SSE live_score fails) ──
 	let scoreRefreshTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -485,6 +508,7 @@
 						...record,
 						id: normalizeRecordId(record.id),
 						session_id: normalizeRecordId(record.session_id),
+						created_at: extractTimestamp(record.created_at) ?? '',
 						member_kananame: member?.kananame ?? record.member_kananame ?? null,
 						member_nickname: member?.nickname ?? record.member_nickname ?? null,
 						member_classgroup: member?.classgroup ?? record.member_classgroup
@@ -1019,13 +1043,7 @@
 					{:else}
 						{#each events as event (event.id)}
 							{@const formatted = formatEvent(event)}
-							{@const time = event.created_at
-							? new Date(event.created_at).toLocaleTimeString('id-ID', {
-								hour: '2-digit',
-								minute: '2-digit',
-								hour12: false,
-							})
-							: ''}
+							{@const time = formatHm(event.created_at)}
 							<div class='event-row' style='color: {formatted.color}'>
 								<span class='event-time'>{time}</span>
 								{formatted.text}
