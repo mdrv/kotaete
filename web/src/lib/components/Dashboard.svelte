@@ -52,7 +52,7 @@
 			&& session.current_question == null
 		) {
 			const fra = session.first_round_at
-			if (fra && new Date(fra).getTime() > serverNow()) {
+			if (fra && new Date(fra).getTime() > now) {
 				return 'intro'
 			}
 		}
@@ -99,7 +99,7 @@
 		const fra = session?.first_round_at
 		if (!fra) return null
 		const target = new Date(fra).getTime()
-		const diff = Math.max(0, Math.floor((target - serverNow()) / 1000))
+		const diff = Math.max(0, Math.floor((target - now) / 1000))
 		if (diff <= 0) return null
 		const hrs = Math.floor(diff / 3600)
 		const mins = Math.floor((diff % 3600) / 60)
@@ -108,6 +108,8 @@
 		if (hrs > 0) return `${hrs}:${pad(mins)}:${pad(secs)}`
 		return `${mins}:${pad(secs)}`
 	})
+
+	$inspect(session?.first_round_at, introCountdownText)
 
 	let questionImageUrl = $derived.by(() => {
 		if (!session?.id || session.current_question == null) return ''
@@ -255,7 +257,7 @@
 				}
 			case 'cooldown':
 				return {
-					text: `🧊 ${name} — cooldown message`,
+					text: `🧊 ${name} — cooldown`,
 					color: 'var(--text-secondary)',
 				}
 			case 'special_duplicate':
@@ -304,7 +306,15 @@
 				if (data.session) {
 					session = data.session
 					scores = data.scores ?? []
-					console.debug('[refresh] updated scores:', scores.length)
+					// Refresh member states for cooldown display
+					if (data.memberStates?.length) {
+						const msMap = new Map<string, LiveMemberStateType>()
+						for (const ms of data.memberStates as LiveMemberStateType[]) {
+							if (ms.member_mid) msMap.set(ms.member_mid, ms)
+						}
+						memberStates = msMap
+					}
+					console.debug('[refresh] updated scores:', scores.length, 'memberStates:', memberStates.size)
 				} else {
 					console.debug('[refresh] no session from API (quiz not running?)')
 				}
