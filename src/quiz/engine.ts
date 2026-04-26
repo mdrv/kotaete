@@ -1,16 +1,5 @@
 import { mkdir } from 'node:fs/promises'
-import {
-	COOLDOWN_MS,
-	GOD_STAGE_ANNOUNCE_DELAY_MS,
-	GOD_STAGE_TIMEOUT_MS,
-	QUESTION_TIMEOUT_MS,
-	QUESTION_WARNING_LEAD_MS,
-	QUIZ_TUNABLES,
-	REACTION_COOLDOWN,
-	REACTION_CORRECT,
-	REACTION_CORRECT_KANJI,
-	REACTION_NO_MORE_CHANCE,
-} from '../constants.ts'
+import { REACTION_COOLDOWN, REACTION_CORRECT, REACTION_CORRECT_KANJI, REACTION_NO_MORE_CHANCE } from '../constants.ts'
 import { getLogger } from '../logger.ts'
 import type { IncomingGroupMessage, NMember, QuizBundle, QuizQuestion } from '../types.ts'
 import { normalizeLid } from '../utils/normalize.ts'
@@ -443,7 +432,10 @@ export class QuizEngine {
 				const question = this.currentQuestion()
 				if (question) {
 					log.info(`resume: mid-question, ${Math.round(remainingMs / 1000)}s remaining`)
-					const timeoutMs = Math.min(remainingMs, question.isSpecialStage ? GOD_STAGE_TIMEOUT_MS : QUESTION_TIMEOUT_MS)
+					const timeoutMs = Math.min(
+						remainingMs,
+						question.isSpecialStage ? state.bundle.tunables.timeout.specialMs : state.bundle.tunables.timeout.normalMs,
+					)
 					state.deadlineAtMs = Date.now() + timeoutMs
 
 					state.questionToken += 1
@@ -466,7 +458,7 @@ export class QuizEngine {
 						})
 					}
 
-					const warningDelayMs = timeoutMs - QUESTION_WARNING_LEAD_MS
+					const warningDelayMs = timeoutMs - state.bundle.tunables.timeout.warningLeadMs
 					// Arm warning timer if not already sent
 					if (!checkpoint.warningAlreadySent) {
 						if (warningDelayMs > 0) {
@@ -746,7 +738,7 @@ export class QuizEngine {
 		}
 
 		if (!question.isSpecialStage) {
-			const maxWrong = QUIZ_TUNABLES.wrongAttempts.maxCount
+			const maxWrong = state.bundle.tunables.wrongAttempts.maxCount
 			const remain = state.wrongStreak.get(memberKey) ?? maxWrong
 			if (remain < 0) {
 				log.debug(`no more chance key=${memberKey} q=${question.number}`)
@@ -943,9 +935,9 @@ export class QuizEngine {
 			await this.sender.sendText(
 				state.groupId,
 				formatGodStageAnnouncement(state.bundle.messageTemplates, {
-					points: QUIZ_TUNABLES.points.special,
-					timeoutMinutes: GOD_STAGE_TIMEOUT_MS / 60_000,
-					delayMinutes: GOD_STAGE_ANNOUNCE_DELAY_MS / 60_000,
+					points: state.bundle.tunables.points.special,
+					timeoutMinutes: state.bundle.tunables.timeout.specialMs / 60_000,
+					delayMinutes: state.bundle.tunables.timeout.godAnnounceDelayMs / 60_000,
 				}),
 				{
 					linkPreview: false,
@@ -958,16 +950,18 @@ export class QuizEngine {
 					...(state.bundle.season?.id ? { seasonId: state.bundle.season.id } : {}),
 					eventType: 'god_stage_announced',
 					data: {
-						points: QUIZ_TUNABLES.points.special,
-						timeoutMinutes: GOD_STAGE_TIMEOUT_MS / 60_000,
+						points: state.bundle.tunables.points.special,
+						timeoutMinutes: state.bundle.tunables.timeout.specialMs / 60_000,
 					},
 				})
 			}
-			await this.sleep(GOD_STAGE_ANNOUNCE_DELAY_MS)
+			await this.sleep(state.bundle.tunables.timeout.godAnnounceDelayMs)
 		}
 
 		const progress = this.getQuestionProgress(question)
-		const timeoutMs = question.isSpecialStage ? GOD_STAGE_TIMEOUT_MS : QUESTION_TIMEOUT_MS
+		const timeoutMs = question.isSpecialStage
+			? state.bundle.tunables.timeout.specialMs
+			: state.bundle.tunables.timeout.normalMs
 		state.deadlineAtMs = Date.now() + timeoutMs
 		log.debug('moveToNextQuestion: armed question timing', {
 			questionNo: question.number,
@@ -1019,7 +1013,9 @@ export class QuizEngine {
 					hint: question.text,
 					hasImage: !!question.imagePath,
 					imagePath: question.imagePath ?? undefined,
-					timeoutMs: question.isSpecialStage ? GOD_STAGE_TIMEOUT_MS : QUESTION_TIMEOUT_MS,
+					timeoutMs: question.isSpecialStage
+						? state.bundle.tunables.timeout.specialMs
+						: state.bundle.tunables.timeout.normalMs,
 				},
 			})
 		}
@@ -1027,7 +1023,7 @@ export class QuizEngine {
 			clearTimeout(state.warningToken)
 			state.warningToken = null
 		}
-		const warningDelayMs = timeoutMs - QUESTION_WARNING_LEAD_MS
+		const warningDelayMs = timeoutMs - state.bundle.tunables.timeout.warningLeadMs
 		if (warningDelayMs > 0) {
 			state.warningToken = setTimeout(() => {
 				void this.handleQuestionWarning(currentToken).catch((error: unknown) => {
@@ -1097,7 +1093,7 @@ export class QuizEngine {
 		const question = this.currentQuestion()
 		const warningBase = formatQuestionWarning(state.bundle.messageTemplates)
 		const warningText = question?.extraHint
-			? `${warningBase}\n💡 _${question.extraHint}_`
+			? `${warningBase}\n💡 ${question.extraHint}`
 			: warningBase
 
 		const quotedKey = state.questionMessageKey ?? undefined
@@ -1138,7 +1134,7 @@ export class QuizEngine {
 		await this.sender.react(state.groupId, incoming.key, hasExtraPts ? REACTION_CORRECT_KANJI : REACTION_CORRECT)
 
 		const currentQuestionPoints = state.questionPointsByMid.get(member.mid) ?? 0
-		let gained = awardCorrectPoints(currentQuestionPoints, question.isSpecialStage)
+		let gained = awardCorrectPoints(state.bundle.tunables, currentQuestionPoints, question.isSpecialStage)
 		gained += matchedExtraPts
 
 		if (gained !== 0) {
@@ -1149,7 +1145,7 @@ export class QuizEngine {
 				const totalPts = state.pointsByMid.get(member.mid) ?? 0
 				this.el?.upsertLiveScore(this.sid, member.mid, totalPts)
 				this.el?.upsertMemberState(this.sid, member.mid, {
-					cooldownUntil: !question.isSpecialStage ? new Date(Date.now() + COOLDOWN_MS) : null,
+					cooldownUntil: !question.isSpecialStage ? new Date(Date.now() + state.bundle.tunables.cooldown.ms) : null,
 				})
 				this.el?.logEvent(this.sid, {
 					groupId: state.groupId,
@@ -1182,7 +1178,7 @@ export class QuizEngine {
 			await this.persistCheckpoint(state)
 		}
 
-		if (!question.isSpecialStage) state.cooldowns.set(member.mid, Date.now() + COOLDOWN_MS)
+		if (!question.isSpecialStage) state.cooldowns.set(member.mid, Date.now() + state.bundle.tunables.cooldown.ms)
 
 		await this.sender.sendText(
 			state.groupId,
@@ -1238,11 +1234,11 @@ export class QuizEngine {
 		}
 
 		const key = member.mid
-		const maxWrong = QUIZ_TUNABLES.wrongAttempts.maxCount
+		const maxWrong = state.bundle.tunables.wrongAttempts.maxCount
 		const remain = state.wrongStreak.get(key) ?? maxWrong
 		if (remain < 0) return
 
-		const gained = awardWrongPoints(question.isSpecialStage)
+		const gained = awardWrongPoints(state.bundle.tunables, question.isSpecialStage)
 		if (gained !== 0) {
 			state.pointsByMid.set(member.mid, (state.pointsByMid.get(member.mid) ?? 0) + gained)
 			state.scoreReachedAtByMid.set(member.mid, Date.now())
@@ -1260,7 +1256,7 @@ export class QuizEngine {
 			}
 		}
 
-		const emojiStreak = QUIZ_TUNABLES.wrongAttempts.emojiStreak
+		const emojiStreak = state.bundle.tunables.wrongAttempts.emojiStreak
 		const reaction = emojiStreak[emojiStreak.length - 1 - remain] ?? REACTION_NO_MORE_CHANCE
 		await this.sender.react(state.groupId, incoming.key, reaction)
 		state.wrongStreak.set(key, remain - 1)

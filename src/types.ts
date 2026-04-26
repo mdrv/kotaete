@@ -1,3 +1,41 @@
+export type QuizTunables = {
+	timeout: {
+		/** Normal question timeout in ms */
+		normalMs: number
+		/** Special/god stage question timeout in ms */
+		specialMs: number
+		/** How far before deadline to send the warning message (ms) */
+		warningLeadMs: number
+		/** Delay before sending the god-stage question after announcement (ms) */
+		godAnnounceDelayMs: number
+	}
+	cooldown: {
+		/** Cooldown duration in ms after a correct answer */
+		ms: number
+	}
+	points: {
+		/** Points awarded per wrong answer (normal stage only) */
+		perWrong: number
+		/** Maximum total points for a correct answer in normal stage */
+		normalCap: number
+		/** Fixed points for a correct answer in special/god stage */
+		special: number
+	}
+	wrongAttempts: {
+		/** Number of wrong answers allowed per player per question (normal stage) */
+		maxCount: number
+		/** Emojis to show for each remaining wrong attempt (index 0 = first wrong, etc.) */
+		emojiStreak: ReadonlyArray<string>
+	}
+}
+
+export type QuizTunablesInput = Partial<{
+	timeout: Partial<QuizTunables['timeout']>
+	cooldown: Partial<QuizTunables['cooldown']>
+	points: Partial<QuizTunables['points']>
+	wrongAttempts: Partial<QuizTunables['wrongAttempts']>
+}>
+
 export type NMember = {
 	mid: string
 	kananame: string
@@ -64,6 +102,7 @@ export type QuizBundle = {
 	members?: ReadonlyArray<NMember> | null
 	membersFile?: string | null
 	season?: SeasonConfig | null
+	tunables: QuizTunables
 }
 
 export type ConfigQuestionImage = {
@@ -110,6 +149,7 @@ export type QuizScheduleConfig = {
 	members: ReadonlyArray<NMember> | string | null
 	imageTemplates: QuizImageTemplateConfig
 	season?: SeasonConfig | null
+	tunables: QuizTunables
 }
 
 export type QuizScheduleConfigInput = {
@@ -130,6 +170,7 @@ export type QuizScheduleConfigInput = {
 	template?: string
 	templateGod?: string
 	season?: SeasonConfig
+	tunables?: QuizTunablesInput
 }
 
 export type MessageKeyLike = {

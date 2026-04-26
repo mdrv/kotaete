@@ -24,8 +24,8 @@ export const QUIZ_TUNABLES = {
 		godAnnounceDelayMs: 60 * 1000,
 	},
 	cooldown: {
-		/** Cooldown duration in ms after a correct answer (default: 25 min) */
-		ms: 25 * 60 * 1000,
+		/** Cooldown duration in ms after a correct answer (default: 20 min) */
+		ms: 20 * 60 * 1000,
 	},
 	points: {
 		/** Points awarded per wrong answer (normal stage only) */
@@ -34,8 +34,6 @@ export const QUIZ_TUNABLES = {
 		normalCap: 10,
 		/** Fixed points for a correct answer in special/god stage */
 		special: 15,
-		/** Bonus points when the correct answer contains kanji */
-		kanjiBonus: 2,
 	},
 	wrongAttempts: {
 		/** Number of wrong answers allowed per player per question (normal stage) */
@@ -43,13 +41,7 @@ export const QUIZ_TUNABLES = {
 		/** Emojis to show for each remaining wrong attempt (index 0 = first wrong, etc.) */
 		emojiStreak: ['2️⃣', '1️⃣', '🙈'] as ReadonlyArray<string>,
 	},
-	stage: {
-		/** Question number that triggers special/god stage behavior */
-		specialNumber: 99,
-	},
-} as const
-
-export type QuizTunables = typeof QUIZ_TUNABLES
+} as const satisfies import('./types.ts').QuizTunables
 
 // ---------------------------------------------------------------------------
 // Backward-compatible flat aliases (still exported for minimal churn)
@@ -68,9 +60,6 @@ export const REACTION_COOLDOWN = '⏰'
 export const REACTION_NO_MORE_CHANCE = '🙈'
 export const REACTION_WRONG_STREAK = QUIZ_TUNABLES.wrongAttempts.emojiStreak
 
-export const POINTS_KANJI_BONUS = QUIZ_TUNABLES.points.kanjiBonus
-
-export const SPECIAL_STAGE_NUMBER = QUIZ_TUNABLES.stage.specialNumber
 export const POINTS_SPECIAL = QUIZ_TUNABLES.points.special
 
 export const CLI_SESSION_SCOPE = '@mdrv/kotaete'

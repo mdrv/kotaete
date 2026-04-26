@@ -2,7 +2,7 @@ import { readdir, readFile, stat, unlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { basename, dirname, extname, join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { POINTS_KANJI_BONUS, SPECIAL_STAGE_NUMBER } from '../constants.ts'
+import { QUIZ_TUNABLES } from '../constants.ts'
 import type {
 	ConfigAnswerEntry,
 	ConfigQuestion,
@@ -15,6 +15,8 @@ import type {
 	QuizRound,
 	QuizScheduleConfig,
 	QuizScheduleConfigInput,
+	QuizTunables,
+	QuizTunablesInput,
 	SeasonConfig,
 } from '../types.ts'
 
@@ -310,6 +312,24 @@ function normalizeMembers(input: unknown): ReadonlyArray<NMember> | string | nul
 	throw new Error('[quiz] invalid members in kotaete config: expected string path or array')
 }
 
+function normalizeTunables(input?: QuizTunablesInput): QuizTunables {
+	const t = QUIZ_TUNABLES
+	return {
+		timeout: { ...t.timeout, ...input?.timeout },
+		cooldown: { ...t.cooldown, ...input?.cooldown },
+		points: { ...t.points, ...input?.points },
+		wrongAttempts: {
+			...t.wrongAttempts,
+			...(input?.wrongAttempts?.emojiStreak != null
+				? { emojiStreak: input.wrongAttempts.emojiStreak }
+				: {}),
+			...(input?.wrongAttempts?.maxCount != null
+				? { maxCount: input.wrongAttempts.maxCount }
+				: {}),
+		},
+	}
+}
+
 export function defineConfig(config: QuizScheduleConfigInput = {}): QuizScheduleConfig {
 	const fromImageTemplates = normalizeTemplateConfig(config.imageTemplates)
 	const fromTemplatesAlias = normalizeTemplateConfig(config.templates)
@@ -339,6 +359,7 @@ export function defineConfig(config: QuizScheduleConfigInput = {}): QuizSchedule
 			...(templateGod ? { god: templateGod } : {}),
 		},
 		season: normalizeSeason(config.season),
+		tunables: normalizeTunables(config.tunables),
 	}
 }
 
@@ -352,7 +373,7 @@ function inferAnswerOptions(answers: string[]): { text: string; kanjiExtraPts: n
 	const extraPtsMatch = kanjiExtra
 		? answers.find((a) => /\+(\d+)/.test(a))?.match(/\+(\d+)/)
 		: null
-	const extraPts = extraPtsMatch ? Number(extraPtsMatch[1]) : (hasKanji ? POINTS_KANJI_BONUS : undefined)
+	const extraPts = extraPtsMatch ? Number(extraPtsMatch[1]) : undefined
 
 	const kanjiIcon = hasKanji && extraPts ? '🌸' : (hasKanji ? '✅' : '❌')
 
@@ -752,7 +773,7 @@ function convertConfigQuestion(entry: ConfigQuestion): QuizQuestion {
 		...(entry.extraHint ? { extraHint: entry.extraHint } : {}),
 		explanation: entry.explanation ?? '',
 		imagePath: null,
-		isSpecialStage: entry.no === SPECIAL_STAGE_NUMBER,
+		isSpecialStage: false,
 	}
 }
 function escapeXml(value: string): string {
@@ -997,6 +1018,7 @@ function buildRoundsFromSchedule(
 				throw new Error(`[quiz] duplicate question across rounds: ${round.godStage}`)
 			}
 			seen.add(round.godStage)
+			godQuestion.isSpecialStage = true
 			picked.push(godQuestion)
 		}
 
@@ -1070,7 +1092,7 @@ async function loadMarkdownQuestions(absDir: string, dirBasename: string): Promi
 			...(kanjiExtraPts !== undefined ? { kanjiExtraPts } : {}),
 			explanation,
 			imagePath,
-			isSpecialStage: number === SPECIAL_STAGE_NUMBER,
+			isSpecialStage: false,
 		})
 	}
 
@@ -1226,5 +1248,6 @@ export async function loadQuizBundle(
 		members,
 		membersFile,
 		season: schedule.season ?? null,
+		tunables: schedule.tunables,
 	}
 }

@@ -1,13 +1,17 @@
-import { POINTS_NORMAL_CAP, POINTS_PER_WRONG_ANSWER, POINTS_SPECIAL } from '../constants.ts'
+import type { QuizTunables } from '../types.ts'
 
-export function awardCorrectPoints(currentPointsForQuestion: number, isSpecialStage: boolean): number {
-	if (isSpecialStage) return POINTS_SPECIAL
-	return Math.max(0, POINTS_NORMAL_CAP - currentPointsForQuestion)
+export function awardCorrectPoints(
+	tunables: QuizTunables,
+	currentPointsForQuestion: number,
+	isSpecialStage: boolean,
+): number {
+	if (isSpecialStage) return tunables.points.special
+	return Math.max(0, tunables.points.normalCap - currentPointsForQuestion)
 }
 
-export function awardWrongPoints(isSpecialStage: boolean): number {
+export function awardWrongPoints(tunables: QuizTunables, isSpecialStage: boolean): number {
 	if (isSpecialStage) return 0
-	return POINTS_PER_WRONG_ANSWER
+	return tunables.points.perWrong
 }
 
 export function rankScores(
