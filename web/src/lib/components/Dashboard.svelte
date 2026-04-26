@@ -229,6 +229,7 @@
 					text: qNo ? `⏰ Q${qNo} timed out` : '⏰ Timed out',
 					color: 'var(--text-secondary)',
 				}
+			case 'god_stage_asked':
 			case 'question_asked':
 				return {
 					text: qNo ? `📝 Q${qNo} asked` : '📝 New question',
@@ -259,14 +260,9 @@
 					text: `🧊 ${name} — cooldown`,
 					color: 'var(--text-secondary)',
 				}
-			case 'god_stage_asked':
-				return {
-					text: qNo ? `⚡ Q${qNo} (神) asked` : '⚡ GOD STAGE asked',
-					color: 'var(--accent-red)',
-				}
 			case 'warning':
 				return {
-					text: evt.data.extraHint ? `💡 Q${evt.data.extraHint}` : `⚠️ Q${qNo} — Almost up!`,
+					text: evt.data.extraHint ? `💡 Q${qNo} — ${evt.data.extraHint}` : `⚠️ Q${qNo} — Almost up!`,
 					color: 'var(--accent-orange)',
 				}
 			default:
