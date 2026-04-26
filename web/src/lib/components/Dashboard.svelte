@@ -1627,6 +1627,9 @@
 
 	.event-time {
 		color: var(--text-muted);
+		opacity: 0.55;
+		font-size: 0.68rem;
+		font-weight: 700;
 		font-variant-numeric: tabular-nums;
 		flex-shrink: 0;
 		min-width: 2.5rem;
