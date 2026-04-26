@@ -648,6 +648,29 @@ function mergeConfigInputs(parts: ReadonlyArray<SourceConfigPart>): QuizSchedule
 			}
 		}
 
+		if (patch.tunables !== undefined) {
+			merged.tunables = {
+				...(merged.tunables ?? {}),
+				...(patch.tunables ?? {}),
+				timeout: {
+					...(merged.tunables?.timeout ?? {}),
+					...(patch.tunables?.timeout ?? {}),
+				},
+				cooldown: {
+					...(merged.tunables?.cooldown ?? {}),
+					...(patch.tunables?.cooldown ?? {}),
+				},
+				points: {
+					...(merged.tunables?.points ?? {}),
+					...(patch.tunables?.points ?? {}),
+				},
+				wrongAttempts: {
+					...(merged.tunables?.wrongAttempts ?? {}),
+					...(patch.tunables?.wrongAttempts ?? {}),
+				},
+			}
+		}
+
 		const nextImageTemplates = {
 			...(merged.imageTemplates ?? {}),
 			...(patch.templates ?? {}),
