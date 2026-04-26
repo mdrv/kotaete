@@ -290,12 +290,22 @@
 	}
 
 	function extractTimestamp(input: unknown): string | null {
-		if (typeof input === 'string') return input
+		if (typeof input === 'string') {
+			const trimmed = input.trim()
+			if (trimmed.length === 0) return null
+			const surrealDatetime = trimmed.match(/^d'(.+)'$/)
+			if (surrealDatetime?.[1]) return surrealDatetime[1]
+			if (/^\d+$/.test(trimmed)) return new Date(Number(trimmed)).toISOString()
+			return trimmed
+		}
+		if (typeof input === 'number' && Number.isFinite(input)) {
+			return new Date(input).toISOString()
+		}
 		if (input instanceof Date) return input.toISOString()
 		if (input && typeof input === 'object') {
 			const record = input as Record<string, unknown>
-			if (typeof record.$datetime === 'string') return record.$datetime
-			if (typeof record.value === 'string') return record.value
+			if (record.$datetime != null) return extractTimestamp(record.$datetime)
+			if (record.value != null) return extractTimestamp(record.value)
 		}
 		return null
 	}
@@ -314,11 +324,16 @@
 
 	function normalizeIncomingEvent(record: Record<string, unknown>): QuizEvent {
 		const member = memberCache.get(record.member_mid as string)
+		const extractedCreatedAt = extractTimestamp(record.created_at)
+		const createdAt = extractedCreatedAt
+			&& !Number.isNaN(new Date(extractedCreatedAt).getTime())
+			? extractedCreatedAt
+			: new Date().toISOString()
 		return {
 			...(record as unknown as QuizEvent),
 			id: normalizeRecordId(record.id),
 			session_id: normalizeRecordId(record.session_id),
-			created_at: extractTimestamp(record.created_at) ?? '',
+			created_at: createdAt,
 			member_kananame: member?.kananame ?? (record.member_kananame as string | null) ?? null,
 			member_nickname: member?.nickname ?? (record.member_nickname as string | null) ?? null,
 			member_classgroup: member?.classgroup ?? (record.member_classgroup as string | null) ?? null,
