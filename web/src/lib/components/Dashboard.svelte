@@ -1632,7 +1632,7 @@
 		font-weight: 700;
 		font-variant-numeric: tabular-nums;
 		flex-shrink: 0;
-		min-width: 2.5rem;
+		min-width: 2rem;
 	}
 	.empty-state {
 		text-align: center;
