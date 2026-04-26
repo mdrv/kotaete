@@ -212,11 +212,14 @@
 					color: 'var(--accent-green)',
 				}
 			}
-			case 'special_duplicate':
-				// return {
-				// 	text: `🪞 ${name} — duplicate answer`,
-				// 	color: 'var(--accent-orange)',
-				// }
+			case 'special_duplicate': {
+				const answerText = evt.data.answerText as string | undefined
+				const suffix = answerText ? `${answerText}` : 'wrong answer'
+				return {
+					text: `🙈 ${name} — ${suffix}`,
+					color: 'var(--accent-orange)',
+				}
+			}
 			case 'answer_wrong': {
 				const remaining = (evt.data.remainingChances as number) ?? 0
 				const emojis = ['🙈', '1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣']
