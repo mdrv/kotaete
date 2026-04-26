@@ -212,6 +212,11 @@
 					color: 'var(--accent-green)',
 				}
 			}
+			case 'special_duplicate':
+				// return {
+				// 	text: `🪞 ${name} — duplicate answer`,
+				// 	color: 'var(--accent-orange)',
+				// }
 			case 'answer_wrong': {
 				const remaining = (evt.data.remainingChances as number) ?? 0
 				const emojis = ['🙈', '1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣']
@@ -257,11 +262,6 @@
 				return {
 					text: `🧊 ${name} — cooldown`,
 					color: 'var(--text-secondary)',
-				}
-			case 'special_duplicate':
-				return {
-					text: `🪞 ${name} — duplicate answer`,
-					color: 'var(--accent-orange)',
 				}
 			case 'god_stage_asked':
 				return {
