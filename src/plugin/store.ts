@@ -1,3 +1,5 @@
+import { getLogger } from '../logger.ts'
+
 import { Surreal } from 'surrealdb'
 import type { SurrealOptions } from '../utils/surreal.ts'
 import { getDb } from '../utils/surreal.ts'
@@ -56,9 +58,19 @@ export class PluginStore {
 		return this.db
 	}
 
-	private chain(fn: () => Promise<void>): Promise<void> {
+	private static readonly LOG = getLogger(['kotaete', 'plugin', 'store'])
+
+	private chain(fn: () => Promise<void>, label?: string): Promise<void> {
 		const run = async () => {
-			await fn()
+			try {
+				await fn()
+			} catch (err) {
+				PluginStore.LOG.error(
+					`chain: failed${label ? ` (${label})` : ''}: ${
+						err instanceof Error ? err.stack ?? err.message : String(err)
+					}`,
+				)
+			}
 		}
 		this.queryChain = this.queryChain.then(run, run)
 		return this.queryChain
@@ -144,7 +156,7 @@ export class PluginStore {
 					enabledAt: entry.enabledAt,
 				},
 			)
-		})
+		}, 'add')
 	}
 
 	async remove(name: string): Promise<void> {
@@ -160,6 +172,6 @@ export class PluginStore {
 		const db = this.ensureDb()
 		await this.chain(async () => {
 			await db.query(`DELETE FROM plugin_manifest WHERE name = $name`, { name })
-		})
+		}, 'remove')
 	}
 }

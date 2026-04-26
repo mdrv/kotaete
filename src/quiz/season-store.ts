@@ -1,3 +1,5 @@
+import { getLogger } from '../logger.ts'
+
 import { Surreal } from 'surrealdb'
 import type { NMember } from '../types.ts'
 import type { SurrealOptions } from '../utils/surreal.ts'
@@ -146,9 +148,19 @@ export class SeasonStore {
 		return sid
 	}
 
-	private chain(fn: () => Promise<void>): Promise<void> {
+	private static readonly LOG = getLogger(['kotaete', 'season', 'store'])
+
+	private chain(fn: () => Promise<void>, label?: string): Promise<void> {
 		const run = async () => {
-			await fn()
+			try {
+				await fn()
+			} catch (err) {
+				SeasonStore.LOG.error(
+					`chain: failed${label ? ` (${label})` : ''}: ${
+						err instanceof Error ? err.stack ?? err.message : String(err)
+					}`,
+				)
+			}
 		}
 		this.queryChain = this.queryChain.then(run, run)
 		return this.queryChain
@@ -241,7 +253,7 @@ export class SeasonStore {
 					)
 				}
 			}
-		})
+		}, 'addPoints')
 	}
 
 	async resetGroup(key: string, seasonId?: string): Promise<void> {
@@ -252,7 +264,7 @@ export class SeasonStore {
 		return this.chain(async () => {
 			await db.query(`DELETE FROM season_score WHERE season_id = $sid`, { sid })
 			await db.query(`UPDATE season SET updated_at = time::now() WHERE season_id = $sid`, { sid })
-		})
+		}, 'resetPoints')
 	}
 
 	async setGroupMembers(
@@ -285,7 +297,7 @@ export class SeasonStore {
 					{ sid, mid: m.mid },
 				)
 			}
-		})
+		}, 'addPointsOrCreateSeason')
 	}
 
 	listGroups(): string[] {
@@ -334,7 +346,7 @@ export class SeasonStore {
 				}`,
 				{ sid, mid: memberMid, delta, now },
 			)
-		})
+		}, 'addDelta')
 	}
 
 	async setPoints(key: string, memberMid: string, points: number, seasonId?: string): Promise<void> {
@@ -361,7 +373,7 @@ export class SeasonStore {
 				}`,
 				{ sid, mid: memberMid, points, now },
 			)
-		})
+		}, 'setMemberPoints')
 	}
 
 	async clearAll(): Promise<void> {

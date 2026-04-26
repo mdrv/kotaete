@@ -98,9 +98,17 @@ export class DaemonStateStore {
 		return this.db
 	}
 
-	private chain(fn: () => Promise<void>): Promise<void> {
+	private chain(fn: () => Promise<void>, label?: string): Promise<void> {
 		const run = async () => {
-			await fn()
+			try {
+				await fn()
+			} catch (err) {
+				DaemonStateStore.STATUS_LOG.error(
+					`chain: failed${label ? ` (${label})` : ''}: ${
+						err instanceof Error ? err.stack ?? err.message : String(err)
+					}`,
+				)
+			}
 		}
 		this.queryChain = this.queryChain.then(run, run)
 		return this.queryChain
@@ -119,7 +127,7 @@ export class DaemonStateStore {
 		await this.chain(async () => {
 			await db.query(`DELETE FROM daemon_checkpoint`)
 			await db.query(`DELETE FROM daemon_job`)
-		})
+		}, 'clearAll')
 	}
 
 	/**
@@ -267,7 +275,7 @@ export class DaemonStateStore {
 			if (currentIds.length === 0) {
 				await db.query(`DELETE FROM daemon_job`)
 			}
-		})
+		}, 'syncJobs')
 	}
 
 	async saveCheckpoint(jobId: string, checkpoint: QuizStateCheckpoint): Promise<void> {
@@ -282,7 +290,7 @@ export class DaemonStateStore {
 				};`,
 				{ jobId, rev: checkpoint.rev, source: checkpoint.source, checkpoint },
 			)
-		})
+		}, 'saveCheckpoint')
 	}
 
 	async loadCheckpoint(jobId: string): Promise<QuizStateCheckpoint | null> {
@@ -300,7 +308,7 @@ export class DaemonStateStore {
 		const db = this.ensureDb()
 		await this.chain(async () => {
 			await db.query(`DELETE FROM daemon_checkpoint WHERE job_id = $jobId`, { jobId })
-		})
+		}, 'deleteCheckpoint')
 	}
 
 	async updateJobStatus(jobId: string, status: DaemonJobStatus): Promise<void> {
@@ -310,7 +318,7 @@ export class DaemonStateStore {
 				`UPDATE daemon_job SET status = $status, last_heartbeat_at = time::now() WHERE job_id = $jobId`,
 				{ jobId, status },
 			)
-		})
+		}, 'updateJobStatus')
 	}
 
 	// ── Daemon status heartbeat ──

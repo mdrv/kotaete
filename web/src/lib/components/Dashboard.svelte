@@ -235,12 +235,12 @@
 				}
 			case 'god_stage_announced':
 				return {
-					text: '⚡ GOD STAGE incoming!',
+					text: '🌈 GOD STAGE incoming!',
 					color: 'var(--accent-red)',
 				}
 			case 'quiz_finished':
 				return {
-					text: '🏁 Quiz Finished!',
+					text: '🏁 QUIZ END!',
 					color: 'var(--accent-green)',
 				}
 			case 'round_break':
@@ -265,7 +265,7 @@
 				}
 			case 'god_stage_asked':
 				return {
-					text: qNo ? `⚡ Q${qNo} (GOD STAGE)` : '⚡ GOD STAGE question',
+					text: qNo ? `⚡ Q${qNo} (神)` : '⚡ GOD STAGE question',
 					color: 'var(--accent-red)',
 				}
 			default:

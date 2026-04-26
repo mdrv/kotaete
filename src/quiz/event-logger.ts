@@ -124,6 +124,7 @@ export class QuizEventLogger {
 								label ?? 'unknown'
 							}: [${errName}] ${errMsg} [dbStatus=${dbStatus}]`,
 						)
+					if (err instanceof Error) this.log.error(`chain: stack: ${err.stack ?? err.message}`)
 						return // don't throw — keep chain alive
 					}
 
@@ -341,18 +342,22 @@ export class QuizEventLogger {
 			const updateCd = opts.cooldownUntil !== undefined
 			const cdVal = opts.cooldownUntil ? `<datetime>'${opts.cooldownUntil.toISOString()}'` : 'NONE'
 			const cdFragment = updateCd ? `cooldown_until = ${cdVal},` : ''
+			const updateWr = opts.wrongRemaining !== undefined
+			const wrFragment = updateWr ? `wrong_remaining = $wr` : ''
+			if (!cdFragment && !wrFragment) return
+			const params: Record<string, unknown> = {
+				sid: toRid(sessionId),
+				mid: memberMid,
+			}
+			if (updateWr) params.wr = opts.wrongRemaining
 			await db.query(
 				`LET $existing = (SELECT id FROM live_member_state WHERE session_id = $sid AND member_mid = $mid LIMIT 1);
 				IF $existing = [] {
-					CREATE live_member_state SET session_id = $sid, member_mid = $mid, ${cdFragment} wrong_remaining = $wr;
+					CREATE live_member_state SET session_id = $sid, member_mid = $mid, ${cdFragment}${wrFragment};
 				} ELSE {
-					UPDATE live_member_state SET ${cdFragment} wrong_remaining = $wr WHERE session_id = $sid AND member_mid = $mid;
+					UPDATE live_member_state SET ${cdFragment}${wrFragment} WHERE session_id = $sid AND member_mid = $mid;
 				}`,
-				{
-					sid: toRid(sessionId),
-					mid: memberMid,
-					wr: opts.wrongRemaining ?? undefined,
-				},
+				params,
 			)
 		}, 'upsertMemberState')
 	}
