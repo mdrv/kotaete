@@ -341,10 +341,11 @@ export class QuizEventLogger {
 			const db = this.ensureDb()
 			const updateCd = opts.cooldownUntil !== undefined
 			const cdVal = opts.cooldownUntil ? `<datetime>'${opts.cooldownUntil.toISOString()}'` : 'NONE'
-			const cdFragment = updateCd ? `cooldown_until = ${cdVal},` : ''
+			const cdFragment = updateCd ? `cooldown_until = ${cdVal}` : ''
 			const updateWr = opts.wrongRemaining !== undefined
 			const wrFragment = updateWr ? `wrong_remaining = $wr` : ''
 			if (!cdFragment && !wrFragment) return
+			const setExtra = [cdFragment, wrFragment].filter(Boolean).join(', ')
 			const params: Record<string, unknown> = {
 				sid: toRid(sessionId),
 				mid: memberMid,
@@ -353,9 +354,9 @@ export class QuizEventLogger {
 			await db.query(
 				`LET $existing = (SELECT id FROM live_member_state WHERE session_id = $sid AND member_mid = $mid LIMIT 1);
 				IF $existing = [] {
-					CREATE live_member_state SET session_id = $sid, member_mid = $mid, ${cdFragment}${wrFragment};
+					CREATE live_member_state SET session_id = $sid, member_mid = $mid, ${setExtra};
 				} ELSE {
-					UPDATE live_member_state SET ${cdFragment}${wrFragment} WHERE session_id = $sid AND member_mid = $mid;
+					UPDATE live_member_state SET ${setExtra} WHERE session_id = $sid AND member_mid = $mid;
 				}`,
 				params,
 			)

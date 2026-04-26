@@ -43,13 +43,13 @@
 			return 'finished'
 		}
 		// Session state is source of truth — show question immediately when accepting
-		if (session.accepting_answers && session.current_question !== null) {
+		if (session.accepting_answers && session.current_question != null) {
 			return 'question'
 		}
 		// Intro mode: session running, no question yet, first_round_at in the future
 		if (
 			session.status === 'running' && !session.accepting_answers
-			&& session.current_question === null
+			&& session.current_question == null
 		) {
 			const fra = session.first_round_at
 			if (fra && new Date(fra).getTime() > serverNow()) {
