@@ -109,8 +109,6 @@
 		return `${mins}:${pad(secs)}`
 	})
 
-	$inspect(session?.first_round_at, introCountdownText)
-
 	let questionImageUrl = $derived.by(() => {
 		if (!session?.id || session.current_question == null) return ''
 		return `/api/image/${
@@ -1006,7 +1004,9 @@
 					{:else}
 						{#each events as event (event.id)}
 							{@const formatted = formatEvent(event)}
+							{@const time = event.created_at ? new Date(event.created_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', hour12: false }) : ''}
 							<div class='event-row' style='color: {formatted.color}'>
+								<span class='event-time'>{time}</span>
 								{formatted.text}
 							</div>
 						{/each}
@@ -1553,8 +1553,17 @@
 		font-size: 0.8rem;
 		padding: 0.3rem 0;
 		border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+		display: flex;
+		gap: 0.5rem;
 	}
 
+
+	.event-time {
+		color: var(--text-muted);
+		font-variant-numeric: tabular-nums;
+		flex-shrink: 0;
+		min-width: 2.5rem;
+	}
 	.empty-state {
 		text-align: center;
 		padding: 1rem;
