@@ -312,6 +312,19 @@
 		})
 	}
 
+	function normalizeIncomingEvent(record: Record<string, unknown>): QuizEvent {
+		const member = memberCache.get(record.member_mid as string)
+		return {
+			...(record as unknown as QuizEvent),
+			id: normalizeRecordId(record.id),
+			session_id: normalizeRecordId(record.session_id),
+			created_at: extractTimestamp(record.created_at) ?? '',
+			member_kananame: member?.kananame ?? (record.member_kananame as string | null) ?? null,
+			member_nickname: member?.nickname ?? (record.member_nickname as string | null) ?? null,
+			member_classgroup: member?.classgroup ?? (record.member_classgroup as string | null) ?? null,
+		}
+	}
+
 	// ── Score Refresh (REST fallback when SSE live_score fails) ──
 	let scoreRefreshTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -401,7 +414,12 @@
 			)
 			const eventsData = await eventsRes.json()
 			if (eventsData.events?.length) {
-				events = eventsData.events.slice(0, 20)
+				events = (eventsData.events as unknown[])
+					.filter((evt): evt is Record<string, unknown> =>
+						evt != null && typeof evt === 'object'
+					)
+					.map((evt) => normalizeIncomingEvent(evt))
+					.slice(0, 20)
 				console.debug(
 					'[SSE] fetched events for session',
 					sessionId,
@@ -503,17 +521,7 @@
 			case 'quiz_event':
 				if (action === 'CREATE') {
 					if (!matchesSession(record)) break
-					const member = memberCache.get(record.member_mid as string)
-					const normEvent = {
-						...record,
-						id: normalizeRecordId(record.id),
-						session_id: normalizeRecordId(record.session_id),
-						created_at: extractTimestamp(record.created_at) ?? '',
-						member_kananame: member?.kananame ?? record.member_kananame ?? null,
-						member_nickname: member?.nickname ?? record.member_nickname ?? null,
-						member_classgroup: member?.classgroup ?? record.member_classgroup
-							?? null,
-					}
+					const normEvent = normalizeIncomingEvent(record)
 					events = [normEvent as unknown as QuizEvent, ...events].slice(0, 20)
 					// Fallback: refresh scores via REST on quiz events
 					// (live_score SSE may not fire due to SurrealDB live query issues)
@@ -764,7 +772,12 @@
 					`/api/events/${encodeURIComponent(session.id)}`,
 				)
 				const eventsData = await eventsRes.json()
-				events = (eventsData.events ?? []).slice(0, 20)
+				events = ((eventsData.events ?? []) as unknown[])
+					.filter((evt): evt is Record<string, unknown> =>
+						evt != null && typeof evt === 'object'
+					)
+					.map((evt) => normalizeIncomingEvent(evt))
+					.slice(0, 20)
 			}
 		} catch (e) {
 			console.error('Failed to load initial data:', e)
