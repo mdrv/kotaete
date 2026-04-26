@@ -356,6 +356,7 @@ export class QuizEngine {
 			loggerSessionId = await this.eventLogger.createSession({
 				groupId,
 				...(bundle.season?.id ? { seasonId: bundle.season.id } : {}),
+				...(bundle.rounds[0]?.startAt ? { firstRoundAt: bundle.rounds[0].startAt } : {}),
 				jobId: 'resumed',
 				totalQuestions: bundle.questions.length,
 				quizDir: bundle.directory,
@@ -568,6 +569,7 @@ export class QuizEngine {
 			? await this.eventLogger.createSession({
 				groupId,
 				...(bundle.season?.id ? { seasonId: bundle.season.id } : {}),
+				...(bundle.rounds[0]?.startAt ? { firstRoundAt: bundle.rounds[0].startAt } : {}),
 				jobId: 'engine',
 				totalQuestions: bundle.questions.length,
 				quizDir: bundle.directory,

@@ -12,6 +12,7 @@ export interface QuizSession {
 	accepting_answers: boolean
 	deadline_at: string | null
 	quiz_dir: string | null
+	first_round_at: string | null
 }
 
 export interface QuizEvent {

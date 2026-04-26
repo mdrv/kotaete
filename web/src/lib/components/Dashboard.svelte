@@ -46,6 +46,16 @@
 		if (session.accepting_answers && session.current_question !== null) {
 			return 'question'
 		}
+		// Intro mode: session running, no question yet, first_round_at in the future
+		if (
+			session.status === 'running' && !session.accepting_answers
+			&& session.current_question === null
+		) {
+			const fra = session.first_round_at
+			if (fra && new Date(fra).getTime() > serverNow()) {
+				return 'intro'
+			}
+		}
 		// Otherwise show result from latest event
 		const latest = events[0]
 		if (latest) {
@@ -82,6 +92,21 @@
 		const mins = Math.floor(timeRemaining / 60)
 		const secs = timeRemaining % 60
 		return `${mins}:${secs.toString().padStart(2, '0')}`
+	})
+
+	// Intro countdown: time until first question (first_round_at)
+	let introCountdownText = $derived.by(() => {
+		const fra = session?.first_round_at
+		if (!fra) return null
+		const target = new Date(fra).getTime()
+		const diff = Math.max(0, Math.floor((target - serverNow()) / 1000))
+		if (diff <= 0) return null
+		const hrs = Math.floor(diff / 3600)
+		const mins = Math.floor((diff % 3600) / 60)
+		const secs = diff % 60
+		const pad = (n: number) => n.toString().padStart(2, '0')
+		if (hrs > 0) return `${hrs}:${pad(mins)}:${pad(secs)}`
+		return `${mins}:${pad(secs)}`
 	})
 
 	let questionImageUrl = $derived.by(() => {
@@ -213,10 +238,35 @@
 					text: '⚡ GOD STAGE incoming!',
 					color: 'var(--accent-red)',
 				}
-			case 'warning':
+			case 'quiz_finished':
 				return {
-					text: '⚠️ 10 min warning',
-					color: 'var(--accent-yellow)',
+					text: '🏁 Quiz Finished!',
+					color: 'var(--accent-green)',
+				}
+			case 'round_break':
+				return {
+					text: '☕ Round break',
+					color: 'var(--text-secondary)',
+				}
+			case 'resumed':
+				return {
+					text: '🔄 Quiz resumed',
+					color: 'var(--accent-blue)',
+				}
+			case 'cooldown':
+				return {
+					text: '🧊 Cooldown started',
+					color: 'var(--text-secondary)',
+				}
+			case 'special_duplicate':
+				return {
+					text: `🪞 ${name} — duplicate answer`,
+					color: 'var(--accent-orange)',
+				}
+			case 'god_stage_asked':
+				return {
+					text: qNo ? `⚡ Q${qNo} (GOD STAGE)` : '⚡ GOD STAGE question',
+					color: 'var(--accent-red)',
 				}
 			default:
 				return {
@@ -789,7 +839,17 @@
 		<div class='column-left'>
 			<!-- ── Main Card ── -->
 			<div class='main-card'>
-				{#if displayMode === 'question'}
+				{#if displayMode === 'intro'}
+					<div class='intro-card'>
+						<div class='intro-emoji'>🎯</div>
+						<div class='intro-label'>Quiz starting soon</div>
+						{#if introCountdownText}
+							<div class='intro-countdown'>{introCountdownText}</div>
+						{:else}
+							<div class='intro-countdown'>...</div>
+						{/if}
+					</div>
+				{:else if displayMode === 'question'}
 					<div class='question-card'>
 						<div class='question-header'>
 							<span class='question-label'>Q{session?.current_question}</span>
@@ -1292,6 +1352,34 @@
 		border-radius: 8px;
 		color: var(--text-secondary);
 		font-size: 1.25rem;
+	}
+
+	/* ── Intro Card ── */
+
+	.intro-card {
+		text-align: center;
+		padding: 2rem 1rem;
+		width: 100%;
+	}
+
+	.intro-emoji {
+		font-size: 3rem;
+		margin-bottom: 0.5rem;
+	}
+
+	.intro-label {
+		font-size: 1rem;
+		font-weight: 600;
+		color: var(--text-secondary);
+		margin-bottom: 0.75rem;
+	}
+
+	.intro-countdown {
+		font-size: 4rem;
+		font-weight: 800;
+		color: var(--accent-blue);
+		font-variant-numeric: tabular-nums;
+		letter-spacing: 0.05em;
 	}
 
 	/* ── Result Cards (Winner / Timeout / Idle) ── */

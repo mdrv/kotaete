@@ -10,6 +10,7 @@ export interface QuizSession {
 	deadline_at: string | null
 	quiz_dir: string | null
 	total_questions: number
+	first_round_at: string | null
 }
 
 export interface QuizEvent {
