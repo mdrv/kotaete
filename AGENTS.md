@@ -9,7 +9,7 @@ NIPBANG Kotaete (`@mdrv/kotaete`) is a WhatsApp-based Japanese quiz bot. It runs
 **Formatter:** dprint (config in `dprint.jsonc` — tabs, single quotes, no semicolons).
 **CLI Framework:** Crust.js (`@crustjs/core` + `@crustjs/plugins`).
 **Validation:** Zod v4 (`^4.3.6`).
-**Database:** SurrealDB (`^2.0.3`) for season scores, event logging, and live dashboard.
+**Database:** SurrealDB v3 server with `surrealdb` npm SDK (`^2.0.3`) for season scores, event logging, and live dashboard.
 **Path alias:** `@/*` → `./*` (tsconfig).
 
 ## Commands
